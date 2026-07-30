@@ -123,6 +123,7 @@ export const superAdminAPI = {
   demoRequests: {
     getAll: () => apiCall<any[]>('/api/superadmin/demo-requests', {}, 'superadmin'),
     update: (id: string, body: any) => apiCall<any>(`/api/superadmin/demo-requests/${id}`, { method: 'PUT', body: JSON.stringify(body) }, 'superadmin'),
+    remove: (id: string) => apiCall<any>(`/api/superadmin/demo-requests/${id}`, { method: 'DELETE' }, 'superadmin'),
   }
 };
 

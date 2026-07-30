@@ -1,22 +1,22 @@
 import {
-  Building2,
   Target,
   ShieldCheck,
   Award,
   Sparkles,
-  TrendingUp,
   Gem,
   CheckCircle2,
   HeartHandshake,
   ArrowRight,
-  Clock,
   Lock,
   Scale,
   Zap,
   Star,
   BadgeCheck,
   ChevronRight,
-  Layers
+  Layers,
+  ShoppingCart,
+  BadgeIndianRupee,
+  Hammer
 } from "lucide-react";
 import { Footer, Nav, MobileMenu, WhatsAppButton, DemoRequestModal } from "./LandingPage";
 import { useState } from "react";
@@ -32,13 +32,6 @@ const Section = ({ children, className = "", id }: { children: React.ReactNode; 
 
 export default function AboutPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  const stats = [
-    { label: "Active Jewellers & Showrooms", value: "500+", subtext: "Across 40+ cities" },
-    { label: "Annual Transactions Handled", value: "₹1,000 Cr+", subtext: "Seamless billing volume" },
-    { label: "Cloud Security Uptime", value: "99.99%", subtext: "Bank-grade data isolation" },
-    { label: "Average Support SLA", value: "< 15 Mins", subtext: "Dedicated assistance" },
-  ];
 
   const values = [
     {
@@ -71,30 +64,50 @@ export default function AboutPage() {
     },
   ];
 
-  const milestones = [
+  const softwareServices = [
     {
-      year: "2020",
-      title: "Inception & Core Engine",
-      description: "Founded by tech architects and jewellery veterans to solve chaotic manual ledger work and complex making-charge calculations.",
-      icon: Building2
+      icon: ShoppingCart,
+      title: "Retail Showroom POS & Billing",
+      target: "Single Showrooms & Retail Chains",
+      features: [
+        "30-second POS checkout with automatic 24K/22K gold rate conversion",
+        "Net weight, stone deduction, making charges, and hallmark fee calculation",
+        "Instant GST invoice generation & automated WhatsApp digital receipts"
+      ],
+      badge: "Retail Solution"
     },
     {
-      year: "2022",
-      title: "Girvi & Karigar Modules",
-      description: "Introduced automated Girvi gold loan interest management, item pledging workflows, and Karigar wastage tracking.",
-      icon: Layers
+      icon: BadgeIndianRupee,
+      title: "Girvi & Gold Loan Management",
+      target: "Pledged Asset Lenders & Pawn Operations",
+      features: [
+        "Pledged ornament records with high-res photo uploads and barcode tags",
+        "Customizable monthly/daily interest rates & compound interest engine",
+        "Partial settlements, full closures, and market liability forwarding"
+      ],
+      badge: "Finance Module"
     },
     {
-      year: "2024",
-      title: "Multi-Branch Cloud Scale",
-      description: "Expanded support to multi-showroom retail chains with centralized real-time stock transfers and barcode printing.",
-      icon: TrendingUp
+      icon: Hammer,
+      title: "Karigar & Manufacturing Ledger",
+      target: "Goldsmiths, Craftsmen & Wholesale Units",
+      features: [
+        "Raw metal issue and return tracking down to the milligram",
+        "Karat touch purity ledger & automated wastage percentage calculations",
+        "Real-time job card progress and repair status tracking"
+      ],
+      badge: "Craftsman Suite"
     },
     {
-      year: "2026",
-      title: "Next-Gen AI & Analytics",
-      description: "Rolled out intelligent inventory forecasting, WhatsApp digital catalogs, and instant cloud sync across web and mobile.",
-      icon: Sparkles
+      icon: Layers,
+      title: "Enterprise Multi-Branch Cloud",
+      target: "Multi-Store Chains & Franchise Networks",
+      features: [
+        "Centralized real-time stock visibility across all showrooms and vaults",
+        "Inter-branch stock transfers with approval workflows and audit trails",
+        "Role-based staff permissions, 2FA, and executive analytics dashboards"
+      ],
+      badge: "Enterprise Platform"
     }
   ];
 
@@ -155,21 +168,6 @@ export default function AboutPage() {
                 </a>
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* FLOATING STATS GRID */}
-        <section className="-mt-16 relative z-10 mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 rounded-3xl bg-white/90 p-8 shadow-xl shadow-slate-200/50 border border-amber-100 backdrop-blur-xl">
-            {stats.map((item, idx) => (
-              <div key={idx} className="relative flex flex-col justify-between p-4 rounded-2xl bg-amber-50/40 border border-amber-100/60 transition hover:bg-amber-50/80">
-                <div>
-                  <div className="font-serif text-3xl sm:text-4xl font-extrabold text-[#FA8112] tracking-tight">{item.value}</div>
-                  <div className="mt-2 font-semibold text-slate-800 text-base">{item.label}</div>
-                </div>
-                <div className="mt-3 text-xs text-slate-500 font-medium">{item.subtext}</div>
-              </div>
-            ))}
           </div>
         </section>
 
@@ -281,43 +279,52 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* GROWTH TIMELINE */}
+        {/* COMPREHENSIVE SOFTWARE SOLUTIONS WE SERVE */}
         <Section>
           <div className="mx-auto max-w-4xl text-center">
-            <span className="inline-flex items-center gap-2 rounded-full bg-orange-100 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-[#FA8112]">
-              <Clock className="h-3.5 w-3.5" /> Evolution & Growth
+            <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-[#FA8112]">
+              <Sparkles className="h-3.5 w-3.5" /> What We Serve & Deliver
             </span>
             <h2 className="mt-4 font-serif text-3xl sm:text-5xl font-bold tracking-tight text-slate-900">
-              Our Journey of Innovation
+              End-to-End Solutions for Every Jewellery Business
             </h2>
-            <p className="mt-4 text-slate-600 text-base sm:text-lg">
-              How we evolved from an ambitious idea into the trusted ERP partner for hundreds of jewellery businesses.
+            <p className="mt-4 text-slate-600 text-base sm:text-lg max-w-2xl mx-auto">
+              From retail billing counters to Girvi pledge vaults and Karigar manufacturing workshops, discover how jewellarifyerp powers your operations.
             </p>
           </div>
 
-          <div className="mt-16 mx-auto max-w-5xl">
-            <div className="relative border-l-2 border-amber-200 ml-4 sm:ml-32 space-y-12">
-              {milestones.map((m, idx) => (
-                <div key={idx} className="relative group pl-8 sm:pl-12">
-                  {/* Timeline Node */}
-                  <div className="absolute -left-[17px] top-1.5 h-8 w-8 rounded-full border-4 border-white bg-[#FA8112] shadow-md flex items-center justify-center text-white transition group-hover:scale-110">
-                    <m.icon className="h-3.5 w-3.5" />
+          <div className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-8">
+            {softwareServices.map((s, idx) => (
+              <div
+                key={idx}
+                className="group relative flex flex-col justify-between rounded-3xl border border-amber-200/70 bg-white p-8 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:border-[#FA8112]/40"
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-[#FA8112] border border-amber-100 transition-colors group-hover:bg-[#FA8112] group-hover:text-white">
+                      <s.icon className="h-7 w-7" />
+                    </div>
+                    <span className="text-xs font-bold text-[#FA8112] bg-orange-50 px-3 py-1 rounded-full border border-orange-200/60">
+                      {s.badge}
+                    </span>
                   </div>
 
-                  {/* Year Tag for larger screens */}
-                  <div className="hidden sm:block absolute -left-32 top-1.5 w-24 text-right">
-                    <span className="font-serif text-xl font-bold text-[#FA8112]">{m.year}</span>
+                  <h3 className="mt-6 font-serif text-2xl font-bold text-slate-900">{s.title}</h3>
+                  <div className="mt-1 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    Serving: {s.target}
                   </div>
 
-                  {/* Card Content */}
-                  <div className="rounded-2xl border border-amber-100 bg-white p-6 shadow-xs transition hover:shadow-md hover:border-amber-300">
-                    <div className="sm:hidden text-xs font-bold text-[#FA8112] mb-1">{m.year}</div>
-                    <h3 className="font-serif text-xl font-bold text-slate-900">{m.title}</h3>
-                    <p className="mt-2 text-sm text-slate-600 leading-relaxed">{m.description}</p>
-                  </div>
+                  <ul className="mt-6 space-y-3">
+                    {s.features.map((f, i) => (
+                      <li key={i} className="flex items-start gap-2.5">
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-[#FA8112] mt-0.5" />
+                        <span className="text-sm text-slate-600 font-medium leading-snug">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         </Section>
 
