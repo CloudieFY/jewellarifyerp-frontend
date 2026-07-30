@@ -42,7 +42,7 @@ export default function AboutPage() {
             </div>
             <div className="space-y-4">
               <Target className="w-12 h-12 mx-auto text-[#FA8112]" />
-              <h3 className="text-2xl font-serif font-semibold">Our Mission</h3>
+              <h3 className="text-2xl font-serif font-semibold">Our Vision</h3>
               <p className="text-[#222222]/70">To be the leading provider of jewellery management software, known for innovation, reliability, and customer-centricity.</p>
             </div>
           </div>
