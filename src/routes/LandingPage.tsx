@@ -611,7 +611,7 @@ export function WhatsAppButton() {
   );
 }
 
-function DemoRequestModal({ children }: { children: ReactNode }) {
+export function DemoRequestModal({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", shopName: "", phone: "", email: "", address: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
