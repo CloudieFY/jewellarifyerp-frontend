@@ -30,15 +30,12 @@ import {
   X,
   CheckCircle2,
   DollarSign,
-  Calendar,
   Sparkles,
-  Filter,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { ShopHeader } from "@/components/InvoiceBranding";
 
 export default function DuesPage() {
   const { tenantSession } = useAuth();
@@ -65,7 +62,6 @@ export default function DuesPage() {
   const [payNote, setPayNote] = useState("");
 
   const [viewDetailInv, setViewDetailInv] = useState<Invoice | null>(null);
-  const [printStatementInv, setPrintStatementInv] = useState<Invoice | null>(null);
 
   const isOperator = tenantSession?.user?.role === "operator";
   const invoices = useMemo(
@@ -208,8 +204,6 @@ export default function DuesPage() {
     if (phone.length === 10) phone = "91" + phone;
 
     const shopIdentifier = tenantSession?.shop?.shopName || tenantSession?.shop?.slug || "Jewellery Shop";
-    const days = getDaysOverdue(inv.createdAt);
-
     const message = `*${shopIdentifier}*\n\nनमस्ते ${inv.customerName} जी,\n\nयह आपके इनवॉइस नंबर: *${inv.number}* (दिनांक ${formatDate(inv.createdAt)}) की बकाया राशि *${inr(inv.balanceDue || 0)}* के संबंध में रिमाइंडर है।\n\n📌 कुल बिल: ${inr(inv.total)}\n✅ जमा राशि: ${inr(inv.amountPaid || 0)}\n❗ शेष बकाया: *${inr(inv.balanceDue || 0)}*\n\nकृपया जल्द से जल्द भुगतान करें। धन्यवाद!`;
 
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank");
@@ -244,11 +238,13 @@ export default function DuesPage() {
   return (
     <Layout>
       {/* HEADER BAR */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-6">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-display font-bold text-slate-900 tracking-tight">Customer Dues Recovery Hub</h1>
-            <Badge className="bg-rose-100 text-rose-800 border-rose-200 font-medium">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-display font-bold text-slate-900 tracking-tight">
+              Customer Dues Recovery Hub
+            </h1>
+            <Badge className="bg-rose-100 text-rose-800 border-rose-200 font-medium text-xs">
               {allDueInvoices.length} Pending Bills
             </Badge>
           </div>
@@ -257,11 +253,11 @@ export default function DuesPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
           <Button
             variant="outline"
             onClick={exportToExcel}
-            className="h-9 text-xs gap-2 border-slate-300 hover:bg-slate-100"
+            className="h-9 text-xs gap-2 border-slate-300 hover:bg-slate-100 w-full sm:w-auto"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Export Excel
           </Button>
@@ -276,100 +272,112 @@ export default function DuesPage() {
       </div>
 
       {/* KPI METRICS GRID */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card className="border border-rose-200 bg-rose-50/50 shadow-sm relative overflow-hidden">
-          <CardContent className="p-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+        <Card className="border border-rose-200 bg-rose-50/50 shadow-xs relative overflow-hidden">
+          <CardContent className="p-3.5 sm:p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-rose-700 uppercase tracking-wider">Total Pending Dues</span>
-              <AlertCircle className="w-5 h-5 text-rose-600" />
+              <span className="text-[11px] font-semibold text-rose-700 uppercase tracking-wider">
+                Total Pending Dues
+              </span>
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
             </div>
-            <div className="text-2xl font-bold text-rose-950 mt-2 font-mono">{inr(totalOutstanding)}</div>
-            <p className="text-[11px] text-rose-700 mt-1 font-medium">
-              Across {allDueInvoices.length} customer invoices
-            </p>
+            <div className="text-xl sm:text-2xl font-bold text-rose-950 mt-1.5 font-mono truncate">
+              {inr(totalOutstanding)}
+            </div>
+            <p className="text-[11px] text-rose-700 mt-1 font-medium">Across {allDueInvoices.length} customer invoices</p>
           </CardContent>
         </Card>
 
-        <Card className="border border-amber-200 bg-amber-50/50 shadow-sm">
-          <CardContent className="p-4">
+        <Card className="border border-amber-200 bg-amber-50/50 shadow-xs">
+          <CardContent className="p-3.5 sm:p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-amber-800 uppercase tracking-wider">Overdue &gt; 30 Days</span>
-              <Clock className="w-5 h-5 text-amber-600" />
+              <span className="text-[11px] font-semibold text-amber-800 uppercase tracking-wider">
+                Overdue &gt; 30 Days
+              </span>
+              <Clock className="w-5 h-5 text-amber-600 shrink-0" />
             </div>
-            <div className="text-2xl font-bold text-amber-950 mt-2 font-mono">{inr(overdue30DaysAmount)}</div>
-            <p className="text-[11px] text-amber-700 mt-1 font-medium">
-              {overdue30DaysCount} high-priority overdue bills
-            </p>
+            <div className="text-xl sm:text-2xl font-bold text-amber-950 mt-1.5 font-mono truncate">
+              {inr(overdue30DaysAmount)}
+            </div>
+            <p className="text-[11px] text-amber-700 mt-1 font-medium">{overdue30DaysCount} high-priority overdue bills</p>
           </CardContent>
         </Card>
 
-        <Card className="border border-slate-200 bg-white shadow-sm">
-          <CardContent className="p-4">
+        <Card className="border border-slate-200 bg-white shadow-xs">
+          <CardContent className="p-3.5 sm:p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Total Bill Value</span>
-              <TrendingUp className="w-5 h-5 text-slate-500" />
+              <span className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider">
+                Total Bill Value
+              </span>
+              <TrendingUp className="w-5 h-5 text-slate-500 shrink-0" />
             </div>
-            <div className="text-2xl font-bold text-slate-900 mt-2 font-mono">{inr(totalBilledWithDues)}</div>
+            <div className="text-xl sm:text-2xl font-bold text-slate-900 mt-1.5 font-mono truncate">
+              {inr(totalBilledWithDues)}
+            </div>
             <p className="text-[11px] text-slate-500 mt-1">Total invoiced amount</p>
           </CardContent>
         </Card>
 
-        <Card className="border border-emerald-200 bg-emerald-50/40 shadow-sm">
-          <CardContent className="p-4">
+        <Card className="border border-emerald-200 bg-emerald-50/40 shadow-xs">
+          <CardContent className="p-3.5 sm:p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wider">Recovered Amount</span>
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              <span className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wider">
+                Recovered Amount
+              </span>
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
             </div>
-            <div className="text-2xl font-bold text-emerald-950 mt-2 font-mono">{inr(totalRecoveredPart)}</div>
+            <div className="text-xl sm:text-2xl font-bold text-emerald-950 mt-1.5 font-mono truncate">
+              {inr(totalRecoveredPart)}
+            </div>
             <p className="text-[11px] text-emerald-700 mt-1 font-medium">Partial installments collected</p>
           </CardContent>
         </Card>
       </div>
 
       {/* FILTER TABS & SEARCH CONTROLS */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4 mb-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
+      <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 mb-6">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 border-b pb-3">
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 bg-slate-100 p-1 rounded-lg w-full sm:w-auto">
             <button
               onClick={() => {
                 setActiveTab("all");
                 setPage(1);
               }}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                activeTab === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+              className={`px-2.5 py-1.5 text-xs font-semibold rounded-md transition-all text-center ${
+                activeTab === "all" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              All Dues ({allDueInvoices.length})
+              All ({allDueInvoices.length})
             </button>
             <button
               onClick={() => {
                 setActiveTab("overdue");
                 setPage(1);
               }}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                activeTab === "overdue" ? "bg-rose-600 text-white shadow-sm" : "text-slate-600 hover:text-rose-600"
+              className={`px-2.5 py-1.5 text-xs font-semibold rounded-md transition-all text-center ${
+                activeTab === "overdue" ? "bg-rose-600 text-white shadow-xs" : "text-slate-600 hover:text-rose-600"
               }`}
             >
-              Overdue &gt;30 Days ({overdue30DaysCount})
+              Overdue &gt;30d ({overdue30DaysCount})
             </button>
             <button
               onClick={() => {
                 setActiveTab("high");
                 setPage(1);
               }}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                activeTab === "high" ? "bg-amber-600 text-white shadow-sm" : "text-slate-600 hover:text-amber-700"
+              className={`px-2.5 py-1.5 text-xs font-semibold rounded-md transition-all text-center ${
+                activeTab === "high" ? "bg-amber-600 text-white shadow-xs" : "text-slate-600 hover:text-amber-700"
               }`}
             >
-              High Value (&gt; ₹50k)
+              High Value (&gt;₹50k)
             </button>
             <button
               onClick={() => {
                 setActiveTab("partial");
                 setPage(1);
               }}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                activeTab === "partial" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 hover:text-emerald-700"
+              className={`px-2.5 py-1.5 text-xs font-semibold rounded-md transition-all text-center ${
+                activeTab === "partial" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 hover:text-emerald-700"
               }`}
             >
               Partially Paid
@@ -387,19 +395,20 @@ export default function DuesPage() {
                 setActiveTab("all");
                 setPage(1);
               }}
-              className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 h-8"
+              className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 h-8 self-end sm:self-auto"
             >
               <X className="w-3.5 h-3.5 mr-1" /> Reset Filters
             </Button>
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+        {/* RESPONSIVE SEARCH & DATE INPUT GRID */}
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
           <div className="relative sm:col-span-6">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <Input
-              className="pl-9 bg-slate-50 text-xs h-9"
-              placeholder="Search customer name, mobile number, invoice #, or address..."
+              className="pl-9 bg-slate-50 text-xs h-9 w-full"
+              placeholder="Search customer name, mobile, invoice #, or address..."
               value={q}
               onChange={(e) => {
                 setQ(e.target.value);
@@ -408,8 +417,8 @@ export default function DuesPage() {
             />
           </div>
 
-          <div className="sm:col-span-3 flex items-center gap-2">
-            <Label className="text-xs text-slate-500 shrink-0">From:</Label>
+          <div className="sm:col-span-3 grid grid-cols-1 gap-1">
+            <Label className="text-[11px] text-slate-500 font-semibold">From Date</Label>
             <Input
               type="date"
               value={dateFrom}
@@ -417,12 +426,12 @@ export default function DuesPage() {
                 setDateFrom(e.target.value);
                 setPage(1);
               }}
-              className="bg-slate-50 text-xs h-9"
+              className="bg-slate-50 text-xs h-9 w-full"
             />
           </div>
 
-          <div className="sm:col-span-3 flex items-center gap-2">
-            <Label className="text-xs text-slate-500 shrink-0">To:</Label>
+          <div className="sm:col-span-3 grid grid-cols-1 gap-1">
+            <Label className="text-[11px] text-slate-500 font-semibold">To Date</Label>
             <Input
               type="date"
               value={dateTo}
@@ -430,14 +439,14 @@ export default function DuesPage() {
                 setDateTo(e.target.value);
                 setPage(1);
               }}
-              className="bg-slate-50 text-xs h-9"
+              className="bg-slate-50 text-xs h-9 w-full"
             />
           </div>
         </div>
       </div>
 
-      {/* DUES TABLE CONTAINER */}
-      <Card className="border border-slate-200 shadow-sm overflow-hidden bg-white">
+      {/* DUES CONTAINER */}
+      <Card className="border border-slate-200 shadow-xs overflow-hidden bg-white">
         <CardContent className="p-0">
           {isLoading ? (
             <div className="py-16 text-center text-slate-500 text-xs">
@@ -451,118 +460,212 @@ export default function DuesPage() {
               <p className="text-xs text-slate-500 mt-1">All invoice accounts are fully cleared or match no filters.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b border-slate-200">
-                  <tr>
-                    <th className="py-3 px-4">Date &amp; Age</th>
-                    <th className="py-3 px-3">Invoice #</th>
-                    <th className="py-3 px-3">Customer Details</th>
-                    <th className="py-3 px-3 text-right">Total Bill</th>
-                    <th className="py-3 px-3 text-right text-emerald-700">Paid</th>
-                    <th className="py-3 px-4 text-right text-rose-700">Balance Due</th>
-                    <th className="py-3 px-4 text-center">Quick Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200/80">
-                  {paginatedDues.map((inv) => {
-                    const days = getDaysOverdue(inv.createdAt);
-                    const isHighOverdue = days >= 30;
-                    return (
-                      <tr key={inv._id || inv.id} className="hover:bg-amber-50/40 transition-colors">
-                        <td className="py-3 px-4">
-                          <div className="font-medium text-slate-900">{formatDate(inv.createdAt)}</div>
-                          <div className="mt-0.5">
-                            {isHighOverdue ? (
-                              <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-[10px] py-0">
-                                🚨 {days} Days Overdue
-                              </Badge>
-                            ) : (
-                              <span className="text-[10px] text-slate-500 font-mono">{days} days pending</span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="py-3 px-3">
-                          <div className="font-mono font-bold text-slate-800">{inv.number}</div>
-                          <Badge variant="outline" className="text-[9px] px-1.5 mt-0.5 bg-slate-50">
+            <>
+              {/* MOBILE DUES CARDS (Visible on screens < md) */}
+              <div className="block md:hidden divide-y divide-slate-200">
+                {paginatedDues.map((inv) => {
+                  const days = getDaysOverdue(inv.createdAt);
+                  const isHighOverdue = days >= 30;
+                  return (
+                    <div key={inv._id || inv.id} className="p-3.5 space-y-2.5 hover:bg-amber-50/30">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold text-slate-900 text-xs">{inv.number}</span>
+                          <Badge variant="outline" className="text-[9px] px-1.5 bg-slate-50">
                             {inv.type}
                           </Badge>
-                        </td>
+                        </div>
+                        <span className="text-xs text-slate-500 font-mono">{formatDate(inv.createdAt)}</span>
+                      </div>
 
-                        <td className="py-3 px-3">
-                          <div className="font-semibold text-slate-900 text-xs">{inv.customerName}</div>
-                          <div className="flex items-center gap-1.5 text-[11px] text-slate-600 font-mono mt-0.5">
-                            <Phone className="w-3 h-3 text-slate-400" />
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-bold text-slate-900 text-sm">{inv.customerName}</div>
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600 font-mono mt-0.5">
+                            <Phone className="w-3 h-3 text-slate-400 shrink-0" />
                             {inv.customerMobile}
-                          </div>
-                          {inv.customerAddress && (
-                            <div className="text-[10px] text-slate-500 truncate max-w-[180px] mt-0.5">
-                              {inv.customerAddress}
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-3 text-right font-mono text-slate-800 font-medium">{inr(inv.total)}</td>
-
-                        <td className="py-3 px-3 text-right font-mono text-emerald-700 font-semibold">
-                          {inr(inv.amountPaid || 0)}
-                        </td>
-
-                        <td className="py-3 px-4 text-right font-mono text-rose-700 font-bold text-sm">
-                          {inr(inv.balanceDue || 0)}
-                        </td>
-
-                        <td className="py-3 px-4 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            {/* Record Payment Button */}
-                            <Button
-                              size="sm"
-                              onClick={() => openCollectPaymentModal(inv)}
-                              className="h-7 text-[11px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
-                            >
-                              <DollarSign className="w-3.5 h-3.5 mr-0.5" /> Settle
-                            </Button>
-
-                            {/* WhatsApp Reminder Button */}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => sendWhatsAppReminder(inv)}
-                              className="h-7 text-[11px] px-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                              title="Send WhatsApp Reminder"
-                            >
-                              <MessageCircle className="w-3.5 h-3.5" />
-                            </Button>
-
-                            {/* View Detail Button */}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setViewDetailInv(inv)}
-                              className="h-7 text-[11px] px-2 border-slate-300 text-slate-700 hover:bg-slate-100"
-                              title="View Invoice Details"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                            </Button>
-
-                            {/* Direct Phone Call */}
                             {inv.customerMobile && (
                               <a
                                 href={`tel:${inv.customerMobile}`}
-                                className="p-1.5 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-100"
-                                title="Call Customer"
+                                className="text-emerald-700 font-bold ml-1 text-[11px] underline"
                               >
-                                <Phone className="w-3.5 h-3.5" />
+                                Call
                               </a>
                             )}
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-[10px] text-slate-500 uppercase font-semibold">Balance Due</div>
+                          <div className="font-mono font-bold text-rose-700 text-base">{inr(inv.balanceDue || 0)}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs bg-slate-50 p-2 rounded-md font-mono text-slate-700">
+                        <div>
+                          Total: <strong>{inr(inv.total)}</strong>
+                        </div>
+                        <div>
+                          Paid: <strong className="text-emerald-700">{inr(inv.amountPaid || 0)}</strong>
+                        </div>
+                        <div>
+                          {isHighOverdue ? (
+                            <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-[9px] py-0">
+                              🚨 {days}d Overdue
+                            </Badge>
+                          ) : (
+                            <span className="text-[10px] text-slate-500">{days}d pending</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* MOBILE ACTIONS TOOLBAR */}
+                      <div className="flex items-center gap-1.5 pt-1">
+                        <Button
+                          size="sm"
+                          onClick={() => openCollectPaymentModal(inv)}
+                          className="flex-1 h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                        >
+                          <DollarSign className="w-3.5 h-3.5 mr-0.5" /> Settle
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => sendWhatsAppReminder(inv)}
+                          className="h-8 text-xs px-2.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                          title="WhatsApp Reminder"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setViewDetailInv(inv)}
+                          className="h-8 text-xs px-2.5 border-slate-300 text-slate-700 hover:bg-slate-100"
+                          title="View Details"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* DESKTOP TABLE VIEW (Visible on screens >= md) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-4">Date &amp; Age</th>
+                      <th className="py-3 px-3">Invoice #</th>
+                      <th className="py-3 px-3">Customer Details</th>
+                      <th className="py-3 px-3 text-right">Total Bill</th>
+                      <th className="py-3 px-3 text-right text-emerald-700">Paid</th>
+                      <th className="py-3 px-4 text-right text-rose-700">Balance Due</th>
+                      <th className="py-3 px-4 text-center">Quick Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200/80">
+                    {paginatedDues.map((inv) => {
+                      const days = getDaysOverdue(inv.createdAt);
+                      const isHighOverdue = days >= 30;
+                      return (
+                        <tr key={inv._id || inv.id} className="hover:bg-amber-50/40 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="font-medium text-slate-900">{formatDate(inv.createdAt)}</div>
+                            <div className="mt-0.5">
+                              {isHighOverdue ? (
+                                <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-[10px] py-0">
+                                  🚨 {days} Days Overdue
+                                </Badge>
+                              ) : (
+                                <span className="text-[10px] text-slate-500 font-mono">{days} days pending</span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-3">
+                            <div className="font-mono font-bold text-slate-800">{inv.number}</div>
+                            <Badge variant="outline" className="text-[9px] px-1.5 mt-0.5 bg-slate-50">
+                              {inv.type}
+                            </Badge>
+                          </td>
+
+                          <td className="py-3 px-3">
+                            <div className="font-semibold text-slate-900 text-xs">{inv.customerName}</div>
+                            <div className="flex items-center gap-1.5 text-[11px] text-slate-600 font-mono mt-0.5">
+                              <Phone className="w-3 h-3 text-slate-400" />
+                              {inv.customerMobile}
+                            </div>
+                            {inv.customerAddress && (
+                              <div className="text-[10px] text-slate-500 truncate max-w-[180px] mt-0.5">
+                                {inv.customerAddress}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3 text-right font-mono text-slate-800 font-medium">
+                            {inr(inv.total)}
+                          </td>
+
+                          <td className="py-3 px-3 text-right font-mono text-emerald-700 font-semibold">
+                            {inr(inv.amountPaid || 0)}
+                          </td>
+
+                          <td className="py-3 px-4 text-right font-mono text-rose-700 font-bold text-sm">
+                            {inr(inv.balanceDue || 0)}
+                          </td>
+
+                          <td className="py-3 px-4 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <Button
+                                size="sm"
+                                onClick={() => openCollectPaymentModal(inv)}
+                                className="h-7 text-[11px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+                              >
+                                <DollarSign className="w-3.5 h-3.5 mr-0.5" /> Settle
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => sendWhatsAppReminder(inv)}
+                                className="h-7 text-[11px] px-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                                title="Send WhatsApp Reminder"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" />
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setViewDetailInv(inv)}
+                                className="h-7 text-[11px] px-2 border-slate-300 text-slate-700 hover:bg-slate-100"
+                                title="View Invoice Details"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </Button>
+
+                              {inv.customerMobile && (
+                                <a
+                                  href={`tel:${inv.customerMobile}`}
+                                  className="p-1.5 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                                  title="Call Customer"
+                                >
+                                  <Phone className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
               {/* PAGINATION */}
               {totalPages > 1 && (
@@ -596,14 +699,14 @@ export default function DuesPage() {
                   </div>
                 </div>
               )}
-            </div>
+            </>
           )}
         </CardContent>
       </Card>
 
       {/* MODAL 1: RECORD DUE PAYMENT */}
       <Dialog open={!!paymentModalInv} onOpenChange={(open) => !open && setPaymentModalInv(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-emerald-600" /> Collect Customer Due Payment
@@ -646,7 +749,7 @@ export default function DuesPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs font-semibold text-slate-800">Payment Mode</Label>
                   <Select value={payMode} onValueChange={(val: any) => setPayMode(val)}>
@@ -703,23 +806,25 @@ export default function DuesPage() {
 
       {/* MODAL 2: INVOICE DETAILS & PAYMENT HISTORY */}
       <Dialog open={!!viewDetailInv} onOpenChange={(open) => !open && setViewDetailInv(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center justify-between">
               <span>Invoice Details: {viewDetailInv?.number}</span>
-              <Badge variant="outline" className="text-xs font-mono">{viewDetailInv?.type}</Badge>
+              <Badge variant="outline" className="text-xs font-mono">
+                {viewDetailInv?.type}
+              </Badge>
             </DialogTitle>
           </DialogHeader>
 
           {viewDetailInv && (
-            <div className="space-y-4 text-xs pt-1 max-h-[70vh] overflow-y-auto pr-1">
-              <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
+            <div className="space-y-4 text-xs pt-1 pr-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
                 <div>
                   <span className="text-slate-500">Customer:</span>
                   <div className="font-bold text-slate-900 text-sm">{viewDetailInv.customerName}</div>
                   <div className="font-mono text-slate-600">{viewDetailInv.customerMobile}</div>
                 </div>
-                <div className="text-right">
+                <div className="text-left sm:text-right">
                   <span className="text-slate-500">Date Billed:</span>
                   <div className="font-medium text-slate-800">{formatDate(viewDetailInv.createdAt)}</div>
                   <Badge className="bg-rose-100 text-rose-800 border-rose-200 mt-1">
@@ -731,7 +836,7 @@ export default function DuesPage() {
               {/* ITEM SUMMARY */}
               <div>
                 <h4 className="font-bold text-slate-800 mb-1.5 uppercase text-[10px]">Invoiced Jewellery Items</h4>
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <div className="border border-slate-200 rounded-lg overflow-x-auto">
                   <table className="w-full text-[11px]">
                     <thead className="bg-slate-100 text-slate-600 border-b">
                       <tr>
@@ -747,7 +852,7 @@ export default function DuesPage() {
                           <td className="p-2 font-medium">{item.name}</td>
                           <td className="p-2 text-right font-mono">{item.netWeight}g</td>
                           <td className="p-2 text-right font-mono">{item.qty}</td>
-                          <td className="p-2 text-right font-mono">{inr(item.total)}</td>
+                          <td className="p-2 text-right font-mono">{inr(item.total || 0)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -758,14 +863,17 @@ export default function DuesPage() {
               {/* PAYMENT HISTORY LOGS */}
               <div>
                 <h4 className="font-bold text-slate-800 mb-1.5 uppercase text-[10px]">Payment History Log</h4>
-                {(!viewDetailInv.payments || viewDetailInv.payments.length === 0) ? (
+                {!viewDetailInv.payments || viewDetailInv.payments.length === 0 ? (
                   <p className="text-slate-500 text-xs italic bg-slate-50 p-3 rounded text-center">
                     No partial payments recorded yet. Full balance is outstanding.
                   </p>
                 ) : (
                   <div className="space-y-1.5">
                     {viewDetailInv.payments.map((p, idx) => (
-                      <div key={idx} className="flex justify-between items-center bg-emerald-50/60 border border-emerald-200/80 p-2 rounded text-xs font-mono">
+                      <div
+                        key={idx}
+                        className="flex justify-between items-center bg-emerald-50/60 border border-emerald-200/80 p-2 rounded text-xs font-mono"
+                      >
                         <div>
                           <span className="font-bold text-emerald-950">{inr(p.amount)}</span>
                           <span className="text-slate-500 text-[10px] ml-2">via {p.mode}</span>

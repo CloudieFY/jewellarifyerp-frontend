@@ -308,56 +308,56 @@ export default function EmployeesPage() {
       </header>
 
       {/* EXECUTIVE DASHBOARD METRICS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-5">
         <Card className="border border-border/80 shadow-2xs hover:border-amber-500/30 transition-all">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold">
-              <span>Total Staff</span>
-              <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center">
-                <Users className="w-4 h-4" />
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between text-muted-foreground text-[11px] sm:text-xs font-semibold">
+              <span className="truncate">Total Staff</span>
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center shrink-0">
+                <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
-            <div className="text-2xl font-bold text-foreground mt-2 font-mono">{list.length}</div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">Staff Registered</div>
+            <div className="text-xl sm:text-2xl font-bold text-foreground mt-1 sm:mt-2 font-mono truncate">{list.length}</div>
+            <div className="text-[10px] sm:text-[11px] text-muted-foreground mt-0.5 truncate">Staff Registered</div>
           </CardContent>
         </Card>
 
         <Card className="border border-border/80 shadow-2xs hover:border-emerald-500/30 transition-all">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold">
-              <span>Active Employees</span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center">
-                <UserCheck className="w-4 h-4" />
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between text-muted-foreground text-[11px] sm:text-xs font-semibold">
+              <span className="truncate">Active Staff</span>
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center shrink-0">
+                <UserCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
-            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-2 font-mono">{activeCount}</div>
-            <div className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5 font-medium">On Active Payroll</div>
+            <div className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 sm:mt-2 font-mono truncate">{activeCount}</div>
+            <div className="text-[10px] sm:text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5 font-medium truncate">On Active Payroll</div>
           </CardContent>
         </Card>
 
         <Card className="border border-border/80 shadow-2xs hover:border-blue-500/30 transition-all">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold">
-              <span>Monthly Salary Roll</span>
-              <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center">
-                <IndianRupee className="w-4 h-4" />
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between text-muted-foreground text-[11px] sm:text-xs font-semibold">
+              <span className="truncate">Monthly Salary</span>
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center shrink-0">
+                <IndianRupee className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
-            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-2 font-mono">{inr(totalSalaryRoll)}</div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">Total Monthly Base</div>
+            <div className="text-lg sm:text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1 sm:mt-2 font-mono truncate">{inr(totalSalaryRoll)}</div>
+            <div className="text-[10px] sm:text-[11px] text-muted-foreground mt-0.5 truncate">Total Monthly Base</div>
           </CardContent>
         </Card>
 
         <Card className="border border-border/80 shadow-2xs hover:border-rose-500/30 transition-all">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold">
-              <span>Pending Salary Dues</span>
-              <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 flex items-center justify-center">
-                <Briefcase className="w-4 h-4" />
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between text-muted-foreground text-[11px] sm:text-xs font-semibold">
+              <span className="truncate">Pending Dues</span>
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 flex items-center justify-center shrink-0">
+                <Briefcase className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
-            <div className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-2 font-mono">{inr(totalPendingDues)}</div>
-            <div className="text-[11px] text-rose-700 dark:text-rose-400 mt-0.5 font-medium">Accumulated Dues</div>
+            <div className="text-lg sm:text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1 sm:mt-2 font-mono truncate">{inr(totalPendingDues)}</div>
+            <div className="text-[10px] sm:text-[11px] text-rose-700 dark:text-rose-400 mt-0.5 font-medium truncate">Accumulated Dues</div>
           </CardContent>
         </Card>
       </div>
@@ -389,8 +389,123 @@ export default function EmployeesPage() {
               <p className="text-base font-semibold">No employee records found.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left min-w-[900px]">
+            <div>
+              {/* Mobile Employee Cards (Visible on screens < md) */}
+              <div className="block md:hidden divide-y divide-border">
+                {paginated.map((e) => {
+                  const completedMonths = getCompletedMonths(e.joinDate);
+                  const pending = (completedMonths * e.salary) - (e.totalPaid || 0);
+                  const empId = e.id || (e as any)._id;
+
+                  return (
+                    <div key={empId} className="p-3.5 space-y-3 hover:bg-muted/20">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-10 h-10 rounded-xl bg-amber-600/10 text-amber-800 dark:text-amber-300 font-bold flex items-center justify-center text-base border border-amber-500/20 shrink-0">
+                            {e.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-bold text-sm text-foreground">{e.name}</div>
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-mono mt-0.5">
+                              <Phone className="w-3 h-3 text-amber-600 shrink-0" />
+                              {e.phone ? (
+                                <a href={`tel:${e.phone}`} className="hover:underline text-foreground">
+                                  {e.phone}
+                                </a>
+                              ) : (
+                                "No Mobile"
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border shrink-0 ${
+                            e.status === "Active"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : "bg-slate-100 text-slate-700 border-slate-200"
+                          }`}
+                        >
+                          {e.status}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 bg-muted/30 p-2.5 rounded-lg border border-border/60 text-xs">
+                        <Badge variant="outline" className="text-xs bg-background font-medium border-slate-300">
+                          💼 {e.role}
+                        </Badge>
+                        <span className="text-muted-foreground font-mono text-[11px]">
+                          Joined {formatDate(e.joinDate)} ({completedMonths}m)
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-lg border border-border/60">
+                        <div>
+                          <div className="text-[10px] text-muted-foreground uppercase font-semibold">Monthly Base</div>
+                          <div className="font-mono font-bold text-foreground text-sm mt-0.5">{inr(e.salary)}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[10px] text-muted-foreground uppercase font-semibold">Pending Dues</div>
+                          <div className="font-mono font-bold text-sm mt-0.5">
+                            {pending > 0 ? (
+                              <span className="text-rose-600">{inr(pending)}</span>
+                            ) : (
+                              <span className="text-emerald-600 font-normal text-xs">Up to Date</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Mobile Actions Toolbar */}
+                      <div className="flex items-center justify-between pt-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-50 px-2 rounded-lg border border-amber-200/60"
+                          onClick={() => setHistoryEmp(e)}
+                        >
+                          <History className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                          {e.payments?.length || 0} Paid
+                        </Button>
+
+                        {canManage && (
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-7 px-2.5 rounded-lg font-semibold flex items-center gap-1"
+                              onClick={() => openSalaryModal(e)}
+                            >
+                              <CreditCard className="w-3.5 h-3.5" /> Pay
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-7 w-7 rounded-lg text-slate-700 border-slate-300"
+                              title="Edit Employee Profile"
+                              onClick={() => startEdit(e)}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-7 w-7 rounded-lg text-rose-600 border-rose-200 hover:bg-rose-50"
+                              title="Delete Employee"
+                              onClick={() => remove(empId)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Employee Table (Visible on screens >= md) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-xs text-left min-w-[900px]">
                 <thead className="bg-muted/40 text-muted-foreground font-semibold text-[11px] uppercase tracking-wider border-b border-border">
                   <tr>
                     <th className="py-3 px-4 text-left">Staff Member</th>
@@ -510,6 +625,7 @@ export default function EmployeesPage() {
                   })}
                 </tbody>
               </table>
+            </div>
 
               {totalPages > 1 && (
                 <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/20">

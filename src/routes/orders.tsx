@@ -576,16 +576,31 @@ export default function OrdersPage() {
         </header>
 
         {/* METRIC CARDS */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <Stat label="Total Orders" value={list.length} />
-          <Stat label="Active Pending Orders" value={activeOrders} />
-          <Stat label="Total Advance Received" value={inr(totalAdvance + totalOldGoldValuation)} />
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-5">
+          <Card className="shadow-2xs border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50">
+            <CardContent className="p-2.5 sm:p-4">
+              <div className="text-[10px] sm:text-xs font-semibold text-amber-700/90 uppercase tracking-wider truncate">Total Orders</div>
+              <div className="text-xl sm:text-3xl font-display font-bold text-amber-950 mt-0.5 sm:mt-1">{list.length}</div>
+            </CardContent>
+          </Card>
+          <Card className="shadow-2xs border-blue-200/60 bg-gradient-to-br from-blue-50 to-indigo-50">
+            <CardContent className="p-2.5 sm:p-4">
+              <div className="text-[10px] sm:text-xs font-semibold text-blue-700/90 uppercase tracking-wider truncate">Active Pending</div>
+              <div className="text-xl sm:text-3xl font-display font-bold text-blue-950 mt-0.5 sm:mt-1">{activeOrders}</div>
+            </CardContent>
+          </Card>
+          <Card className="shadow-2xs border-emerald-200/60 bg-gradient-to-br from-emerald-50 to-green-50">
+            <CardContent className="p-2.5 sm:p-4">
+              <div className="text-[10px] sm:text-xs font-semibold text-emerald-700/90 uppercase tracking-wider truncate">Total Advance</div>
+              <div className="text-base sm:text-2xl font-display font-bold text-emerald-950 mt-0.5 sm:mt-1 font-mono truncate">{inr(totalAdvance + totalOldGoldValuation)}</div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* SEARCH & FILTER BAR */}
-        <Card className="shadow-sm mb-6">
-          <CardContent className="pt-4 pb-4">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <Card className="shadow-2xs mb-5 border-border/70">
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
               <div className="relative w-full sm:w-80">
                 <Search className="w-4 h-4 absolute left-3 top-2.5 text-muted-foreground" />
                 <Input
@@ -596,13 +611,13 @@ export default function OrdersPage() {
                 />
               </div>
 
-              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+              <div className="grid grid-cols-3 sm:flex sm:items-center gap-1.5 w-full sm:w-auto">
                 {["All", "Pending", "In Progress", "Ready", "Delivered", "Cancelled"].map((st) => (
                   <Button
                     key={st}
                     size="sm"
                     variant={filter === st ? "default" : "outline"}
-                    className="h-8 text-xs"
+                    className="h-8 text-xs px-2 sm:px-3 text-center"
                     onClick={() => setFilter(st as any)}
                   >
                     {st}
@@ -622,13 +637,92 @@ export default function OrdersPage() {
               <div className="py-12 text-center text-muted-foreground text-sm">No customer orders found.</div>
             ) : (
               <div>
-                <div className="overflow-x-auto">
+                {/* Mobile Order Cards (Visible on screens < md) */}
+                <div className="block md:hidden divide-y divide-border">
+                  {paginated.map((r) => {
+                    const statusColors: any = {
+                      "Pending": "bg-slate-100 text-slate-700 border-slate-200",
+                      "In Progress": "bg-blue-50 text-blue-700 border-blue-200",
+                      "Ready": "bg-green-50 text-green-700 border-green-200",
+                      "Delivered": "bg-slate-100 text-slate-500 border-slate-200",
+                      "Cancelled": "bg-rose-50 text-rose-700 border-rose-200"
+                    };
+                    const karigarName = karigars.find(k => k._id === r.karigarId || k.id === r.karigarId)?.name || r.note?.match(/\[Assigned:\s*(.*?)\]/)?.[1] || "Unassigned";
+
+                    return (
+                      <div key={(r as any)._id || r.id} className="p-3.5 space-y-2.5 hover:bg-muted/20">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-primary text-xs">{r.orderNo}</span>
+                            <span className="text-xs text-muted-foreground font-mono">{formatDate(r.date)}</span>
+                          </div>
+                          <Select value={r.status} onValueChange={(v) => setStatus((r as any)._id || r.id, v as Order["status"])} disabled={r.status === 'Delivered'}>
+                            <SelectTrigger className={`h-6 w-24 text-[9px] font-bold uppercase tracking-wider ${statusColors[r.status] || ""}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {["Pending", "In Progress", "Ready", "Delivered", "Cancelled"].filter(s => s !== "Delivered" || r.status === "Delivered").map(s => (
+                                <SelectItem key={s} value={s}>{s}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="font-bold text-foreground text-sm">{r.customerName}</div>
+                            <div className="text-xs text-muted-foreground font-mono mt-0.5">{r.customerMobile}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[10px] text-muted-foreground uppercase font-semibold">Est Total</div>
+                            <div className="font-mono font-bold text-foreground text-sm">{inr(r.estimatedTotalAmount || r.fixedPrice || 0)}</div>
+                          </div>
+                        </div>
+
+                        <div className="bg-muted/30 p-2 rounded-md text-xs space-y-1">
+                          <div className="font-medium text-foreground">{r.itemDescription}</div>
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground font-mono">
+                            <span>{r.metal} · {r.purity} {r.expectedNetWeight ? `(${r.expectedNetWeight}g Net)` : ''}</span>
+                            <span>Karigar: <strong className="text-foreground">{karigarName}</strong></span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs bg-emerald-50/50 p-2 rounded-md font-mono border border-emerald-100">
+                          <div>
+                            Advance Deposit: <strong className="text-emerald-700">{inr((r.advancePaid || 0) + (r.oldGoldValuation || 0))}</strong>
+                          </div>
+                          {r.dueDate && (
+                            <div className="text-[10px] text-slate-500">
+                              Due: {formatDate(r.dueDate)}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Mobile Actions Toolbar */}
+                        <div className="flex items-center justify-end gap-1 pt-1">
+                          <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={() => setViewingReceipt(r)}>
+                            <Printer className="w-3.5 h-3.5 mr-1" /> Receipt
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={() => { setForm(r); setEditingId((r as any)._id || r.id || null); setOpen(true); }}>
+                            <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-rose-500 hover:bg-rose-50" onClick={() => remove((r as any)._id || r.id)}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop Orders Table (Visible on screens >= md) */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-sm text-left border-collapse min-w-[950px]">
                     <thead className="bg-muted/40 text-muted-foreground text-xs uppercase border-b">
                       <tr>
                         <th className="py-3 px-4">Order # / Date</th>
                         <th className="py-3 px-4">Customer Details</th>
-                        <th className="py-3 px-4">Item & Specifications</th>
+                        <th className="py-3 px-4">Item &amp; Specifications</th>
                         <th className="py-3 px-4">Karigar</th>
                         <th className="py-3 px-4 text-right">Est Amount</th>
                         <th className="py-3 px-4 text-right">Advance Paid</th>
@@ -754,10 +848,6 @@ function Field({ label, v, on, type = "text" }: { label: string; v: string; on: 
     );
   }
   return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={e => on(e.target.value)} className="h-9 text-xs" /></div>;
-}
-
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">{label}</div><div className="text-2xl font-display font-bold mt-1">{value}</div></CardContent></Card>;
 }
 
 function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => void }) {

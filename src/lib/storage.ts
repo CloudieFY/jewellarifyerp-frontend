@@ -73,9 +73,12 @@ export type InvoiceItem = {
   qty: number;
   huid?: string;
   hmc?: number;
+  total?: number;
 };
 
 export type InvoicePayment = {
+  id?: string;
+  _id?: string;
   date: string;
   amount: number;
   mode: string;

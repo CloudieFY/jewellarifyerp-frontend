@@ -19,13 +19,14 @@ import { useTenantAPI } from "@/lib/api";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useFormKeyboardNav } from "@/lib/useFormKeyboardNav";
-import { Plus, Trash2, Printer, Pencil, Search, Image as ImageIcon, Wallet, Scale, Landmark, TrendingUp } from "lucide-react";
+import { Plus, Trash2, Printer, Pencil, Search, Image as ImageIcon, Wallet, Scale, Landmark, TrendingUp, FileSpreadsheet } from "lucide-react";
 import { calculateCompoundInterest, calculateGirviInterest, formatDate, formatCompactIfLarge, triggerPrint } from "@/lib/utils";
 import { toast } from "sonner";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLanguage } from "@/context/LanguageContext";
 import { translateEnum, girviStatusMap, metalTypeMap, ornamentTypeMap } from "@/translations/mappings";
+import * as XLSX from "xlsx";
 
 function getElapsedMonthsAndDays(dateStr: string) {
   if (!dateStr) return { months: 0, days: 0 };
@@ -552,6 +553,34 @@ export default function GirviPage() {
     setOpen(true);
   };
 
+  const exportGirviToExcel = () => {
+    if (filtered.length === 0) {
+      toast.error("No Girvi loans to export!");
+      return;
+    }
+    const data = filtered.map((g, index) => ({
+      "S.No": index + 1,
+      "Loan Date": formatDate(g.date),
+      "Loan No": g.loanNo,
+      "Customer Name": g.customerName,
+      Mobile: g.customerMobile,
+      Address: g.customerAddress || "N/A",
+      "Principal (₹)": g.loanAmount,
+      "Monthly Rate (%)": `${g.interestPct}%`,
+      "Accrued Interest (₹)": calculateInterest(g),
+      "Total Outstanding (₹)": g.loanAmount + calculateInterest(g),
+      "Forwarded To": g.forwardedShopName || g.forwardedTo || "N/A",
+      "Forwarded Amt (₹)": g.forwardedAmount || 0,
+      Status: g.status,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Girvi Loans");
+    XLSX.writeFile(workbook, `Girvi_Loans_Ledger_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success("Girvi ledger exported successfully!");
+  };
+
   return (
     <Layout>
       <div className="print:hidden">
@@ -562,12 +591,16 @@ export default function GirviPage() {
             {t("girvi.subtitle")}
           </p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button size="lg" className="w-full sm:w-auto" onClick={startNew}>
-              <Plus className="w-4 h-4 mr-2" /> {t("girvi.newGirvi")}
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <Button variant="outline" onClick={exportGirviToExcel} className="h-10 text-xs gap-2 border-slate-300">
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Export Excel
+          </Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button size="lg" className="w-full sm:w-auto" onClick={startNew}>
+                <Plus className="w-4 h-4 mr-2" /> {t("girvi.newGirvi")}
+              </Button>
+            </DialogTrigger>
           <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto p-4 sm:p-6" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
             <DialogHeader>
               <DialogTitle>{editingId ? t("girvi.editLoan") : t("girvi.newLoan")}</DialogTitle>
@@ -862,6 +895,7 @@ export default function GirviPage() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

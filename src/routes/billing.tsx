@@ -728,53 +728,68 @@ export default function BillingPage() {
       {/* ═══════════════════════════════════════════════════════════
            HERO HEADER
       ═══════════════════════════════════════════════════════════ */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-amber-950 to-slate-900 p-6 mb-6 border border-amber-900/40 shadow-xl">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-amber-950 to-slate-900 p-4 sm:p-6 mb-5 border border-amber-900/40 shadow-xl">
         {/* Decorative blobs */}
         <div className="absolute -top-10 -right-10 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-amber-600/8 rounded-full blur-2xl pointer-events-none" />
 
-        <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="relative flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3.5">
           {/* Title */}
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/30">
-                <Receipt className="w-4 h-4 text-amber-400" />
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="inline-flex items-center justify-center w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-amber-500/20 border border-amber-500/30">
+                <Receipt className="w-3.5 h-3.5 text-amber-400" />
               </span>
-              <span className="text-xs font-semibold uppercase tracking-widest text-amber-400/80">Point of Sale</span>
+              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-amber-400/80">Point of Sale</span>
             </div>
-            <h1 className="text-3xl sm:text-4xl font-display font-bold text-white">Billing &amp; Invoices</h1>
-            <p className="text-amber-200/60 text-sm mt-1">Tax Invoices · Trade-ins · HUID Scanning · GST</p>
+            <h1 className="text-xl sm:text-3xl font-display font-bold text-white tracking-tight">Billing &amp; Invoices</h1>
+            <p className="text-amber-200/60 text-[11px] sm:text-xs mt-0.5">Tax Invoices · Trade-ins · HUID Scanning · GST</p>
           </div>
 
-          {/* Live rates ticker */}
+          {/* Live rates ticker (4-col grid on mobile, flex on desktop) */}
           {latestRates && (
-            <div className="flex items-center gap-3 bg-black/20 border border-white/10 rounded-lg px-3 py-2">
-              <span className="flex items-center gap-1.5 text-xs font-medium text-white/50 shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live
-              </span>
-              <div className="w-px h-4 bg-white/10" />
-              {latestRates.gold24 && <div className="text-center"><div className="text-[9px] text-white/40 uppercase tracking-wider">24K</div><div className="text-white/90 font-mono text-xs font-semibold">{inr(latestRates.gold24)}</div></div>}
-              {latestRates.gold22 && <><div className="w-px h-4 bg-white/10" /><div className="text-center"><div className="text-[9px] text-white/40 uppercase tracking-wider">22K</div><div className="text-white/90 font-mono text-xs font-semibold">{inr(latestRates.gold22)}</div></div></>}
-              {latestRates.gold18 && <><div className="w-px h-4 bg-white/10" /><div className="text-center"><div className="text-[9px] text-white/40 uppercase tracking-wider">18K</div><div className="text-white/90 font-mono text-xs font-semibold">{inr(latestRates.gold18)}</div></div></>}
-              {latestRates.silver && <><div className="w-px h-4 bg-white/10" /><div className="text-center"><div className="text-[9px] text-white/40 uppercase tracking-wider">Silver</div><div className="text-white/70 font-mono text-xs font-semibold">{inr(latestRates.silver)}</div></div></>}
+            <div className="bg-black/40 border border-white/10 rounded-xl p-2 sm:px-3 sm:py-2 w-full md:w-auto">
+              <div className="grid grid-cols-4 items-center gap-1 sm:gap-3 text-center sm:text-left divide-x divide-white/10">
+                <div className="flex items-center justify-center sm:justify-start gap-1 text-[10px] sm:text-xs font-medium text-white/60 px-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                  <span>Live</span>
+                </div>
+                {latestRates.gold24 && (
+                  <div className="px-1 text-center">
+                    <div className="text-[8px] sm:text-[9px] text-amber-400/90 uppercase tracking-wider font-bold">24K</div>
+                    <div className="text-white font-mono text-[11px] sm:text-xs font-semibold truncate">{inr(latestRates.gold24)}</div>
+                  </div>
+                )}
+                {latestRates.gold22 && (
+                  <div className="px-1 text-center">
+                    <div className="text-[8px] sm:text-[9px] text-amber-400/90 uppercase tracking-wider font-bold">22K</div>
+                    <div className="text-white font-mono text-[11px] sm:text-xs font-semibold truncate">{inr(latestRates.gold22)}</div>
+                  </div>
+                )}
+                {latestRates.silver && (
+                  <div className="px-1 text-center">
+                    <div className="text-[8px] sm:text-[9px] text-slate-300 uppercase tracking-wider font-bold">Silver</div>
+                    <div className="text-white/80 font-mono text-[11px] sm:text-xs font-semibold truncate">{inr(latestRates.silver)}</div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 shrink-0">
-            <Link to="/invoice-designer">
-              <Button variant="outline" size="sm" className="h-9 text-xs font-semibold bg-white/5 border-amber-500/40 text-amber-200 hover:bg-amber-500/15 hover:border-amber-400 hover:text-amber-100 transition-all">
-                <Palette className="w-3.5 h-3.5 mr-1.5" /> Designer
+          <div className="grid grid-cols-2 gap-2 w-full md:w-auto">
+            <Link to="/invoice-designer" className="w-full">
+              <Button variant="outline" size="sm" className="h-9 text-xs font-semibold bg-white/5 border-amber-500/40 text-amber-200 hover:bg-amber-500/15 hover:border-amber-400 hover:text-amber-100 transition-all w-full">
+                <Palette className="w-3.5 h-3.5 mr-1" /> Designer
               </Button>
             </Link>
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="h-9 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold shadow-lg shadow-amber-900/30 transition-all" onClick={() => reset()}>
-                  <Plus className="w-4 h-4 mr-1.5" /> New Invoice
+                <Button size="sm" className="h-9 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold shadow-lg shadow-amber-900/30 transition-all w-full" onClick={() => reset()}>
+                  <Plus className="w-4 h-4 mr-1" /> New Invoice
                 </Button>
               </DialogTrigger>
-          <DialogContent className="max-w-[95vw] lg:max-w-5xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
+          <DialogContent className="w-[96vw] max-w-5xl max-h-[92vh] overflow-y-auto p-3.5 sm:p-6" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle className="text-2xl font-display">{editingId ? "Edit Invoice" : "Create Invoice"}</DialogTitle>
             </DialogHeader>
@@ -1171,143 +1186,299 @@ export default function BillingPage() {
                       </DialogContent>
                     </Dialog>
                 </div>
-                  {items.length === 0 ? (
+                {items.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-12 text-center">
                       Add products from the dropdown to start billing.
                     </p>
                   ) : (
-                    <div className="overflow-x-auto w-full border border-border rounded-md">
-                      <table className="w-full text-sm min-w-[1050px]">
-                      <thead className="text-left text-muted-foreground border-b bg-muted/20 text-xs uppercase tracking-wider">
-                        <tr>
-                          <th className="p-3 font-semibold whitespace-nowrap">Product</th>
-                          <th className="p-3 font-semibold whitespace-nowrap w-28">HUID</th>
-                          <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-16">Pcs</th>
-                          <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-20">Gross Wt</th>
-                          <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-20">less Wt</th>
-                          <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-20">Net Wt</th>
-                          <th className="p-3 font-semibold whitespace-nowrap text-right w-24">HMC (₹)</th>
-                          <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-24">Rate(₹/g)</th>
-                          <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-32">Making Charge</th>
-                          <th className="py-3 px-3 font-semibold whitespace-nowrap text-right w-28">Total (₹)</th>
-                          <th className="w-10" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((it, i) => { // Fixed typo: 'it' was previously 'item' but already used 'it' in the map function.
+                    <>
+                      {/* Mobile Item Cards View (Visible on screens < md) */}
+                      <div className="block md:hidden space-y-3">
+                        {items.map((it, i) => {
                           const c = calcItem(it, isGst);
                           return (
-                            <tr key={i} className="border-b last:border-0 hover:bg-muted/10 transition-colors">
-                                  <td className="p-3 min-w-40 space-y-2 align-top">
-                                <Input value={it.name} onChange={(e) => updateItem(i, { name: e.target.value })} className="h-8 text-sm font-medium" placeholder="Item Name" />
-                                <Input value={it.purity} onChange={(e) => updateItem(i, { purity: e.target.value })} className="h-7 text-xs" placeholder="Purity (e.g. 22K)" />
-                              </td>
-                              <td className="p-3">
-                                <Input value={it.huid || ""} onChange={(e) => updateItem(i, { huid: e.target.value })} className="h-8 text-sm" placeholder="HUID" />
-                              </td>
-                              <td className="py-2">
-                                <NumI v={it.qty} on={(v) => updateItem(i, recalcMaking(it, { qty: v }))} className="w-16 h-8 bg-background" />
-                              </td>
-                              <td className="py-2">
-                                <NumI
-                                  v={(it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight}
-                                  on={(v) => {
-                                    const stWt = (it as any).stoneWeight || 0;
-                                    const net = Math.max(0, v - stWt);
-                                    updateItem(i, recalcMaking(it, { grossWeight: v, netWeight: net }));
-                                  }}
-                                  className="w-16 h-8 bg-background"
-                                />
-                              </td>
-                              <td className="py-2">
-                                <NumI
-                                  v={(it as any).stoneWeight || 0}
-                                  on={(v) => {
-                                    const grWt = (it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight;
-                                    const net = Math.max(0, grWt - v);
-                                    updateItem(i, recalcMaking(it, { stoneWeight: v, netWeight: net }));
-                                  }}
-                                  className="w-16 h-8 bg-background"
-                                />
-                              </td>
-                              <td className="py-2">
-                                <NumI
-                                  v={it.netWeight}
-                                on={(v) => {
-                                  updateItem(i, recalcMaking(it, { netWeight: v, grossWeight: v + ((it as any).stoneWeight || 0) }));
-                                }}
-                                  className="w-16 h-8 bg-background"
-                                />
-                              </td>
-                              <td className="p-3">
-                                <NumI v={it.hmc || 0} on={(v) => updateItem(i, { hmc: v })} className="w-24 h-8 bg-background" />
-                              </td>
-                              <td className="py-2">
-                                <NumI
-                                  v={it.ratePerGram}
-                                on={(v) => {
-                                  updateItem(i, recalcMaking(it, { ratePerGram: v }));
-                                }}
-                                  className="w-20 h-8 bg-background"
-                                /></td>
-                            <td className="py-2 space-y-1">
-                              <Select
-                                value={it.makingChargeType || "PERCENTAGE"}
-                                onValueChange={(val: MakingChargeType) => {
-                                  const value = it.makingChargeValue ?? it.makingChargePct ?? 0;
-                                  const patch: any = { makingChargeType: val };
-                                  patch.makingChargePct = val === "PERCENTAGE" ? value : 0;
-                                  updateItem(i, recalcMaking(it, patch));
-                                }}
-                              >
-                                <SelectTrigger className="w-28 h-7 bg-background text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="PERCENTAGE">% of value</SelectItem>
-                                  <SelectItem value="PER_GRAM">₹ / gram</SelectItem>
-                                  <SelectItem value="WASTAGE">Wastage %</SelectItem>
-                                  <SelectItem value="PER_PIECE">₹ / piece</SelectItem>
-                                  <SelectItem value="FIXED">Fixed ₹</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <NumI
-                                v={it.makingChargeValue ?? it.makingChargePct ?? 0}
-                                on={(v) => {
-                                  const patch: any = { makingChargeValue: v };
-                                  if ((it.makingChargeType || "PERCENTAGE") === "PERCENTAGE") patch.makingChargePct = v;
-                                  updateItem(i, recalcMaking(it, patch));
-                                }}
-                                className="w-28 h-8 bg-background"
-                                onKeyDown={
-                                  i === items.length - 1
-                                    ? (e) => {
-                                        if (e.key !== "Enter") return;
-                                        e.preventDefault();
-                                        e.stopPropagation(); // this is the last row — skip generic nav, go straight back to adding the next item
-                                        productSearchRef.current?.focus();
-                                      }
-                                    : undefined
-                                }
-                              />
-                            </td>
-                              <td className="py-2 text-right pr-3 font-medium">{inr(c.line)}</td>
-                              <td className="py-2 text-right">
+                            <div key={i} className="p-3.5 border border-border rounded-lg bg-background space-y-3 shadow-xs">
+                              <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2">
+                                <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                  Item #{i + 1}
+                                </span>
                                 <Button
                                   type="button"
-                                  size="icon"
+                                  size="sm"
                                   variant="ghost"
+                                  className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-50"
                                   onClick={() => removeItem(i)}
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
-                              </td>
-                            </tr>
+                              </div>
+
+                              <div className="grid grid-cols-1 gap-2">
+                                <div>
+                                  <Label className="text-[11px] font-semibold text-muted-foreground block mb-1">Product Name</Label>
+                                  <Input
+                                    value={it.name}
+                                    onChange={(e) => updateItem(i, { name: e.target.value })}
+                                    className="h-8 text-xs font-medium bg-background"
+                                    placeholder="Item Name"
+                                  />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <Label className="text-[11px] font-semibold text-muted-foreground block mb-1">Purity</Label>
+                                    <Input
+                                      value={it.purity}
+                                      onChange={(e) => updateItem(i, { purity: e.target.value })}
+                                      className="h-8 text-xs bg-background"
+                                      placeholder="Purity (e.g. 22K)"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-[11px] font-semibold text-muted-foreground block mb-1">HUID</Label>
+                                    <Input
+                                      value={it.huid || ""}
+                                      onChange={(e) => updateItem(i, { huid: e.target.value })}
+                                      className="h-8 text-xs bg-background font-mono"
+                                      placeholder="HUID Code"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-4 gap-1.5 text-center bg-muted/20 p-2 rounded-md border border-border/60">
+                                <div>
+                                  <Label className="text-[10px] text-muted-foreground block mb-1">Pcs</Label>
+                                  <NumI v={it.qty} on={(v) => updateItem(i, recalcMaking(it, { qty: v }))} className="w-full h-7 text-xs bg-background text-center font-mono" />
+                                </div>
+                                <div>
+                                  <Label className="text-[10px] text-muted-foreground block mb-1">Gross Wt</Label>
+                                  <NumI
+                                    v={(it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight}
+                                    on={(v) => {
+                                      const stWt = (it as any).stoneWeight || 0;
+                                      const net = Math.max(0, v - stWt);
+                                      updateItem(i, recalcMaking(it, { grossWeight: v, netWeight: net }));
+                                    }}
+                                    className="w-full h-7 text-xs bg-background text-center font-mono"
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-[10px] text-muted-foreground block mb-1">Less Wt</Label>
+                                  <NumI
+                                    v={(it as any).stoneWeight || 0}
+                                    on={(v) => {
+                                      const grWt = (it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight;
+                                      const net = Math.max(0, grWt - v);
+                                      updateItem(i, recalcMaking(it, { stoneWeight: v, netWeight: net }));
+                                    }}
+                                    className="w-full h-7 text-xs bg-background text-center font-mono"
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-[10px] text-muted-foreground block mb-1">Net Wt</Label>
+                                  <NumI
+                                    v={it.netWeight}
+                                    on={(v) => updateItem(i, recalcMaking(it, { netWeight: v, grossWeight: v + ((it as any).stoneWeight || 0) }))}
+                                    className="w-full h-7 text-xs bg-background text-center font-mono"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <Label className="text-[11px] font-semibold text-muted-foreground block mb-1">Rate (₹/g)</Label>
+                                  <NumI
+                                    v={it.ratePerGram}
+                                    on={(v) => updateItem(i, recalcMaking(it, { ratePerGram: v }))}
+                                    className="w-full h-8 text-xs bg-background font-mono"
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-[11px] font-semibold text-muted-foreground block mb-1">HMC Charge (₹)</Label>
+                                  <NumI v={it.hmc || 0} on={(v) => updateItem(i, { hmc: v })} className="w-full h-8 text-xs bg-background font-mono" />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 items-center bg-muted/20 p-2 rounded.md border border-border/60">
+                                <div>
+                                  <Label className="text-[10px] font-semibold text-muted-foreground block mb-1">Making Charge</Label>
+                                  <div className="flex items-center gap-1">
+                                    <Select
+                                      value={it.makingChargeType || "PERCENTAGE"}
+                                      onValueChange={(val: MakingChargeType) => {
+                                        const value = it.makingChargeValue ?? it.makingChargePct ?? 0;
+                                        const patch: any = { makingChargeType: val };
+                                        patch.makingChargePct = val === "PERCENTAGE" ? value : 0;
+                                        updateItem(i, recalcMaking(it, patch));
+                                      }}
+                                    >
+                                      <SelectTrigger className="w-20 h-7 text-[10px] bg-background">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="PERCENTAGE">%</SelectItem>
+                                        <SelectItem value="PER_GRAM">₹/g</SelectItem>
+                                        <SelectItem value="WASTAGE">Wastage%</SelectItem>
+                                        <SelectItem value="PER_PIECE">₹/pc</SelectItem>
+                                        <SelectItem value="FIXED">Fixed</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    <NumI
+                                      v={it.makingChargeValue ?? it.makingChargePct ?? 0}
+                                      on={(v) => {
+                                        const patch: any = { makingChargeValue: v };
+                                        if ((it.makingChargeType || "PERCENTAGE") === "PERCENTAGE") patch.makingChargePct = v;
+                                        updateItem(i, recalcMaking(it, patch));
+                                      }}
+                                      className="w-full h-7 text-xs bg-background font-mono"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-[10px] text-muted-foreground uppercase block font-semibold">Subtotal</span>
+                                  <span className="font-bold text-emerald-700 text-sm font-mono">{inr(c.line)}</span>
+                                </div>
+                              </div>
+                            </div>
                           );
                         })}
-                      </tbody>
-                    </table>
-                    </div>
+                      </div>
+
+                      {/* Desktop Items Table (Visible on screens >= md) */}
+                      <div className="hidden md:block overflow-x-auto w-full border border-border rounded-md">
+                        <table className="w-full text-sm min-w-[1050px]">
+                          <thead className="text-left text-muted-foreground border-b bg-muted/20 text-xs uppercase tracking-wider">
+                            <tr>
+                              <th className="p-3 font-semibold whitespace-nowrap">Product</th>
+                              <th className="p-3 font-semibold whitespace-nowrap w-28">HUID</th>
+                              <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-16">Pcs</th>
+                              <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-20">Gross Wt</th>
+                              <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-20">less Wt</th>
+                              <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-20">Net Wt</th>
+                              <th className="p-3 font-semibold whitespace-nowrap text-right w-24">HMC (₹)</th>
+                              <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-24">Rate(₹/g)</th>
+                              <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-32">Making Charge</th>
+                              <th className="py-3 px-3 font-semibold whitespace-nowrap text-right w-28">Total (₹)</th>
+                              <th className="w-10" />
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {items.map((it, i) => {
+                              const c = calcItem(it, isGst);
+                              return (
+                                <tr key={i} className="border-b last:border-0 hover:bg-muted/10 transition-colors">
+                                  <td className="p-3 min-w-40 space-y-2 align-top">
+                                    <Input value={it.name} onChange={(e) => updateItem(i, { name: e.target.value })} className="h-8 text-sm font-medium" placeholder="Item Name" />
+                                    <Input value={it.purity} onChange={(e) => updateItem(i, { purity: e.target.value })} className="h-7 text-xs" placeholder="Purity (e.g. 22K)" />
+                                  </td>
+                                  <td className="p-3">
+                                    <Input value={it.huid || ""} onChange={(e) => updateItem(i, { huid: e.target.value })} className="h-8 text-sm" placeholder="HUID" />
+                                  </td>
+                                  <td className="py-2">
+                                    <NumI v={it.qty} on={(v) => updateItem(i, recalcMaking(it, { qty: v }))} className="w-16 h-8 bg-background" />
+                                  </td>
+                                  <td className="py-2">
+                                    <NumI
+                                      v={(it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight}
+                                      on={(v) => {
+                                        const stWt = (it as any).stoneWeight || 0;
+                                        const net = Math.max(0, v - stWt);
+                                        updateItem(i, recalcMaking(it, { grossWeight: v, netWeight: net }));
+                                      }}
+                                      className="w-16 h-8 bg-background"
+                                    />
+                                  </td>
+                                  <td className="py-2">
+                                    <NumI
+                                      v={(it as any).stoneWeight || 0}
+                                      on={(v) => {
+                                        const grWt = (it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight;
+                                        const net = Math.max(0, grWt - v);
+                                        updateItem(i, recalcMaking(it, { stoneWeight: v, netWeight: net }));
+                                      }}
+                                      className="w-16 h-8 bg-background"
+                                    />
+                                  </td>
+                                  <td className="py-2">
+                                    <NumI
+                                      v={it.netWeight}
+                                      on={(v) => {
+                                        updateItem(i, recalcMaking(it, { netWeight: v, grossWeight: v + ((it as any).stoneWeight || 0) }));
+                                      }}
+                                      className="w-16 h-8 bg-background"
+                                    />
+                                  </td>
+                                  <td className="p-3">
+                                    <NumI v={it.hmc || 0} on={(v) => updateItem(i, { hmc: v })} className="w-24 h-8 bg-background" />
+                                  </td>
+                                  <td className="py-2">
+                                    <NumI
+                                      v={it.ratePerGram}
+                                      on={(v) => {
+                                        updateItem(i, recalcMaking(it, { ratePerGram: v }));
+                                      }}
+                                      className="w-20 h-8 bg-background"
+                                    />
+                                  </td>
+                                  <td className="py-2 space-y-1">
+                                    <Select
+                                      value={it.makingChargeType || "PERCENTAGE"}
+                                      onValueChange={(val: MakingChargeType) => {
+                                        const value = it.makingChargeValue ?? it.makingChargePct ?? 0;
+                                        const patch: any = { makingChargeType: val };
+                                        patch.makingChargePct = val === "PERCENTAGE" ? value : 0;
+                                        updateItem(i, recalcMaking(it, patch));
+                                      }}
+                                    >
+                                      <SelectTrigger className="w-28 h-7 bg-background text-xs">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="PERCENTAGE">% of value</SelectItem>
+                                        <SelectItem value="PER_GRAM">₹ / gram</SelectItem>
+                                        <SelectItem value="WASTAGE">Wastage %</SelectItem>
+                                        <SelectItem value="PER_PIECE">₹ / piece</SelectItem>
+                                        <SelectItem value="FIXED">Fixed ₹</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    <NumI
+                                      v={it.makingChargeValue ?? it.makingChargePct ?? 0}
+                                      on={(v) => {
+                                        const patch: any = { makingChargeValue: v };
+                                        if ((it.makingChargeType || "PERCENTAGE") === "PERCENTAGE") patch.makingChargePct = v;
+                                        updateItem(i, recalcMaking(it, patch));
+                                      }}
+                                      className="w-28 h-8 bg-background"
+                                      onKeyDown={
+                                        i === items.length - 1
+                                          ? (e) => {
+                                              if (e.key !== "Enter") return;
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              productSearchRef.current?.focus();
+                                            }
+                                          : undefined
+                                      }
+                                    />
+                                  </td>
+                                  <td className="py-2 text-right pr-3 font-medium">{inr(c.line)}</td>
+                                  <td className="py-2 text-right">
+                                    <Button
+                                      type="button"
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => removeItem(i)}
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
                   )}
               </div>
 
@@ -1487,30 +1658,30 @@ export default function BillingPage() {
       {/* ═══════════════════════════════════════════════════════════
            KPI CARDS
       ═══════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="relative overflow-hidden rounded-xl border border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-sm">
-          <div className="absolute top-3 right-3 w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-5">
+        <div className="relative overflow-hidden rounded-xl border border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 p-2.5 sm:p-4 shadow-2xs">
+          <div className="hidden sm:flex absolute top-3 right-3 w-8 h-8 bg-amber-100 rounded-lg items-center justify-center">
             <Receipt className="w-4 h-4 text-amber-600" />
           </div>
-          <p className="text-xs font-semibold text-amber-700/80 uppercase tracking-wider">Total Invoices</p>
-          <p className="text-3xl font-display font-bold text-amber-900 mt-1">{roleInvoices.length}</p>
-          <p className="text-[11px] text-amber-600/70 mt-1">All time records</p>
+          <p className="text-[10px] sm:text-xs font-semibold text-amber-700/90 uppercase tracking-wider truncate">Total Bills</p>
+          <p className="text-xl sm:text-3xl font-display font-bold text-amber-950 mt-0.5 sm:mt-1">{roleInvoices.length}</p>
+          <p className="text-[9px] sm:text-[11px] text-amber-600/70 mt-0.5 truncate hidden sm:block">All time records</p>
         </div>
-        <div className="relative overflow-hidden rounded-xl border border-blue-200/60 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 shadow-sm">
-          <div className="absolute top-3 right-3 w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+        <div className="relative overflow-hidden rounded-xl border border-blue-200/60 bg-gradient-to-br from-blue-50 to-indigo-50 p-2.5 sm:p-4 shadow-2xs">
+          <div className="hidden sm:flex absolute top-3 right-3 w-8 h-8 bg-blue-100 rounded-lg items-center justify-center">
             <Calendar className="w-4 h-4 text-blue-600" />
           </div>
-          <p className="text-xs font-semibold text-blue-700/80 uppercase tracking-wider">Today's Invoices</p>
-          <p className="text-3xl font-display font-bold text-blue-900 mt-1">{todayInvoices.length}</p>
-          <p className="text-[11px] text-blue-600/70 mt-1">{new Date().toLocaleDateString('en-IN', { weekday: 'long' })}</p>
+          <p className="text-[10px] sm:text-xs font-semibold text-blue-700/90 uppercase tracking-wider truncate">Today's</p>
+          <p className="text-xl sm:text-3xl font-display font-bold text-blue-950 mt-0.5 sm:mt-1">{todayInvoices.length}</p>
+          <p className="text-[9px] sm:text-[11px] text-blue-600/70 mt-0.5 truncate hidden sm:block">{new Date().toLocaleDateString('en-IN', { weekday: 'short' })}</p>
         </div>
-        <div className="relative overflow-hidden rounded-xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50 to-green-50 p-4 shadow-sm">
-          <div className="absolute top-3 right-3 w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+        <div className="relative overflow-hidden rounded-xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50 to-green-50 p-2.5 sm:p-4 shadow-2xs">
+          <div className="hidden sm:flex absolute top-3 right-3 w-8 h-8 bg-emerald-100 rounded-lg items-center justify-center">
             <Calculator className="w-4 h-4 text-emerald-600" />
           </div>
-          <p className="text-xs font-semibold text-emerald-700/80 uppercase tracking-wider">Today's Revenue</p>
-          <p className="text-2xl font-display font-bold text-emerald-900 mt-1">{inr(todayRevenue)}</p>
-          <p className="text-[11px] text-emerald-600/70 mt-1">Collected today</p>
+          <p className="text-[10px] sm:text-xs font-semibold text-emerald-700/90 uppercase tracking-wider truncate">Revenue</p>
+          <p className="text-base sm:text-2xl font-display font-bold text-emerald-950 mt-0.5 sm:mt-1 font-mono truncate">{inr(todayRevenue)}</p>
+          <p className="text-[9px] sm:text-[11px] text-emerald-600/70 mt-0.5 truncate hidden sm:block">Collected today</p>
         </div>
       </div>
 
