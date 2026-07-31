@@ -789,14 +789,14 @@ export default function BillingPage() {
                   <Plus className="w-4 h-4 mr-1" /> New Invoice
                 </Button>
               </DialogTrigger>
-          <DialogContent className="w-[96vw] max-w-5xl max-h-[92vh] overflow-y-auto p-3.5 sm:p-6" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
+          <DialogContent className="w-[98vw] max-w-6xl max-h-[96vh] overflow-y-auto overflow-x-hidden p-3.5 sm:p-5" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle className="text-2xl font-display">{editingId ? "Edit Invoice" : "Create Invoice"}</DialogTitle>
             </DialogHeader>
-            <form className="space-y-6 mt-4" onSubmit={(e) => { e.preventDefault(); save(); }} onKeyDown={handleKeyNav}>
+            <form className="space-y-4 mt-3" onSubmit={(e) => { e.preventDefault(); save(); }} onKeyDown={handleKeyNav}>
               
               {/* 1. Invoice Details */}
-              <div className="p-5 border rounded-lg bg-muted/10 space-y-4">
+              <div className="p-4 border rounded-lg bg-muted/10 space-y-3">
                 <h3 className="font-semibold text-primary flex items-center gap-2">
                   <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">1</span>
                   Invoice Details
@@ -1025,7 +1025,7 @@ export default function BillingPage() {
               </div>
 
               {/* 2. Items */}
-              <div className="p-5 border rounded-lg bg-muted/10 space-y-4">
+              <div className="p-4 border rounded-lg bg-muted/10 space-y-3">
                 <h3 className="font-semibold text-primary flex items-center gap-2">
                   <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">2</span>
                   Items
@@ -1346,19 +1346,19 @@ export default function BillingPage() {
 
                       {/* Desktop Items Table (Visible on screens >= md) */}
                       <div className="hidden md:block overflow-x-auto w-full border border-border rounded-md">
-                        <table className="w-full text-sm min-w-[1050px]">
+                        <table className="w-full text-sm min-w-[940px]">
                           <thead className="text-left text-muted-foreground border-b bg-muted/20 text-xs uppercase tracking-wider">
                             <tr>
-                              <th className="p-3 font-semibold whitespace-nowrap">Product</th>
-                              <th className="p-3 font-semibold whitespace-nowrap w-28">HUID</th>
-                              <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-16">Pcs</th>
-                              <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-20">Gross Wt</th>
-                              <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-20">less Wt</th>
-                              <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-20">Net Wt</th>
-                              <th className="p-3 font-semibold whitespace-nowrap text-right w-24">HMC (₹)</th>
-                              <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-24">Rate(₹/g)</th>
-                              <th className="py-3 px-2 font-semibold whitespace-nowrap text-right w-32">Making Charge</th>
-                              <th className="py-3 px-3 font-semibold whitespace-nowrap text-right w-28">Total (₹)</th>
+                              <th className="p-2 font-semibold whitespace-nowrap">Product</th>
+                              <th className="p-2 font-semibold whitespace-nowrap w-24">HUID</th>
+                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-14">Pcs</th>
+                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-18">Gross Wt</th>
+                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-18">less Wt</th>
+                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-18">Net Wt</th>
+                              <th className="p-2 font-semibold whitespace-nowrap text-right w-22">HMC (₹)</th>
+                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-20">Rate(₹/g)</th>
+                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-28">Making Charge</th>
+                              <th className="py-2 px-2 font-semibold whitespace-nowrap text-right w-24">Total (₹)</th>
                               <th className="w-10" />
                             </tr>
                           </thead>
@@ -1367,17 +1367,17 @@ export default function BillingPage() {
                               const c = calcItem(it, isGst);
                               return (
                                 <tr key={i} className="border-b last:border-0 hover:bg-muted/10 transition-colors">
-                                  <td className="p-3 min-w-40 space-y-2 align-top">
+                                  <td className="p-2 min-w-36 space-y-1.5 align-top">
                                     <Input value={it.name} onChange={(e) => updateItem(i, { name: e.target.value })} className="h-8 text-sm font-medium" placeholder="Item Name" />
                                     <Input value={it.purity} onChange={(e) => updateItem(i, { purity: e.target.value })} className="h-7 text-xs" placeholder="Purity (e.g. 22K)" />
                                   </td>
-                                  <td className="p-3">
+                                  <td className="p-2">
                                     <Input value={it.huid || ""} onChange={(e) => updateItem(i, { huid: e.target.value })} className="h-8 text-sm" placeholder="HUID" />
                                   </td>
-                                  <td className="py-2">
-                                    <NumI v={it.qty} on={(v) => updateItem(i, recalcMaking(it, { qty: v }))} className="w-16 h-8 bg-background" />
+                                  <td className="py-1.5 px-1.5">
+                                    <NumI v={it.qty} on={(v) => updateItem(i, recalcMaking(it, { qty: v }))} className="w-14 h-8 bg-background" />
                                   </td>
-                                  <td className="py-2">
+                                  <td className="py-1.5 px-1.5">
                                     <NumI
                                       v={(it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight}
                                       on={(v) => {
@@ -1385,10 +1385,10 @@ export default function BillingPage() {
                                         const net = Math.max(0, v - stWt);
                                         updateItem(i, recalcMaking(it, { grossWeight: v, netWeight: net }));
                                       }}
-                                      className="w-16 h-8 bg-background"
+                                      className="w-14 h-8 bg-background"
                                     />
                                   </td>
-                                  <td className="py-2">
+                                  <td className="py-1.5 px-1.5">
                                     <NumI
                                       v={(it as any).stoneWeight || 0}
                                       on={(v) => {
@@ -1396,31 +1396,31 @@ export default function BillingPage() {
                                         const net = Math.max(0, grWt - v);
                                         updateItem(i, recalcMaking(it, { stoneWeight: v, netWeight: net }));
                                       }}
-                                      className="w-16 h-8 bg-background"
+                                      className="w-14 h-8 bg-background"
                                     />
                                   </td>
-                                  <td className="py-2">
+                                  <td className="py-1.5 px-1.5">
                                     <NumI
                                       v={it.netWeight}
                                       on={(v) => {
                                         updateItem(i, recalcMaking(it, { netWeight: v, grossWeight: v + ((it as any).stoneWeight || 0) }));
                                       }}
-                                      className="w-16 h-8 bg-background"
+                                      className="w-14 h-8 bg-background"
                                     />
                                   </td>
-                                  <td className="p-3">
-                                    <NumI v={it.hmc || 0} on={(v) => updateItem(i, { hmc: v })} className="w-24 h-8 bg-background" />
+                                  <td className="p-2">
+                                    <NumI v={it.hmc || 0} on={(v) => updateItem(i, { hmc: v })} className="w-20 h-8 bg-background" />
                                   </td>
-                                  <td className="py-2">
+                                  <td className="py-1.5 px-1.5">
                                     <NumI
                                       v={it.ratePerGram}
                                       on={(v) => {
                                         updateItem(i, recalcMaking(it, { ratePerGram: v }));
                                       }}
-                                      className="w-20 h-8 bg-background"
+                                      className="w-18 h-8 bg-background"
                                     />
                                   </td>
-                                  <td className="py-2 space-y-1">
+                                  <td className="py-1.5 px-1.5 space-y-1">
                                     <Select
                                       value={it.makingChargeType || "PERCENTAGE"}
                                       onValueChange={(val: MakingChargeType) => {
@@ -1430,7 +1430,7 @@ export default function BillingPage() {
                                         updateItem(i, recalcMaking(it, patch));
                                       }}
                                     >
-                                      <SelectTrigger className="w-28 h-7 bg-background text-xs">
+                                      <SelectTrigger className="w-24 h-7 bg-background text-xs">
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
@@ -1448,7 +1448,7 @@ export default function BillingPage() {
                                         if ((it.makingChargeType || "PERCENTAGE") === "PERCENTAGE") patch.makingChargePct = v;
                                         updateItem(i, recalcMaking(it, patch));
                                       }}
-                                      className="w-28 h-8 bg-background"
+                                      className="w-24 h-8 bg-background"
                                       onKeyDown={
                                         i === items.length - 1
                                           ? (e) => {
@@ -1461,8 +1461,8 @@ export default function BillingPage() {
                                       }
                                     />
                                   </td>
-                                  <td className="py-2 text-right pr-3 font-medium">{inr(c.line)}</td>
-                                  <td className="py-2 text-right">
+                                  <td className="py-1.5 px-2 text-right font-medium">{inr(c.line)}</td>
+                                  <td className="py-1.5 text-right">
                                     <Button
                                       type="button"
                                       size="icon"
@@ -1483,7 +1483,7 @@ export default function BillingPage() {
               </div>
 
               {/* 3. Payment Summary */}
-              <div className="p-5 border rounded-lg bg-muted/10 space-y-4">
+              <div className="p-4 border rounded-lg bg-muted/10 space-y-3">
                 <h3 className="font-semibold text-primary flex items-center gap-2">
                   <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">3</span>
                   Payment Summary
@@ -1497,7 +1497,7 @@ export default function BillingPage() {
                       <li>GST is calculated automatically if 'GST Invoice' is selected.</li>
                     </ul>
                   </div>
-                  <div className="space-y-4 text-sm bg-background p-5 rounded-lg border border-border shadow-sm">
+                  <div className="space-y-3 text-sm bg-background p-4 rounded-lg border border-border shadow-sm">
                     <Row label="Subtotal" v={inr(totals.subtotal)} />
                     
                     <div className="flex items-center justify-between gap-4">
@@ -1536,7 +1536,7 @@ export default function BillingPage() {
                       <span>{inr(totals.gTotal)}</span>
                     </div>
 
-                    <div className="bg-muted/40 p-4 rounded-lg border border-border space-y-4 mt-4">
+                    <div className="bg-muted/40 p-3.5 rounded-lg border border-border space-y-3 mt-3">
                       {(linkedOrderId && (() => {
                         const linkedOrder = orders.find(o => (o._id || o.id) === linkedOrderId || `order_${o._id || o.id}` === linkedOrderId);
                         const linkedRepair = repairs.find(r => `repair_${r._id || r.id}` === linkedOrderId);
@@ -1611,7 +1611,7 @@ export default function BillingPage() {
                       })()}
                     </div>
                     
-                    <div className="bg-muted/40 p-4 rounded-lg border border-border mt-4">
+                    <div className="bg-muted/40 p-3.5 rounded-lg border border-border mt-3">
                       <Label className="text-muted-foreground font-normal block mb-3">Signatures (Optional)</Label>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
