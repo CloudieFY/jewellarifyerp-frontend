@@ -40,7 +40,8 @@ async function apiCall<T>(
         errorData = JSON.parse(errorText);
       } catch (e) {
         // If parsing fails, it's likely an HTML error page from the server (e.g., 502 Bad Gateway)
-        throw new Error(`Server returned a non-JSON error (status ${response.status}). Check backend logs for details.`);
+        console.error("Non-JSON Server Error:", errorText);
+        throw new Error(`Server returned a non-JSON error (status ${response.status}): ${errorText.substring(0, 150)}`);
       }
       throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
     }
