@@ -99,16 +99,18 @@ export default function BillingPage() {
   const { data: repairs = [] } = useQuery({ queryKey: ["repairs"], queryFn: api.repairs.getAll });
   const latestRates = ratesList[0];
   
-  const useApiMutation = (mutationFn: (...args: any[]) => Promise<any>, queryKey: string[]) => {
+  const useApiMutation = (mutationFn: (...args: any[]) => Promise<any>, queryKeys: string | string[]) => {
     return useMutation({
       mutationFn,
-      onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+      onSuccess: () => {
+        const keys = Array.isArray(queryKeys) ? queryKeys : [queryKeys];
+        keys.forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+      },
     });
   };
 
-  const createMutation = useApiMutation((data: any) => api.invoices.create(data), ["invoices"]);
-  const deleteMutation = useApiMutation((id: string) => api.invoices.remove(id), ["invoices"]);
-  const updateProductMutation = useApiMutation((data: { id: string; body: any }) => api.inventory.update(data.id, data.body), ["inventory"]);
+  const createMutation = useApiMutation((data: any) => api.invoices.create(data), ["invoices", "inventory"]);
+  const deleteMutation = useApiMutation((id: string) => api.invoices.remove(id), ["invoices", "inventory"]);
   const updateMutation = useApiMutation((data: { id: string; body: any }) => api.invoices.update(data.id, data.body), ["invoices"]);
   const updateOrderMutation = useApiMutation((data: { id: string; body: any }) => api.orders.update(data.id, data.body), ["orders"]);
   const updateRepairMutation = useApiMutation((data: { id: string; body: any }) => api.repairs.update(data.id, data.body), ["repairs"]);
@@ -649,21 +651,8 @@ export default function BillingPage() {
           }
         }
         
-        // Deduct sold quantities from inventory stock
-        for (const item of items) {
-          const actualPid = item.productId ? item.productId.split("__GW_")[0] : item.productId;
-          const p = products.find((x) => (x.id || x._id) === actualPid);
-          if (p) {
-            console.log("Billing: updating product stock", { id: p._id || p.id, oldStock: p.stock, qtySold: item.qty });
-            const newStock = Math.max(0, (p.stock || 0) - (item.qty || 1));
-            const newNetWeight = Math.max(0, Number(((p.netWeight || 0) - (item.netWeight || 0)).toFixed(3)));
-            const itemGross = (item as any).grossWeight !== undefined ? (item as any).grossWeight : item.netWeight;
-            const newGrossWeight = Math.max(0, Number(((p.grossWeight || 0) - (itemGross || 0)).toFixed(3)));
-            await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock, netWeight: newNetWeight, grossWeight: newGrossWeight } });
-            console.log("Billing: product stock updated", { id: p._id || p.id, newStock, newNetWeight, newGrossWeight });
-          }
-        }
-        
+        // Inventory deduction is handled atomically by the backend POST /invoices transaction.
+        // createMutation already invalidates ["invoices", "inventory"] so the UI will refresh.
         setViewing(saved);
         toast.success("Invoice generated successfully");
       }
@@ -678,18 +667,8 @@ export default function BillingPage() {
   const removeInvoice = async (invoice: Invoice) => {
     if (window.confirm(`Are you sure you want to delete Invoice ${invoice.number}? This will also add the sold items back to your inventory.`)) {
       try {
-        // Add stock back to inventory
-        for (const item of invoice.items) {
-          const actualPid = item.productId ? item.productId.split("__GW_")[0] : item.productId;
-          const p = products.find((x) => (x.id || x._id) === actualPid);
-          if (p) {
-            const newStock = (p.stock || 0) + (item.qty || 1);
-            const newNetWeight = Number(((p.netWeight || 0) + (item.netWeight || 0)).toFixed(3));
-            const itemGross = (item as any).grossWeight !== undefined ? (item as any).grossWeight : item.netWeight;
-            const newGrossWeight = Number(((p.grossWeight || 0) + (itemGross || 0)).toFixed(3));
-            await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock, netWeight: newNetWeight, grossWeight: newGrossWeight } });
-          }
-        }
+        // Stock restoration is handled atomically by the backend DELETE /invoices/:id transaction.
+        // deleteMutation already invalidates ["invoices", "inventory"] so the UI will refresh.
         await deleteMutation.mutateAsync(invoice._id || invoice.id || "");
         toast.success("Invoice deleted and stock restored.");
       } catch (e) { toast.error("Failed to delete invoice."); }
@@ -1346,19 +1325,19 @@ export default function BillingPage() {
 
                       {/* Desktop Items Table (Visible on screens >= md) */}
                       <div className="hidden md:block overflow-x-auto w-full border border-border rounded-md">
-                        <table className="w-full text-sm min-w-[940px]">
+                        <table className="w-full text-sm min-w-[1100px]">
                           <thead className="text-left text-muted-foreground border-b bg-muted/20 text-xs uppercase tracking-wider">
                             <tr>
                               <th className="p-2 font-semibold whitespace-nowrap">Product</th>
-                              <th className="p-2 font-semibold whitespace-nowrap w-24">HUID</th>
-                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-14">Pcs</th>
-                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-18">Gross Wt</th>
-                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-18">less Wt</th>
-                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-18">Net Wt</th>
-                              <th className="p-2 font-semibold whitespace-nowrap text-right w-22">HMC (₹)</th>
-                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-20">Rate(₹/g)</th>
-                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-28">Making Charge</th>
-                              <th className="py-2 px-2 font-semibold whitespace-nowrap text-right w-24">Total (₹)</th>
+                              <th className="p-2 font-semibold whitespace-nowrap w-28">HUID</th>
+                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-16">Pcs</th>
+                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-24">Gross Wt</th>
+                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-24">Less Wt</th>
+                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-24">Net Wt</th>
+                              <th className="p-2 font-semibold whitespace-nowrap text-right w-24">HMC (₹)</th>
+                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-28">Rate(₹/g)</th>
+                              <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-36">Making Charge</th>
+                              <th className="py-2 px-2 font-semibold whitespace-nowrap text-right w-28">Total (₹)</th>
                               <th className="w-10" />
                             </tr>
                           </thead>
@@ -1375,7 +1354,7 @@ export default function BillingPage() {
                                     <Input value={it.huid || ""} onChange={(e) => updateItem(i, { huid: e.target.value })} className="h-8 text-sm" placeholder="HUID" />
                                   </td>
                                   <td className="py-1.5 px-1.5">
-                                    <NumI v={it.qty} on={(v) => updateItem(i, recalcMaking(it, { qty: v }))} className="w-14 h-8 bg-background" />
+                                    <NumI v={it.qty} on={(v) => updateItem(i, recalcMaking(it, { qty: v }))} className="w-16 h-8 bg-background text-right" />
                                   </td>
                                   <td className="py-1.5 px-1.5">
                                     <NumI
@@ -1385,7 +1364,7 @@ export default function BillingPage() {
                                         const net = Math.max(0, v - stWt);
                                         updateItem(i, recalcMaking(it, { grossWeight: v, netWeight: net }));
                                       }}
-                                      className="w-14 h-8 bg-background"
+                                      className="w-20 h-8 bg-background text-right"
                                     />
                                   </td>
                                   <td className="py-1.5 px-1.5">
@@ -1396,7 +1375,7 @@ export default function BillingPage() {
                                         const net = Math.max(0, grWt - v);
                                         updateItem(i, recalcMaking(it, { stoneWeight: v, netWeight: net }));
                                       }}
-                                      className="w-14 h-8 bg-background"
+                                      className="w-20 h-8 bg-background text-right"
                                     />
                                   </td>
                                   <td className="py-1.5 px-1.5">
@@ -1405,11 +1384,11 @@ export default function BillingPage() {
                                       on={(v) => {
                                         updateItem(i, recalcMaking(it, { netWeight: v, grossWeight: v + ((it as any).stoneWeight || 0) }));
                                       }}
-                                      className="w-14 h-8 bg-background"
+                                      className="w-20 h-8 bg-background text-right"
                                     />
                                   </td>
                                   <td className="p-2">
-                                    <NumI v={it.hmc || 0} on={(v) => updateItem(i, { hmc: v })} className="w-20 h-8 bg-background" />
+                                    <NumI v={it.hmc || 0} on={(v) => updateItem(i, { hmc: v })} className="w-24 h-8 bg-background text-right" />
                                   </td>
                                   <td className="py-1.5 px-1.5">
                                     <NumI
@@ -1417,7 +1396,7 @@ export default function BillingPage() {
                                       on={(v) => {
                                         updateItem(i, recalcMaking(it, { ratePerGram: v }));
                                       }}
-                                      className="w-18 h-8 bg-background"
+                                      className="w-24 h-8 bg-background text-right"
                                     />
                                   </td>
                                   <td className="py-1.5 px-1.5 space-y-1">
@@ -1430,7 +1409,7 @@ export default function BillingPage() {
                                         updateItem(i, recalcMaking(it, patch));
                                       }}
                                     >
-                                      <SelectTrigger className="w-24 h-7 bg-background text-xs">
+                                      <SelectTrigger className="w-28 h-7 bg-background text-xs">
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
@@ -1448,7 +1427,7 @@ export default function BillingPage() {
                                         if ((it.makingChargeType || "PERCENTAGE") === "PERCENTAGE") patch.makingChargePct = v;
                                         updateItem(i, recalcMaking(it, patch));
                                       }}
-                                      className="w-24 h-8 bg-background"
+                                      className="w-28 h-8 bg-background text-right"
                                       onKeyDown={
                                         i === items.length - 1
                                           ? (e) => {

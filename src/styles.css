@@ -133,6 +133,7 @@
     .print-section,
     .print-section * {
       visibility: visible !important;
+      overflow: visible !important;
     }
 
     .print-section {
@@ -142,6 +143,9 @@
       right: 0 !important;
       width: 100% !important;
       max-width: 100% !important;
+      height: auto !important;
+      max-height: none !important;
+      overflow: visible !important;
       margin: 0 !important;
       padding-top: 5mm !important;
       padding-left: 0 !important;

@@ -490,7 +490,7 @@ export default function InventoryPage() {
               ${svgContent}
             </div>
             ${selectedTagItem.huid ? `<div class="huid-tag">HUID: ${selectedTagItem.huid}</div>` : ''}
-            <div class="price-tag">${inr(selectedTagItem.sellingPrice || (selectedTagItem.netWeight * 7200) || 0)}</div>
+            <div class="price-tag">${inr(selectedTagItem.sellingPrice || 0)}</div>
           </div>
           <script>
             window.onload = function() {
@@ -561,7 +561,7 @@ export default function InventoryPage() {
                 <div>
                   <div className="text-xs font-medium text-muted-foreground uppercase">Total Stock Valuation</div>
                   <div className="text-2xl font-bold font-display text-emerald-600 mt-1">
-                    {inr(summaryReport?.totalValuationCost || filteredItems.reduce((sum, p) => sum + ((p.costPrice || p.sellingPrice || 0) * (p.stock || 1)), 0))}
+                    {inr(summaryReport?.totalValuationCost || filteredItems.reduce((sum, p) => sum + ((p.costPrice || p.sellingPrice || 0) * (p.stock || 0)), 0))}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">Estimated Cost Price</div>
                 </div>
@@ -794,7 +794,7 @@ export default function InventoryPage() {
                           </td>
 
                           <td>
-                            <div className="font-semibold text-emerald-700">{inr(item.sellingPrice || (item.netWeight * (item.ratePerGram || 7200)))}</div>
+                            <div className="font-semibold text-emerald-700">{inr(item.sellingPrice || 0)}</div>
                             <div className="text-[11px] text-muted-foreground">Cost: {inr(item.costPrice || 0)}</div>
                           </td>
 

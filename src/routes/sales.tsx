@@ -22,7 +22,7 @@ export default function SalesPage() {
   const queryClient = useQueryClient();
 
   const { data: allInvoices = [], isLoading } = useQuery<Invoice[]>({ queryKey: ["invoices"], queryFn: api.invoices.getAll });
-  const { data: products = [] } = useQuery<any[]>({ queryKey: ["inventory"], queryFn: api.inventory.getAll });
+
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.invoices.remove(id),
@@ -30,11 +30,6 @@ export default function SalesPage() {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
     }
-  });
-
-  const updateProductMutation = useMutation({
-    mutationFn: (data: { id: string; body: any }) => api.inventory.update(data.id, data.body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] })
   });
 
   const isOperator = authUser?.role === "operator";
@@ -105,14 +100,8 @@ export default function SalesPage() {
   const removeInvoice = async (invoice: Invoice) => {
     if (window.confirm(`Are you sure you want to delete Invoice ${invoice.number}? This will also add the sold items back to your inventory.`)) {
       try {
-        for (const item of invoice.items) {
-          const actualPid = item.productId ? item.productId.split("__GW_")[0] : item.productId;
-          const p = products.find((x) => (x.id || x._id) === actualPid);
-          if (p) {
-            const newStock = (p.stock || 0) + (item.qty || 1);
-            await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock } });
-          }
-        }
+        // Stock restoration is handled atomically by the backend DELETE /invoices/:id transaction.
+        // deleteMutation already invalidates ["invoices", "inventory"] so the UI will refresh.
         await deleteMutation.mutateAsync(invoice._id || invoice.id || "");
         toast.success("Invoice deleted and stock restored to inventory.");
       } catch (e) {

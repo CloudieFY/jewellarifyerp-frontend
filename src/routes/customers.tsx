@@ -40,7 +40,7 @@ import {
   X,
   Printer,
 } from "lucide-react";
-import { formatDate, useDebounce } from "@/lib/utils";
+import { formatDate, useDebounce, triggerPrint } from "@/lib/utils";
 import { useTenantAPI } from "@/lib/api";
 import { inr, getUpiQrCodeUrl, defaultInvoiceSettings, type InvoiceSettings, type Invoice, type InvoicePayment, type Order, type Repair, type Girvi, type Customer } from "@/lib/storage";
 import { toast } from "sonner";
@@ -1645,234 +1645,242 @@ export default function CustomersPage() {
       </Dialog>
 
       {/* PRINT STEP RECEIPT VOUCHER & TAX INVOICE MODAL */}
-      <Dialog open={!!printingStepData} onOpenChange={(val) => !val && setPrintingStepData(null)}>
-        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto p-0 rounded-2xl overflow-hidden print:shadow-none print:max-w-none print:w-full print:h-auto print:overflow-visible [&>button.absolute]:hidden">
-          {printingStepData && (() => {
-            const inv = printingStepData.invoice;
-            const total = inv.total || 0;
-            const paid = inv.amountPaid !== undefined ? inv.amountPaid : total;
-            const due = inv.balanceDue || 0;
-            const items = inv.items || [];
-            const payments = inv.payments && inv.payments.length > 0 ? inv.payments : (paid > 0 ? [{
-              date: formatDate(inv.createdAt),
-              amount: paid,
-              mode: inv.paymentMode || "Cash",
-              note: "Initial Advance / Payment Step"
-            }] : []);
+      {printingStepData && (() => {
+        const inv = printingStepData.invoice;
+        const total = inv.total || 0;
+        const paid = inv.amountPaid !== undefined ? inv.amountPaid : total;
+        const due = inv.balanceDue || 0;
+        const items = inv.items || [];
+        const payments = inv.payments && inv.payments.length > 0 ? inv.payments : (paid > 0 ? [{
+          date: formatDate(inv.createdAt),
+          amount: paid,
+          mode: inv.paymentMode || "Cash",
+          note: "Initial Advance / Payment Step"
+        }] : []);
 
-            return (
-              <div>
-                {/* Toolbar */}
-                <div className="bg-slate-900 text-white p-4 flex items-center justify-between print:hidden">
-                  <div className="flex items-center gap-2 font-bold text-sm">
-                    <Printer className="w-4 h-4 text-emerald-400" />
-                    <span>Print Invoice Bill (#{inv.number})</span>
+        return (
+          <div className="print-section fixed inset-0 z-100 bg-black/60 flex justify-center items-start p-2 sm:p-4 print:static print:block print:bg-white print:p-0 print:overflow-visible print:h-auto overflow-y-auto pointer-events-auto">
+            <div className="bg-white w-full max-w-4xl rounded-xl shadow-2xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:my-0 print:max-h-none print:block overflow-hidden">
+              <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
+
+              {/* Top Toolbar */}
+              <div className="bg-slate-900 text-white p-4 flex items-center justify-between print:hidden shrink-0">
+                <div className="flex items-center gap-2 font-bold text-sm">
+                  <Printer className="w-4 h-4 text-emerald-400" />
+                  <span>Print Invoice Bill (#{inv.number})</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => triggerPrint()}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-8 px-3.5 shadow-sm"
+                  >
+                    <Printer className="w-3.5 h-3.5 mr-1.5" /> Print Invoice
+                  </Button>
+                  <Button
+                    size="icon"
+                    onClick={() => setPrintingStepData(null)}
+                    className="h-7 w-7 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-md shrink-0 border-0"
+                  >
+                    <X className="w-4 h-4 stroke-[2.5]" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* PRINTABLE BILLING INVOICE CONTAINER */}
+              <div className="p-6 sm:p-10 print:p-2 bg-white text-slate-900 space-y-6 overflow-y-auto flex-1 print:overflow-visible">
+                {/* 1. Official Shop Header */}
+                <ShopHeader documentLabel={inv.type === "GST" ? "Invoice" : "Billing Receipt"} />
+
+                {/* 2. Invoice & Customer Meta Grid */}
+                <div className="grid grid-cols-2 gap-6 pb-4 border-b border-slate-200 text-xs">
+                  <div className="space-y-1">
+                    <div className="font-bold text-[10px] uppercase tracking-wider text-slate-500">Billed To (Customer):</div>
+                    <div className="font-bold text-base text-slate-900">{inv.customerName}</div>
+                    {inv.customerMobile && <div className="text-slate-700 font-mono">Mobile: {inv.customerMobile}</div>}
+                    {inv.customerAddress && <div className="text-slate-600">Address: {inv.customerAddress}</div>}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => window.print()}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-8 px-3.5 shadow-sm"
-                    >
-                      <Printer className="w-3.5 h-3.5 mr-1.5" /> Print Invoice
-                    </Button>
-                    <Button
-                      size="icon"
-                      onClick={() => setPrintingStepData(null)}
-                      className="h-7 w-7 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-md shrink-0 border-0"
-                    >
-                      <X className="w-4 h-4 stroke-[2.5]" />
-                    </Button>
+
+                  <div className="text-right space-y-1">
+                    <div className="text-xl font-serif font-bold text-slate-900">
+                      {inv.type === "GST" ? "INVOICE" : "ESTIMATE RECEIPT"}
+                    </div>
+                    <div className="font-mono font-bold text-amber-900 text-sm">Invoice #: {inv.number}</div>
+                    <div className="text-slate-600 font-mono">Date: {formatDate(inv.createdAt)}</div>
+                    <div className="text-slate-600">Payment Method: <strong>{inv.paymentMode || "Cash"}</strong></div>
                   </div>
                 </div>
 
-                {/* PRINTABLE BILLING INVOICE CONTAINER */}
-                <div className="p-8 bg-white text-slate-900 space-y-6 print:p-4 print:text-black">
-                  {/* 1. Official Shop Header */}
-                  <ShopHeader documentLabel={inv.type === "GST" ? "Invoice" : "Billing Receipt"} />
+                {/* 3. Items Billing Table */}
+                <div>
+                  <div className="font-bold text-xs uppercase tracking-wider text-slate-700 mb-2">Itemized Products &amp; Charges:</div>
+                  <div className="overflow-x-auto border border-slate-300 rounded-lg">
+                    <table className="w-full text-xs text-left border-collapse">
+                      <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300">
+                        <tr>
+                          <th className="py-2.5 px-3 border-r border-slate-300 text-center w-10">#</th>
+                          <th className="py-2.5 px-3 border-r border-slate-300">Item Description</th>
+                          <th className="py-2.5 px-3 border-r border-slate-300 text-center">Purity</th>
+                          <th className="py-2.5 px-3 border-r border-slate-300 text-right">Net Wt</th>
+                          <th className="py-2.5 px-3 border-r border-slate-300 text-right">Rate/g</th>
+                          <th className="py-2.5 px-3 border-r border-slate-300 text-right">Making</th>
+                          <th className="py-2.5 px-3 text-right">Total (₹)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((it: any, idx: number) => {
+                          const lineTotal = ((it.netWeight || 0) * (it.ratePerGram || 0)) + (it.makingCharge || 0) + (it.stoneCharge || 0);
+                          return (
+                            <tr key={idx} className="border-b border-slate-200 last:border-0 font-sans">
+                              <td className="py-2 px-3 border-r border-slate-200 text-center text-slate-500 font-mono">{idx + 1}</td>
+                              <td className="py-2 px-3 border-r border-slate-200 font-semibold text-slate-900">
+                                {it.name}
+                                {it.huid && (
+                                  <span className="ml-2 text-[10px] font-mono text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                    HUID: {it.huid}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 border-r border-slate-200 text-center font-medium">{it.purity || "22K"}</td>
+                              <td className="py-2 px-3 border-r border-slate-200 text-right font-mono font-bold text-amber-900">
+                                {it.netWeight || 0} g
+                              </td>
+                              <td className="py-2 px-3 border-r border-slate-200 text-right font-mono">{inr(it.ratePerGram || 0)}</td>
+                              <td className="py-2 px-3 border-r border-slate-200 text-right font-mono">{inr(it.makingCharge || 0)}</td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{inr(lineTotal || it.totalPrice || 0)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
 
-                  {/* 2. Invoice & Customer Meta Grid */}
-                  <div className="grid grid-cols-2 gap-6 pb-4 border-b border-slate-200 text-xs">
-                    <div className="space-y-1">
-                      <div className="font-bold text-[10px] uppercase tracking-wider text-slate-500">Billed To (Customer):</div>
-                      <div className="font-bold text-base text-slate-900">{inv.customerName}</div>
-                      {inv.customerMobile && <div className="text-slate-700 font-mono">Mobile: {inv.customerMobile}</div>}
-                      {inv.customerAddress && <div className="text-slate-600">Address: {inv.customerAddress}</div>}
-                    </div>
-
-                    <div className="text-right space-y-1">
-                      <div className="text-xl font-serif font-bold text-slate-900">
-                        {inv.type === "GST" ? "INVOICE" : "ESTIMATE RECEIPT"}
+                {/* 4. Financial Calculations Summary */}
+                <div className="flex flex-col sm:flex-row justify-between items-start text-xs gap-6 pt-2">
+                  <div className="w-full sm:w-1/2 space-y-2">
+                    {inv.oldGoldAmount ? (
+                      <div className="p-3 border border-amber-300 rounded-lg bg-amber-50/50">
+                        <div className="font-bold text-amber-900 uppercase text-[10px]">Old Gold Trade-in Credit</div>
+                        <div className="text-sm font-bold text-amber-800 font-mono">{inr(inv.oldGoldAmount)}</div>
                       </div>
-                      <div className="font-mono font-bold text-amber-900 text-sm">Invoice #: {inv.number}</div>
-                      <div className="text-slate-600 font-mono">Date: {formatDate(inv.createdAt)}</div>
-                      <div className="text-slate-600">Payment Method: <strong>{inv.paymentMode || "Cash"}</strong></div>
-                    </div>
+                    ) : null}
+
+                    {/* Step Payments History Summary Table */}
+                    {payments.length > 0 && (
+                      <div className="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-1.5">
+                        <div className="font-bold text-[10px] uppercase tracking-wider text-slate-700 flex justify-between">
+                          <span>Payment Installment Steps</span>
+                          <span className="text-emerald-700 font-mono">{payments.length} Step(s)</span>
+                        </div>
+                        <div className="space-y-1 text-[11px]">
+                          {payments.map((p, idx) => (
+                            <div key={idx} className="flex justify-between items-center font-mono border-b border-slate-200/60 pb-0.5 last:border-0">
+                              <span className="text-slate-600">Step #{idx + 1} ({formatDate(p.date)} - {p.mode})</span>
+                              <span className="font-bold text-emerald-700">+ {inr(p.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {/* 3. Items Billing Table */}
-                  <div>
-                    <div className="font-bold text-xs uppercase tracking-wider text-slate-700 mb-2">Itemized Products &amp; Charges:</div>
-                    <div className="overflow-x-auto border border-slate-300 rounded-lg">
-                      <table className="w-full text-xs text-left border-collapse">
-                        <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300">
-                          <tr>
-                            <th className="py-2.5 px-3 border-r border-slate-300 text-center w-10">#</th>
-                            <th className="py-2.5 px-3 border-r border-slate-300">Item Description</th>
-                            <th className="py-2.5 px-3 border-r border-slate-300 text-center">Purity</th>
-                            <th className="py-2.5 px-3 border-r border-slate-300 text-right">Net Wt</th>
-                            <th className="py-2.5 px-3 border-r border-slate-300 text-right">Rate/g</th>
-                            <th className="py-2.5 px-3 border-r border-slate-300 text-right">Making</th>
-                            <th className="py-2.5 px-3 text-right">Total (₹)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {items.map((it: any, idx: number) => {
-                            const lineTotal = ((it.netWeight || 0) * (it.ratePerGram || 0)) + (it.makingCharge || 0) + (it.stoneCharge || 0);
-                            return (
-                              <tr key={idx} className="border-b border-slate-200 last:border-0 font-sans">
-                                <td className="py-2 px-3 border-r border-slate-200 text-center text-slate-500 font-mono">{idx + 1}</td>
-                                <td className="py-2 px-3 border-r border-slate-200 font-semibold text-slate-900">
-                                  {it.name}
-                                  {it.huid && (
-                                    <span className="ml-2 text-[10px] font-mono text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                                      HUID: {it.huid}
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="py-2 px-3 border-r border-slate-200 text-center font-medium">{it.purity || "22K"}</td>
-                                <td className="py-2 px-3 border-r border-slate-200 text-right font-mono font-bold text-amber-900">
-                                  {it.netWeight || 0} g
-                                </td>
-                                <td className="py-2 px-3 border-r border-slate-200 text-right font-mono">{inr(it.ratePerGram || 0)}</td>
-                                <td className="py-2 px-3 border-r border-slate-200 text-right font-mono">{inr(it.makingCharge || 0)}</td>
-                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{inr(lineTotal || it.totalPrice || 0)}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                  <div className="w-full sm:w-1/2 max-w-sm ml-auto space-y-1.5 border-t-2 border-slate-400 pt-2 text-xs">
+                    <div className="flex justify-between text-slate-700">
+                      <span>Subtotal Amount:</span>
+                      <span className="font-mono font-semibold">{inr(inv.subtotal || total)}</span>
                     </div>
-                  </div>
-
-                  {/* 4. Financial Calculations Summary */}
-                  <div className="flex flex-col sm:flex-row justify-between items-start text-xs gap-6 pt-2">
-                    <div className="w-full sm:w-1/2 space-y-2">
-                      {inv.oldGoldAmount ? (
-                        <div className="p-3 border border-amber-300 rounded-lg bg-amber-50/50">
-                          <div className="font-bold text-amber-900 uppercase text-[10px]">Old Gold Trade-in Credit</div>
-                          <div className="text-sm font-bold text-amber-800 font-mono">{inr(inv.oldGoldAmount)}</div>
-                        </div>
-                      ) : null}
-
-                      {/* Step Payments History Summary Table */}
-                      {payments.length > 0 && (
-                        <div className="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-1.5">
-                          <div className="font-bold text-[10px] uppercase tracking-wider text-slate-700 flex justify-between">
-                            <span>Payment Installment Steps</span>
-                            <span className="text-emerald-700 font-mono">{payments.length} Step(s)</span>
-                          </div>
-                          <div className="space-y-1 text-[11px]">
-                            {payments.map((p, idx) => (
-                              <div key={idx} className="flex justify-between items-center font-mono border-b border-slate-200/60 pb-0.5 last:border-0">
-                                <span className="text-slate-600">Step #{idx + 1} ({formatDate(p.date)} - {p.mode})</span>
-                                <span className="font-bold text-emerald-700">+ {inr(p.amount)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="w-full sm:w-1/2 max-w-sm ml-auto space-y-1.5 border-t-2 border-slate-400 pt-2 text-xs">
+                    {inv.discount ? (
+                      <div className="flex justify-between text-rose-600">
+                        <span>Discount Applied:</span>
+                        <span className="font-mono font-semibold">- {inr(inv.discount)}</span>
+                      </div>
+                    ) : null}
+                    {inv.gstAmount ? (
                       <div className="flex justify-between text-slate-700">
-                        <span>Subtotal Amount:</span>
-                        <span className="font-mono font-semibold">{inr(inv.subtotal || total)}</span>
+                        <span>GST Amount (3%):</span>
+                        <span className="font-mono font-semibold">{inr(inv.gstAmount)}</span>
                       </div>
-                      {inv.discount ? (
-                        <div className="flex justify-between text-rose-600">
-                          <span>Discount Applied:</span>
-                          <span className="font-mono font-semibold">- {inr(inv.discount)}</span>
-                        </div>
-                      ) : null}
-                      {inv.gstAmount ? (
-                        <div className="flex justify-between text-slate-700">
-                          <span>GST Amount (3%):</span>
-                          <span className="font-mono font-semibold">{inr(inv.gstAmount)}</span>
-                        </div>
-                      ) : null}
-                      <div className="flex justify-between border-t-2 border-slate-900 pt-2 font-bold text-base text-slate-900">
-                        <span>Grand Total Bill:</span>
-                        <span className="font-mono text-emerald-800 text-lg">{inr(total)}</span>
-                      </div>
-                      <div className="flex justify-between text-emerald-700 font-bold border-t border-slate-200 pt-1">
-                        <span>Total Amount Paid:</span>
-                        <span className="font-mono">{inr(paid)}</span>
-                      </div>
-                      <div className="flex justify-between text-rose-700 font-bold border-t border-rose-200 pt-1 text-sm bg-rose-50 p-1.5 rounded">
-                        <span>Remaining Balance Due:</span>
-                        <span className="font-mono">{inr(due)}</span>
-                      </div>
+                    ) : null}
+                    <div className="flex justify-between border-t-2 border-slate-900 pt-2 font-bold text-base text-slate-900">
+                      <span>Grand Total Bill:</span>
+                      <span className="font-mono text-emerald-800 text-lg">{inr(total)}</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-700 font-bold border-t border-slate-200 pt-1">
+                      <span>Total Amount Paid:</span>
+                      <span className="font-mono">{inr(paid)}</span>
+                    </div>
+                    <div className="flex justify-between text-rose-700 font-bold border-t border-rose-200 pt-1 text-sm bg-rose-50 p-1.5 rounded">
+                      <span>Remaining Balance Due:</span>
+                      <span className="font-mono">{inr(due)}</span>
                     </div>
                   </div>
+                </div>
 
-                  {/* 5. Terms, Bank Details, UPI QR & Signatures */}
-                  <div className="pt-6 border-t border-slate-200 text-xs space-y-4">
-                    {(() => {
-                      const invSettings: InvoiceSettings = { ...defaultInvoiceSettings, ...((tenantSession?.shop as any)?.invoiceSettings || {}) };
-                      const qrUrl = getUpiQrCodeUrl({
-                        upiId: invSettings.upiId,
-                        shopName: tenantSession?.shop?.shopName,
-                        phone: tenantSession?.shop?.phone,
-                        qrCodeUrl: invSettings.qrCodeUrl,
-                        amount: total,
-                      });
-                      return (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <InvoiceTerms compact />
-                            {invSettings.bankAccountDetails && (
-                              <div className="text-[10px] font-mono text-slate-700 bg-amber-50/60 p-1.5 rounded border border-amber-200 mt-2">
-                                <strong>Bank Details:</strong> {invSettings.bankAccountDetails}
-                              </div>
-                            )}
-                          </div>
-                          {invSettings.showPaymentQr !== false && qrUrl && (
-                            <div className="border border-slate-300 rounded p-2 flex items-center gap-3 bg-slate-50 text-[10px] text-slate-700 h-fit ml-auto">
-                              <img
-                                src={qrUrl}
-                                alt="UPI Payment QR Code"
-                                className="w-14 h-14 object-contain rounded border bg-white p-0.5 shrink-0"
-                              />
-                              <div>
-                                <div className="font-bold text-slate-900 uppercase tracking-wider text-[9px]">Scan &amp; Pay via UPI</div>
-                                <div className="font-mono text-[9.5px] text-slate-800 font-bold mt-0.5">
-                                  {invSettings.upiId || (tenantSession?.shop?.phone ? `${tenantSession.shop.phone}@ybl` : "UPI Payment")}
-                                </div>
-                                <div className="text-[8.5px] text-slate-500 mt-0.5">Accepts GPay, PhonePe, Paytm &amp; BHIM</div>
-                              </div>
+                {/* 5. Terms, Bank Details, UPI QR & Signatures */}
+                <div className="pt-6 border-t border-slate-200 text-xs space-y-4">
+                  {(() => {
+                    const invSettings: InvoiceSettings = { ...defaultInvoiceSettings, ...((tenantSession?.shop as any)?.invoiceSettings || {}) };
+                    const qrUrl = getUpiQrCodeUrl({
+                      upiId: invSettings.upiId,
+                      shopName: tenantSession?.shop?.shopName,
+                      phone: tenantSession?.shop?.phone,
+                      qrCodeUrl: invSettings.qrCodeUrl,
+                      amount: total,
+                    });
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <InvoiceTerms compact />
+                          {invSettings.bankAccountDetails && (
+                            <div className="text-[10px] font-mono text-slate-700 bg-amber-50/60 p-1.5 rounded border border-amber-200 mt-2">
+                              <strong>Bank Details:</strong> {invSettings.bankAccountDetails}
                             </div>
                           )}
                         </div>
-                      );
-                    })()}
+                        {invSettings.showPaymentQr !== false && qrUrl && (
+                          <div className="border border-slate-300 rounded p-2 flex items-center gap-3 bg-slate-50 text-[10px] text-slate-700 h-fit ml-auto">
+                            <img
+                              src={qrUrl}
+                              alt="UPI Payment QR Code"
+                              className="w-14 h-14 object-contain rounded border bg-white p-0.5 shrink-0"
+                            />
+                            <div>
+                              <div className="font-bold text-slate-900 uppercase tracking-wider text-[9px]">Scan &amp; Pay via UPI</div>
+                              <div className="font-mono text-[9.5px] text-slate-800 font-bold mt-0.5">
+                                {invSettings.upiId || (tenantSession?.shop?.phone ? `${tenantSession.shop.phone}@ybl` : "UPI Payment")}
+                              </div>
+                              <div className="text-[8.5px] text-slate-500 mt-0.5">Accepts GPay, PhonePe, Paytm &amp; BHIM</div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
-                    <div className="flex justify-between items-end pt-4">
-                      <div className="text-center border-t border-slate-400 pt-1 w-40">
-                        <p className="font-semibold text-slate-800 text-[11px]">Customer Signature</p>
-                      </div>
-                      <div className="text-center border-t border-slate-400 pt-1 w-48">
-                        <p className="font-bold text-slate-900 text-xs">For {shopIdentifier}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">Authorized Signatory</p>
-                      </div>
+                  <div className="flex justify-between items-end pt-4">
+                    <div className="text-center border-t border-slate-400 pt-1 w-40">
+                      <p className="font-semibold text-slate-800 text-[11px]">Customer Signature</p>
+                    </div>
+                    <div className="text-center border-t border-slate-400 pt-1 w-48">
+                      <p className="font-bold text-slate-900 text-xs">For {shopIdentifier}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Authorized Signatory</p>
                     </div>
                   </div>
                 </div>
               </div>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
+
+              {/* Bottom Action Bar */}
+              <div className="shrink-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-xl flex justify-end gap-3 print:hidden">
+                <Button variant="outline" onClick={() => setPrintingStepData(null)}>Close</Button>
+                <Button onClick={() => triggerPrint()} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+                  <Printer className="w-4 h-4 mr-2" /> Print Invoice
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* CRM NOTE DIALOG */}
       <Dialog open={crmNoteModalOpen} onOpenChange={setCrmNoteModalOpen}>

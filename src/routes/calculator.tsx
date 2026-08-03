@@ -817,7 +817,8 @@ ${calc.exchangeValue > 0 ? `🔄 Old Gold Exchange: -${inr(calc.exchangeValue)}\
 
       {/* PRINTABLE ESTIMATE QUOTATION SLIP MODAL */}
       {showQuotation && (
-        <div className="fixed inset-0 z-100 bg-black/60 flex justify-center items-start p-3 sm:p-6 overflow-y-auto print:static print:p-0 print:bg-white">
+        <div className="print-section fixed inset-0 z-100 bg-black/60 flex justify-center items-start p-3 sm:p-6 overflow-y-auto print:static print:p-0 print:bg-white">
+          <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
           <div className="bg-background w-full max-w-lg rounded-2xl shadow-2xl border p-5 sm:p-6 print:shadow-none print:border-none print:w-full print:max-w-none">
             <div className="print:hidden flex justify-between items-center pb-4 mb-4 border-b">
               <h3 className="font-display font-bold text-lg flex items-center gap-2">

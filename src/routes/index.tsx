@@ -98,7 +98,7 @@ export default function Dashboard() {
   const loyalCustomers = customers.filter((c) => (counts.get(c._id || c.id) || 0) >= LOYAL_THRESHOLD).length;
   const normalCustomers = customers.length - loyalCustomers;
 
-  const stockValue = products.reduce((s, p) => s + (p.stock > 0 ? (p.netWeight * (p.ratePerGram || displayRates.gold22)) : 0), 0);
+  const stockValue = products.reduce((s, p) => s + ((p.costPrice || p.sellingPrice || 0) * (p.stock || 0)), 0);
   const goldGrams = products.filter(p => (p.category || "").toUpperCase().includes("GOLD") || !p.category.toUpperCase().includes("SILVER")).reduce((s, p) => s + ((p.netWeight || 0) * (p.stock || 0)), 0);
   const silverGrams = products.filter(p => (p.category || "").toUpperCase().includes("SILVER")).reduce((s, p) => s + ((p.netWeight || 0) * (p.stock || 0)), 0);
   const girviPrincipalTotal = girviItems.filter((g) => g.status === "ACTIVE" || g.status === "Pledged").reduce((s, g) => s + (g.principal || 0), 0);

@@ -51,9 +51,7 @@ import {
   CheckCircle2,
   Clock,
   Mail,
-  ShieldCheck,
-  Building2,
-  FileText
+  ShieldCheck
 } from "lucide-react";
 import { toast } from "sonner";
 import { superAdminAPI } from "@/lib/api";

@@ -80,6 +80,18 @@ export function formatCompactIfLarge(val: number) {
 
 export function triggerPrint() {
   if (typeof window !== "undefined") {
+    try {
+      const scrollables = document.querySelectorAll<HTMLElement>(
+        ".print-section, .print-section *, [data-radix-portal], [role='dialog'], [data-radix-scroll-area-viewport], main, div"
+      );
+      scrollables.forEach((el) => {
+        if (el.scrollTop) el.scrollTop = 0;
+        if (el.scrollLeft) el.scrollLeft = 0;
+      });
+      window.scrollTo(0, 0);
+    } catch (e) {
+      console.error("Error resetting scroll before print:", e);
+    }
     window.focus();
     setTimeout(() => {
       window.print();

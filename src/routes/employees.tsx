@@ -25,7 +25,7 @@ import {
   Award,
 } from "lucide-react";
 import { inr } from "@/lib/storage";
-import { formatDate } from "@/lib/utils";
+import { formatDate, triggerPrint } from "@/lib/utils";
 import { toast } from "sonner";
 import { useTenantAPI } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -1003,88 +1003,96 @@ export default function EmployeesPage() {
       </Dialog>
 
       {/* PRINT SALARY VOUCHER MODAL */}
-      <Dialog open={!!printingVoucher} onOpenChange={(val) => !val && setPrintingVoucher(null)}>
-        <DialogContent className="w-[95vw] sm:max-w-xl p-0 rounded-2xl overflow-hidden print:shadow-none [&>button.absolute]:hidden">
-          {printingVoucher && (
-            <div>
-              {/* Toolbar */}
-              <div className="bg-slate-900 text-white p-4 flex items-center justify-between print:hidden">
-                <div className="flex items-center gap-2 font-bold text-sm">
-                  <Printer className="w-4 h-4 text-emerald-400" />
-                  <span>Print Official Salary Voucher</span>
+      {printingVoucher && (
+        <div className="print-section fixed inset-0 z-100 bg-black/60 flex justify-center items-start p-2 sm:p-4 print:static print:block print:bg-white print:p-0 print:overflow-visible print:h-auto overflow-y-auto pointer-events-auto">
+          <div className="bg-white w-full max-w-xl rounded-xl shadow-2xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:my-0 print:max-h-none print:block overflow-hidden">
+            <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
+
+            {/* Top Toolbar */}
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between print:hidden shrink-0">
+              <div className="flex items-center gap-2 font-bold text-sm">
+                <Printer className="w-4 h-4 text-emerald-400" />
+                <span>Print Official Salary Voucher</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => triggerPrint()}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-8 px-3.5"
+                >
+                  <Printer className="w-3.5 h-3.5 mr-1.5" /> Print Payslip
+                </Button>
+                <Button
+                  size="icon"
+                  onClick={() => setPrintingVoucher(null)}
+                  className="h-7 w-7 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-md shrink-0 border-0"
+                >
+                  <X className="w-4 h-4 stroke-[2.5]" />
+                </Button>
+              </div>
+            </div>
+
+            {/* PRINTABLE SALARY PAYSLIP CONTAINER */}
+            <div className="p-6 bg-white text-slate-900 space-y-5 flex-1 overflow-y-auto print:overflow-visible print:p-4 print:text-black">
+              <ShopHeader documentLabel="SALARY DISBURSEMENT VOUCHER" />
+
+              <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div>
+                  <span className="text-slate-500 text-[10px] uppercase font-semibold">Employee Name:</span>
+                  <div className="font-bold text-base text-slate-900">{printingVoucher.emp.name}</div>
+                  <span className="text-slate-500 text-[10px] uppercase font-semibold mt-1 block">Role / Designation:</span>
+                  <div className="font-semibold text-slate-800">{printingVoucher.emp.role}</div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => window.print()}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-8 px-3.5"
-                  >
-                    <Printer className="w-3.5 h-3.5 mr-1.5" /> Print Payslip
-                  </Button>
-                  <Button
-                    size="icon"
-                    onClick={() => setPrintingVoucher(null)}
-                    className="h-7 w-7 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-md shrink-0 border-0"
-                  >
-                    <X className="w-4 h-4 stroke-[2.5]" />
-                  </Button>
+                <div className="text-right">
+                  <span className="text-slate-500 text-[10px] uppercase font-semibold">Salary Month:</span>
+                  <div className="font-mono font-bold text-base text-emerald-800">{printingVoucher.payment.monthFor}</div>
+                  <span className="text-slate-500 text-[10px] uppercase font-semibold mt-1 block">Disbursement Date:</span>
+                  <div className="font-mono font-semibold text-slate-800">{formatDate(printingVoucher.payment.date)}</div>
                 </div>
               </div>
 
-              {/* PRINTABLE SALARY PAYSLIP CONTAINER */}
-              <div className="p-6 bg-white text-slate-900 space-y-5 print:p-4 print:text-black">
-                <ShopHeader documentLabel="SALARY DISBURSEMENT VOUCHER" />
-
-                <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
-                  <div>
-                    <span className="text-slate-500 text-[10px] uppercase font-semibold">Employee Name:</span>
-                    <div className="font-bold text-base text-slate-900">{printingVoucher.emp.name}</div>
-                    <span className="text-slate-500 text-[10px] uppercase font-semibold mt-1 block">Role / Designation:</span>
-                    <div className="font-semibold text-slate-800">{printingVoucher.emp.role}</div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-slate-500 text-[10px] uppercase font-semibold">Salary Month:</span>
-                    <div className="font-mono font-bold text-base text-emerald-800">{printingVoucher.payment.monthFor}</div>
-                    <span className="text-slate-500 text-[10px] uppercase font-semibold mt-1 block">Disbursement Date:</span>
-                    <div className="font-mono font-semibold text-slate-800">{formatDate(printingVoucher.payment.date)}</div>
-                  </div>
+              <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-emerald-800 font-semibold">Base Monthly Salary:</span>
+                  <span className="font-mono font-bold text-slate-900">{inr(printingVoucher.emp.salary)}</span>
                 </div>
-
-                <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl space-y-2">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-emerald-800 font-semibold">Base Monthly Salary:</span>
-                    <span className="font-mono font-bold text-slate-900">{inr(printingVoucher.emp.salary)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-base font-bold pt-2 border-t border-emerald-200 text-emerald-950">
-                    <span>NET AMOUNT DISBURSED:</span>
-                    <span className="font-mono text-xl text-emerald-700">{inr(printingVoucher.payment.amount)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs pt-1 border-t border-emerald-200/60 text-slate-700">
-                    <span>Payment Mode:</span>
-                    <span className="font-semibold text-slate-900">{printingVoucher.payment.mode}</span>
-                  </div>
+                <div className="flex justify-between items-center text-base font-bold pt-2 border-t border-emerald-200 text-emerald-950">
+                  <span>NET AMOUNT DISBURSED:</span>
+                  <span className="font-mono text-xl text-emerald-700">{inr(printingVoucher.payment.amount)}</span>
                 </div>
+                <div className="flex justify-between items-center text-xs pt-1 border-t border-emerald-200/60 text-slate-700">
+                  <span>Payment Mode:</span>
+                  <span className="font-semibold text-slate-900">{printingVoucher.payment.mode}</span>
+                </div>
+              </div>
 
-                {printingVoucher.payment.note && (
-                  <div className="text-xs text-slate-600 italic">
-                    <strong>Remarks / Note:</strong> {printingVoucher.payment.note}
-                  </div>
-                )}
+              {printingVoucher.payment.note && (
+                <div className="text-xs text-slate-600 italic">
+                  <strong>Remarks / Note:</strong> {printingVoucher.payment.note}
+                </div>
+              )}
 
-                <div className="pt-8 flex justify-between items-end text-xs text-slate-600">
-                  <div className="text-center border-t border-slate-400 pt-1 w-36">
-                    <p className="font-semibold text-slate-800">Employee Signature</p>
-                  </div>
-                  <div className="text-center border-t border-slate-400 pt-1 w-44">
-                    <p className="font-bold text-slate-900">For {shopIdentifier}</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">Authorized Signatory</p>
-                  </div>
+              <div className="pt-8 flex justify-between items-end text-xs text-slate-600">
+                <div className="text-center border-t border-slate-400 pt-1 w-36">
+                  <p className="font-semibold text-slate-800">Employee Signature</p>
+                </div>
+                <div className="text-center border-t border-slate-400 pt-1 w-44">
+                  <p className="font-bold text-slate-900">For {shopIdentifier}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Authorized Signatory</p>
                 </div>
               </div>
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+
+            {/* Bottom Action Footer */}
+            <div className="shrink-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-xl flex justify-end gap-3 print:hidden">
+              <Button variant="outline" onClick={() => setPrintingVoucher(null)}>Close</Button>
+              <Button onClick={() => triggerPrint()} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+                <Printer className="w-4 h-4 mr-2" /> Print Payslip
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

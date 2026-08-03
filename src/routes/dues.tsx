@@ -237,7 +237,8 @@ export default function DuesPage() {
 
   return (
     <Layout>
-      {/* HEADER BAR */}
+      <div className="print-section">
+        {/* HEADER BAR */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-6">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -908,6 +909,7 @@ export default function DuesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </Layout>
   );
 }
