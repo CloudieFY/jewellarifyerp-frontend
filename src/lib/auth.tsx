@@ -13,13 +13,15 @@ import type { InvoiceSettings } from "./storage";
  * panel without being logged out of a shop session they were testing, etc.
  */
 
+import type { Language } from "@/context/LanguageContext";
+
 export type TenantUser = {
   id: string;
   username: string;
   name: string;
   role: "owner" | "operator" | "karigar";
   karigarRefId?: string;
-  preferredLanguage?: "en" | "hi";
+  preferredLanguage?: Language;
 };
 
 export type TenantShopInfo = {

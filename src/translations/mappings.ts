@@ -12,13 +12,14 @@
  * safe fallback, and a fast way to spot missing translations.
  */
 
-export type Language = "en" | "hi";
+import type { Language } from "@/context/LanguageContext";
+export type { Language };
 
-export type EnumMap = Record<string, { en: string; hi: string }>;
+export type EnumMap = Record<string, Record<string, string>>;
 
 export function translateEnum(map: EnumMap, value: string | undefined | null, lang: Language): string {
   if (!value) return "";
-  return map[value]?.[lang] ?? value;
+  return map[value]?.[lang] ?? map[value]?.["en"] ?? value;
 }
 
 // Loan Status (Girvi) - storage.ts Girvi["status"]

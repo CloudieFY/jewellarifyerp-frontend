@@ -40,6 +40,7 @@ import { useTenantAPI } from "@/lib/api";
 import { type Order, type Repair, type Invoice, type Product } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useGlobalKeyboard } from "@/hooks/useGlobalKeyboard";
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 
@@ -320,6 +321,7 @@ export function Layout({ children }: { children: ReactNode }) {
           {/* Right — actions */}
           <div className="flex items-center gap-1">
             <LanguageSwitcher />
+            <ThemeToggle />
 
             {/* Keyboard shortcuts */}
             <Button
@@ -354,7 +356,7 @@ export function Layout({ children }: { children: ReactNode }) {
         {/* ── Page content ── */}
         <main className="flex-1 overflow-hidden print:h-auto print:overflow-visible">
           <ScrollArea className="h-full print:h-auto print:overflow-visible">
-            <div className="w-full max-w-[1600px] mx-auto p-4 sm:p-6 print:max-w-none print:p-0">
+            <div className="w-full max-w-[1600px] min-w-0 mx-auto p-2.5 sm:p-6 print:max-w-none print:p-0 overflow-x-hidden">
               {children}
             </div>
           </ScrollArea>

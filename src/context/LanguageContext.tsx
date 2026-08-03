@@ -3,7 +3,8 @@ import i18n, { LANGUAGE_STORAGE_KEY } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { tenantAuthAPI } from "@/lib/api";
 
-export type Language = "en" | "hi";
+export type Language = "en" | "hi" | "gu" | "mr" | "ta" | "te" | "kn" | "ml" | "pa" | "bn" | "or";
+export const SUPPORTED_LANGUAGES: Language[] = ["en", "hi", "gu", "mr", "ta", "te", "kn", "ml", "pa", "bn", "or"];
 
 interface LanguageContextValue {
   language: Language;
@@ -14,37 +15,50 @@ const LanguageContext = createContext<LanguageContextValue | undefined>(undefine
 
 function readStoredLanguage(): Language {
   try {
-    const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    if (stored === "en" || stored === "hi") return stored;
+    const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY) as Language;
+    if (stored && SUPPORTED_LANGUAGES.includes(stored)) return stored;
   } catch {}
   return "en";
+}
+
+function applyGoogleTranslate(lang: Language) {
+  try {
+    const cookieVal = lang === "en" ? "" : `/en/${lang}`;
+    document.cookie = `googtrans=${cookieVal}; path=/; domain=${window.location.hostname}`;
+    document.cookie = `googtrans=${cookieVal}; path=/;`;
+
+    const combo = document.querySelector(".goog-te-combo") as HTMLSelectElement | null;
+    if (combo) {
+      combo.value = lang === "en" ? "" : lang;
+      combo.dispatchEvent(new Event("change"));
+    }
+  } catch (e) {
+    console.warn("Google Translate bridge error:", e);
+  }
 }
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(readStoredLanguage);
   const { tenantSession, setTenantSession } = useAuth();
 
-  // On login (or whenever the profile's saved preference changes), the
-  // profile value takes precedence over whatever was in localStorage on
-  // this device - this is what makes the language "follow" the account
-  // across devices/browsers on next login.
   useEffect(() => {
-    const profileLang = tenantSession?.user?.preferredLanguage;
-    if (profileLang && (profileLang === "en" || profileLang === "hi") && profileLang !== language) {
+    const profileLang = tenantSession?.user?.preferredLanguage as Language;
+    if (profileLang && SUPPORTED_LANGUAGES.includes(profileLang) && profileLang !== language) {
       setLanguageState(profileLang);
     }
-    // Only re-run when the logged-in user identity changes, not on every
-    // tenantSession object reference change (e.g. shop profile edits).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantSession?.user?.id, tenantSession?.user?.preferredLanguage]);
 
-  // Keep i18next and localStorage in sync with the current language,
-  // instantly re-rendering every component using useTranslation()/t().
+  // Keep i18next, localStorage, and full-page DOM translator in sync with current language
   useEffect(() => {
     i18n.changeLanguage(language);
     try {
       localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
     } catch {}
+
+    applyGoogleTranslate(language);
+    const timer = setTimeout(() => applyGoogleTranslate(language), 800);
+    return () => clearTimeout(timer);
   }, [language]);
 
   const setLanguage = useCallback(

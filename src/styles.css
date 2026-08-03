@@ -70,6 +70,35 @@
   --sidebar-border: oklch(0.86 0.015 75);
 }
 
+.dark {
+  --background: oklch(0.18 0.02 60);
+  --foreground: oklch(0.95 0.01 80);
+  --card: oklch(0.22 0.025 60);
+  --card-foreground: oklch(0.95 0.01 80);
+  --popover: oklch(0.22 0.025 60);
+  --popover-foreground: oklch(0.95 0.01 80);
+  --primary: oklch(0.72 0.08 75);             /* warm luxury gold */
+  --primary-foreground: oklch(0.18 0.02 60);
+  --secondary: oklch(0.26 0.03 60);
+  --secondary-foreground: oklch(0.92 0.01 80);
+  --muted: oklch(0.25 0.02 60);
+  --muted-foreground: oklch(0.7 0.02 70);
+  --accent: oklch(0.3 0.03 65);
+  --accent-foreground: oklch(0.95 0.01 80);
+  --destructive: oklch(0.55 0.18 25);
+  --destructive-foreground: oklch(0.985 0.005 80);
+  --border: oklch(0.3 0.025 60);
+  --input: oklch(0.28 0.02 60);
+  --ring: oklch(0.7 0.08 75);
+  --gold: oklch(0.78 0.12 80);
+  --gold-foreground: oklch(0.18 0.02 60);
+  --sidebar: oklch(0.2 0.02 60);
+  --sidebar-foreground: oklch(0.92 0.01 80);
+  --sidebar-accent: oklch(0.26 0.03 60);
+  --sidebar-accent-foreground: oklch(0.95 0.01 80);
+  --sidebar-border: oklch(0.28 0.02 60);
+}
+
 @layer base {
   * { border-color: var(--color-border); }
   body {
@@ -172,4 +201,28 @@
       height: auto !important;
     }
   }
+}
+
+/* Google Translate Silent Integration */
+.goog-te-banner-frame.skiptranslate,
+.goog-te-banner-frame,
+#goog-gt-tt,
+.goog-te-balloon-frame,
+.VIpgJd-ZGain-SC_Main {
+  display: none !important;
+}
+body {
+  top: 0px !important;
+  position: static !important;
+}
+.goog-text-highlight {
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+#google_translate_element {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  width: 0 !important;
+  overflow: hidden !important;
 }

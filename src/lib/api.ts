@@ -150,7 +150,7 @@ export const tenantAuthAPI = {
       body: JSON.stringify(body),
     }, 'tenant', token);
   },
-  updateLanguage: (language: 'en' | 'hi', token?: string) => {
+  updateLanguage: (language: string, token?: string) => {
     return apiCall<any>('/api/auth/language', {
       method: 'PUT',
       body: JSON.stringify({ preferredLanguage: language }),

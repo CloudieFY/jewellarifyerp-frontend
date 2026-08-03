@@ -371,16 +371,17 @@ export default function InventoryPage() {
             selectedTagItem.itemCode ||
             selectedTagItem.sku ||
             selectedTagItem.huid ||
-            (selectedTagItem as any)._id ||
-            "890123456789";
+            ((selectedTagItem as any)._id
+              ? `TAG-${String((selectedTagItem as any)._id).slice(-8).toUpperCase()}`
+              : "890123456789");
 
           JsBarcode(barcodeCanvasRef.current, barcodeVal, {
             format: "CODE128",
-            width: 1.5,
-            height: 45,
+            width: 1.3,
+            height: 42,
             displayValue: true,
-            fontSize: 12,
-            margin: 5,
+            fontSize: 11,
+            margin: 2,
           });
         } catch (err) {
           console.error("Barcode generation error:", err);
@@ -405,8 +406,9 @@ export default function InventoryPage() {
       selectedTagItem.itemCode ||
       selectedTagItem.sku ||
       selectedTagItem.huid ||
-      (selectedTagItem as any)._id ||
-      "890123456789";
+      ((selectedTagItem as any)._id
+        ? `TAG-${String((selectedTagItem as any)._id).slice(-8).toUpperCase()}`
+        : "890123456789");
 
     const svgContent = barcodeCanvasRef.current ? barcodeCanvasRef.current.outerHTML : `<div style="font-family:monospace;font-size:14px;font-weight:bold;margin:8px 0;">*${barcodeVal}*</div>`;
 
@@ -523,33 +525,35 @@ export default function InventoryPage() {
       </div>
 
       {/* Main Navigation Tabs */}
-      <Tabs value={activeMainTab} onValueChange={setActiveMainTab} className="space-y-6">
-        <TabsList className="flex flex-wrap w-full bg-muted/60 p-1 rounded-xl h-auto gap-1">
-          <TabsTrigger value="dashboard" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5">
-            <BarChart3 className="w-3.5 h-3.5" /> Dashboard
-          </TabsTrigger>
-          <TabsTrigger value="stock-list" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5">
-            <Boxes className="w-3.5 h-3.5 text-emerald-600" /> Item Master & Stock
-          </TabsTrigger>
-          <TabsTrigger value="opening-stock" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5">
-            <Store className="w-3.5 h-3.5 text-blue-600" /> Opening Stock
-          </TabsTrigger>
-          <TabsTrigger value="stock-adjustment" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5">
-            <Scale className="w-3.5 h-3.5 text-amber-600" /> Stock Adjustment
-          </TabsTrigger>
-          <TabsTrigger value="stock-transfer" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5">
-            <ArrowLeftRight className="w-3.5 h-3.5 text-indigo-600" /> Stock Transfer
-          </TabsTrigger>
-          <TabsTrigger value="stock-ledger" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5">
-            <History className="w-3.5 h-3.5 text-purple-600" /> Stock Ledger
-          </TabsTrigger>
-          <TabsTrigger value="barcode-mgr" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5">
-            <ScanBarcode className="w-3.5 h-3.5 text-rose-600" /> Barcode & Tags
-          </TabsTrigger>
-          <TabsTrigger value="reports" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5">
-            <FileSpreadsheet className="w-3.5 h-3.5 text-teal-600" /> Inventory Reports
-          </TabsTrigger>
-        </TabsList>
+      <Tabs value={activeMainTab} onValueChange={setActiveMainTab} className="space-y-6 w-full max-w-full min-w-0 overflow-hidden">
+        <div className="w-full max-w-full overflow-x-auto scrollbar-none pb-1">
+          <TabsList className="inline-flex w-max max-w-none bg-muted/60 p-1 rounded-xl h-auto gap-1 whitespace-nowrap">
+            <TabsTrigger value="dashboard" className="text-xs font-semibold py-2 px-3 rounded-lg flex items-center gap-1.5 shrink-0">
+              <BarChart3 className="w-3.5 h-3.5" /> Dashboard
+            </TabsTrigger>
+            <TabsTrigger value="stock-list" className="text-xs font-semibold py-2 px-3 rounded-lg flex items-center gap-1.5 shrink-0">
+              <Boxes className="w-3.5 h-3.5 text-emerald-600" /> Item Master & Stock
+            </TabsTrigger>
+            <TabsTrigger value="opening-stock" className="text-xs font-semibold py-2 px-3 rounded-lg flex items-center gap-1.5 shrink-0">
+              <Store className="w-3.5 h-3.5 text-blue-600" /> Opening Stock
+            </TabsTrigger>
+            <TabsTrigger value="stock-adjustment" className="text-xs font-semibold py-2 px-3 rounded-lg flex items-center gap-1.5 shrink-0">
+              <Scale className="w-3.5 h-3.5 text-amber-600" /> Stock Adjustment
+            </TabsTrigger>
+            <TabsTrigger value="stock-transfer" className="text-xs font-semibold py-2 px-3 rounded-lg flex items-center gap-1.5 shrink-0">
+              <ArrowLeftRight className="w-3.5 h-3.5 text-indigo-600" /> Stock Transfer
+            </TabsTrigger>
+            <TabsTrigger value="stock-ledger" className="text-xs font-semibold py-2 px-3 rounded-lg flex items-center gap-1.5 shrink-0">
+              <History className="w-3.5 h-3.5 text-purple-600" /> Stock Ledger
+            </TabsTrigger>
+            <TabsTrigger value="barcode-mgr" className="text-xs font-semibold py-2 px-3 rounded-lg flex items-center gap-1.5 shrink-0">
+              <ScanBarcode className="w-3.5 h-3.5 text-rose-600" /> Barcode & Tags
+            </TabsTrigger>
+            <TabsTrigger value="reports" className="text-xs font-semibold py-2 px-3 rounded-lg flex items-center gap-1.5 shrink-0">
+              <FileSpreadsheet className="w-3.5 h-3.5 text-teal-600" /> Inventory Reports
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* ======================================================== */}
         {/* TAB 1: INVENTORY DASHBOARD */}
@@ -631,38 +635,64 @@ export default function InventoryPage() {
                   All stock levels are optimal. No low stock warnings.
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left">
-                    <thead className="bg-muted/40 text-muted-foreground text-xs uppercase border-b">
-                      <tr>
-                        <th className="py-2.5 px-4">Barcode / Code</th>
-                        <th>Item Name</th>
-                        <th>Category</th>
-                        <th>Current Stock</th>
-                        <th>Reorder Level</th>
-                        <th className="text-right px-4">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {allItems
-                        .filter(i => (i.stock || 0) <= (i.reorderLevel || i.minStock || 1))
-                        .map(item => (
-                          <tr key={item._id || item.id} className="border-b hover:bg-muted/20">
-                            <td className="py-2.5 px-4 font-semibold">{item.barcode || item.itemCode || item._id}</td>
-                            <td className="font-medium">{item.name}</td>
-                            <td>{item.category} ({item.purity})</td>
-                            <td className="font-bold text-rose-600">{item.stock} Pcs</td>
-                            <td className="text-muted-foreground">{item.reorderLevel || 2} Pcs</td>
-                            <td className="text-right px-4">
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setSelectedItemForAction(item); setAdjModalOpen(true); }}>
-                                Adjust Stock
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
+                <>
+                  {/* Mobile View */}
+                  <div className="block md:hidden divide-y w-full max-w-full overflow-hidden">
+                    {allItems
+                      .filter(i => (i.stock || 0) <= (i.reorderLevel || i.minStock || 1))
+                      .map(item => (
+                        <div key={item._id || item.id} className="p-3 space-y-2 hover:bg-muted/10 transition-colors">
+                          <div className="flex items-center justify-between">
+                            <div className="font-bold text-sm text-foreground">{item.name}</div>
+                            <Badge variant="outline" className="font-mono text-xs text-rose-600 border-rose-200 bg-rose-50/50">
+                              {item.stock} Pcs
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground flex justify-between">
+                            <span>Code: {item.barcode || item.itemCode || "N/A"}</span>
+                            <span>{item.category} ({item.purity})</span>
+                          </div>
+                          <Button size="sm" variant="outline" className="w-full h-7 text-xs" onClick={() => { setSelectedItemForAction(item); setAdjModalOpen(true); }}>
+                            Adjust Stock
+                          </Button>
+                        </div>
+                      ))}
+                  </div>
+
+                  {/* Desktop View */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-muted/40 text-muted-foreground text-xs uppercase border-b">
+                        <tr>
+                          <th className="py-2.5 px-4">Barcode / Code</th>
+                          <th>Item Name</th>
+                          <th>Category</th>
+                          <th>Current Stock</th>
+                          <th>Reorder Level</th>
+                          <th className="text-right px-4">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allItems
+                          .filter(i => (i.stock || 0) <= (i.reorderLevel || i.minStock || 1))
+                          .map(item => (
+                            <tr key={item._id || item.id} className="border-b hover:bg-muted/20">
+                              <td className="py-2.5 px-4 font-semibold">{item.barcode || item.itemCode || item._id}</td>
+                              <td className="font-medium">{item.name}</td>
+                              <td>{item.category} ({item.purity})</td>
+                              <td className="font-bold text-rose-600">{item.stock} Pcs</td>
+                              <td className="text-muted-foreground">{item.reorderLevel || 2} Pcs</td>
+                              <td className="text-right px-4">
+                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setSelectedItemForAction(item); setAdjModalOpen(true); }}>
+                                  Adjust Stock
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -671,60 +701,64 @@ export default function InventoryPage() {
         {/* ======================================================== */}
         {/* TAB 2: ITEM MASTER & STOCK LIST */}
         {/* ======================================================== */}
-        <TabsContent value="stock-list" className="space-y-6">
+        <TabsContent value="stock-list" className="space-y-6 w-full max-w-full min-w-0 overflow-hidden">
           {/* Search & Filter Bar */}
-          <Card className="shadow-sm bg-muted/20 border">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-                <div className="flex flex-wrap items-center gap-3 flex-1">
-                  <div className="relative w-full sm:w-72">
-                    <Search className="w-4 h-4 absolute left-3 top-2.5 text-muted-foreground" />
-                    <Input
-                      placeholder="Search Item Name, Barcode, HUID..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-9 h-9 text-xs bg-background"
-                    />
-                  </div>
-
-                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                    <SelectTrigger className="h-9 text-xs w-36 bg-background">
-                      <SelectValue placeholder="Category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">All Categories</SelectItem>
-                      <SelectItem value="Gold">Gold</SelectItem>
-                      <SelectItem value="Silver">Silver</SelectItem>
-                      <SelectItem value="Diamond">Diamond</SelectItem>
-                      <SelectItem value="Platinum">Platinum</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={purityFilter} onValueChange={setPurityFilter}>
-                    <SelectTrigger className="h-9 text-xs w-32 bg-background">
-                      <SelectValue placeholder="Purity" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">All Purities</SelectItem>
-                      <SelectItem value="24K">24K</SelectItem>
-                      <SelectItem value="22K">22K</SelectItem>
-                      <SelectItem value="18K">18K</SelectItem>
-                      <SelectItem value="14K">14K</SelectItem>
-                      <SelectItem value="925">925 Silver</SelectItem>
-                    </SelectContent>
-                  </Select>
+          <Card className="shadow-sm bg-muted/20 border w-full max-w-full overflow-hidden">
+            <CardContent className="p-2.5 sm:p-4">
+              <div className="flex flex-col gap-2.5 w-full">
+                {/* Search Input */}
+                <div className="relative w-full">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Search Item Name, Barcode, HUID..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 h-9 text-xs bg-background w-full"
+                  />
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs py-1 px-3">
-                    Showing {filteredItems.length} of {allItems.length} Items
-                  </Badge>
+                {/* Filters row: Category, Purity, Count Badge */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 w-full">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 w-full">
+                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                      <SelectTrigger className="h-9 text-xs w-full sm:w-36 bg-background">
+                        <SelectValue placeholder="Category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All Categories</SelectItem>
+                        <SelectItem value="Gold">Gold</SelectItem>
+                        <SelectItem value="Silver">Silver</SelectItem>
+                        <SelectItem value="Diamond">Diamond</SelectItem>
+                        <SelectItem value="Platinum">Platinum</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <Select value={purityFilter} onValueChange={setPurityFilter}>
+                      <SelectTrigger className="h-9 text-xs w-full sm:w-32 bg-background">
+                        <SelectValue placeholder="Purity" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All Purities</SelectItem>
+                        <SelectItem value="24K">24K</SelectItem>
+                        <SelectItem value="22K">22K</SelectItem>
+                        <SelectItem value="18K">18K</SelectItem>
+                        <SelectItem value="14K">14K</SelectItem>
+                        <SelectItem value="925">925 Silver</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center justify-start">
+                    <span className="text-[11px] font-medium text-muted-foreground bg-background px-2.5 py-1 rounded border border-border/50">
+                      Showing {filteredItems.length} of {allItems.length} Items
+                    </span>
+                  </div>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Detailed Item List Table */}
+          {/* Detailed Item List */}
           <Card className="shadow-sm">
             <CardContent className="p-0">
               {isLoadingItems ? (
@@ -732,112 +766,212 @@ export default function InventoryPage() {
               ) : filteredItems.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground">No inventory items match your search.</div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left border-collapse min-w-[950px]">
-                    <thead className="bg-muted/40 text-muted-foreground text-[11px] uppercase tracking-wider border-b">
-                      <tr>
-                        <th className="py-3 px-4">Item Details</th>
-                        <th>Category & Purity</th>
-                        <th>HUID / Tag</th>
-                        <th>Weights (Gross / Net)</th>
-                        <th>Stock Qty</th>
-                        <th>Cost & Price</th>
-                        <th className="text-right px-4">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredItems.map((item) => (
-                        <tr key={item._id || item.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-3">
-                              {item.imageUrl ? (
-                                <img src={item.imageUrl} alt={item.name} className="w-10 h-10 object-cover rounded-md border" />
-                              ) : (
-                                <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
-                                  <ImageIcon className="w-5 h-5" />
-                                </div>
-                              )}
-                              <div>
-                                <div className="font-semibold text-foreground">{item.name}</div>
-                                <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                                  <span>Code: {item.itemCode || item.barcode || "N/A"}</span>
-                                  {item.barcode && <span className="bg-slate-100 px-1 py-0.2 rounded font-mono text-[10px]">{item.barcode}</span>}
-                                </div>
+                <>
+                  {/* Mobile Card View (Visible on screens < md) */}
+                  <div className="block md:hidden divide-y">
+                    {filteredItems.map((item) => (
+                      <div key={item._id || item.id} className="p-3 space-y-2.5 bg-card hover:bg-muted/10 transition-colors">
+                        {/* Row 1: Item Name & Price/Stock */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            {item.imageUrl ? (
+                              <img src={item.imageUrl} alt={item.name} className="w-10 h-10 object-cover rounded-md border shrink-0" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0 border">
+                                <ImageIcon className="w-5 h-5" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="font-bold text-sm text-foreground truncate">{item.name}</div>
+                              <div className="text-[11px] text-muted-foreground truncate">
+                                {item.category} • {item.purity} ({item.metalType || 'Gold'})
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                                <span className="bg-muted px-1.5 py-0.2 rounded font-mono text-[9px] truncate">
+                                  {item.itemCode || item.barcode || "N/A"}
+                                </span>
+                                {item.huid && (
+                                  <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 font-mono text-[9px] py-0 px-1 truncate">
+                                    HUID: {item.huid}
+                                  </Badge>
+                                )}
                               </div>
                             </div>
-                          </td>
+                          </div>
 
-                          <td>
-                            <div className="font-medium text-foreground">{item.category}</div>
-                            <div className="text-xs text-muted-foreground">{item.purity} ({item.metalType || 'Gold'})</div>
-                          </td>
-
-                          <td>
-                            {item.huid ? (
-                              <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 font-mono text-xs">
-                                {item.huid}
-                              </Badge>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">-</span>
-                            )}
-                          </td>
-
-                          <td>
-                            <div className="font-medium text-foreground">{item.grossWeight || 0} g Gross</div>
-                            <div className="text-xs text-emerald-700 font-semibold">{item.netWeight || 0} g Net</div>
-                          </td>
-
-                          <td>
-                            <span className={`font-bold ${item.stock <= (item.reorderLevel || 1) ? "text-rose-600" : "text-foreground"}`}>
+                          <div className="text-right shrink-0">
+                            <div className="font-bold text-xs text-emerald-600">{inr(item.sellingPrice || 0)}</div>
+                            <span className={`inline-block mt-0.5 font-bold text-[10px] px-1.5 py-0.5 rounded ${
+                              item.stock <= (item.reorderLevel || 1) ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"
+                            }`}>
                               {item.stock} Pcs
                             </span>
-                          </td>
+                          </div>
+                        </div>
 
-                          <td>
-                            <div className="font-semibold text-emerald-700">{inr(item.sellingPrice || 0)}</div>
-                            <div className="text-[11px] text-muted-foreground">Cost: {inr(item.costPrice || 0)}</div>
-                          </td>
+                        {/* Row 2: 4 Grid Cards - Label on top, Value below */}
+                        <div className="grid grid-cols-2 gap-1.5 bg-muted/30 p-1.5 rounded-lg">
+                          <div className="bg-background/90 p-1.5 rounded border border-border/50">
+                            <div className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight">Gross Wt</div>
+                            <div className="font-mono font-bold text-xs text-foreground mt-0.5">{item.grossWeight || 0} g</div>
+                          </div>
+                          <div className="bg-background/90 p-1.5 rounded border border-border/50">
+                            <div className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight">Net Wt</div>
+                            <div className="font-mono font-bold text-xs text-emerald-600 mt-0.5">{item.netWeight || 0} g</div>
+                          </div>
+                          <div className="bg-background/90 p-1.5 rounded border border-border/50">
+                            <div className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight">Cost Price</div>
+                            <div className="font-mono font-bold text-xs text-foreground mt-0.5">{inr(item.costPrice || 0)}</div>
+                          </div>
+                          <div className="bg-background/90 p-1.5 rounded border border-border/50">
+                            <div className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight">Reorder Level</div>
+                            <div className="font-mono font-bold text-xs text-foreground mt-0.5">{item.reorderLevel || 1} Pcs</div>
+                          </div>
+                        </div>
 
-                          <td className="text-right px-4">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 w-8 p-0 text-slate-600 hover:text-slate-900"
-                                title="Print Jewellery Tag"
-                                onClick={() => { setSelectedTagItem(item); setTagModalOpen(true); }}
-                              >
-                                <Printer className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 w-8 p-0 text-blue-600 hover:text-blue-900"
-                                title="Edit Item"
-                                onClick={() => handleOpenEdit(item)}
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 w-8 p-0 text-rose-600 hover:text-rose-900"
-                                title="Delete Item"
-                                onClick={() => {
-                                  if (confirm(`Are you sure you want to delete ${item.name}?`)) {
-                                    deleteItemMutation.mutate(item._id || item.id || "");
-                                  }
-                                }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </td>
+                        {/* Row 3: Action Buttons */}
+                        <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-[11px] px-1 gap-1 w-full"
+                            onClick={() => { setSelectedTagItem(item); setTagModalOpen(true); }}
+                          >
+                            <Printer className="w-3.5 h-3.5" /> Tag
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-[11px] px-1 gap-1 text-blue-600 border-blue-200 bg-blue-50/40 w-full"
+                            onClick={() => handleOpenEdit(item)}
+                          >
+                            <Pencil className="w-3.5 h-3.5" /> Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-[11px] px-1 gap-1 text-rose-600 border-rose-200 bg-rose-50/40 w-full"
+                            onClick={() => {
+                              if (confirm(`Are you sure you want to delete ${item.name}?`)) {
+                                deleteItemMutation.mutate(item._id || item.id || "");
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Delete
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop Table View (Visible on screens >= md) */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-sm text-left border-collapse min-w-[950px]">
+                      <thead className="bg-muted/40 text-muted-foreground text-[11px] uppercase tracking-wider border-b">
+                        <tr>
+                          <th className="py-3 px-4">Item Details</th>
+                          <th>Category & Purity</th>
+                          <th>HUID / Tag</th>
+                          <th>Weights (Gross / Net)</th>
+                          <th>Stock Qty</th>
+                          <th>Cost & Price</th>
+                          <th className="text-right px-4">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {filteredItems.map((item) => (
+                          <tr key={item._id || item.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-3">
+                                {item.imageUrl ? (
+                                  <img src={item.imageUrl} alt={item.name} className="w-10 h-10 object-cover rounded-md border" />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                                    <ImageIcon className="w-5 h-5" />
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="font-semibold text-foreground">{item.name}</div>
+                                  <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                                    <span>Code: {item.itemCode || item.barcode || "N/A"}</span>
+                                    {item.barcode && <span className="bg-slate-100 px-1 py-0.2 rounded font-mono text-[10px]">{item.barcode}</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td>
+                              <div className="font-medium text-foreground">{item.category}</div>
+                              <div className="text-xs text-muted-foreground">{item.purity} ({item.metalType || 'Gold'})</div>
+                            </td>
+
+                            <td>
+                              {item.huid ? (
+                                <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 font-mono text-xs">
+                                  {item.huid}
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              )}
+                            </td>
+
+                            <td>
+                              <div className="font-medium text-foreground">{item.grossWeight || 0} g Gross</div>
+                              <div className="text-xs text-emerald-700 font-semibold">{item.netWeight || 0} g Net</div>
+                            </td>
+
+                            <td>
+                              <span className={`font-bold ${item.stock <= (item.reorderLevel || 1) ? "text-rose-600" : "text-foreground"}`}>
+                                {item.stock} Pcs
+                              </span>
+                            </td>
+
+                            <td>
+                              <div className="font-semibold text-emerald-700">{inr(item.sellingPrice || 0)}</div>
+                              <div className="text-[11px] text-muted-foreground">Cost: {inr(item.costPrice || 0)}</div>
+                            </td>
+
+                            <td className="text-right px-4">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 text-slate-600 hover:text-slate-900"
+                                  title="Print Jewellery Tag"
+                                  onClick={() => { setSelectedTagItem(item); setTagModalOpen(true); }}
+                                >
+                                  <Printer className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 text-blue-600 hover:text-blue-900"
+                                  title="Edit Item"
+                                  onClick={() => handleOpenEdit(item)}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 text-rose-600 hover:text-rose-900"
+                                  title="Delete Item"
+                                  onClick={() => {
+                                    if (confirm(`Are you sure you want to delete ${item.name}?`)) {
+                                      deleteItemMutation.mutate(item._id || item.id || "");
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -855,7 +989,42 @@ export default function InventoryPage() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
+              {/* Mobile View */}
+              <div className="block md:hidden divide-y">
+                {allItems.map((item) => (
+                  <div key={item._id || item.id} className="p-3 space-y-2 hover:bg-muted/10 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div className="font-bold text-sm text-foreground">{item.name}</div>
+                      <Badge variant="outline" className="font-mono text-xs">{item.stock} Pcs</Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground">{item.category} ({item.purity})</div>
+                    <div className="grid grid-cols-3 gap-1.5 bg-muted/30 p-2 rounded-lg text-xs font-mono">
+                      <div>
+                        <span className="text-[9px] text-muted-foreground uppercase block">Gross</span>
+                        <span className="font-semibold">{item.grossWeight || 0}g</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-muted-foreground uppercase block">Net</span>
+                        <span className="font-semibold text-emerald-600">{item.netWeight || 0}g</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-muted-foreground uppercase block">Cost</span>
+                        <span className="font-semibold">{inr(item.costPrice || 0)}</span>
+                      </div>
+                    </div>
+                    <Button size="sm" variant="outline" className="w-full h-7 text-xs" onClick={() => {
+                      setSelectedItemForAction(item);
+                      setOpnForm({ qty: item.stock || 1, grossWeight: item.grossWeight || 0, netWeight: item.netWeight || 0, rate: item.costPrice || 0, totalValue: (item.costPrice || 0) * (item.stock || 1), remarks: "Initial Opening Balance" });
+                      setOpnModalOpen(true);
+                    }}>
+                      Set Opening Stock
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop View */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-sm text-left">
                   <thead className="bg-muted/40 text-muted-foreground text-xs uppercase border-b">
                     <tr>
@@ -912,38 +1081,60 @@ export default function InventoryPage() {
                   No stock adjustments recorded yet.
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left border-collapse">
-                    <thead className="bg-muted/40 text-muted-foreground text-xs uppercase border-b">
-                      <tr>
-                        <th className="py-3 px-4">Adj #</th>
-                        <th>Date</th>
-                        <th>Item</th>
-                        <th>Type</th>
-                        <th>Qty Change</th>
-                        <th>Reason</th>
-                        <th>Recorded By</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stockAdjustments.map((adj: any) => (
-                        <tr key={adj._id || adj.id} className="border-b last:border-0">
-                          <td className="py-3 px-4 font-mono font-semibold">{adj.adjustmentNo}</td>
-                          <td>{adj.date}</td>
-                          <td className="font-medium">{adj.itemName}</td>
-                          <td>
-                            <Badge className={adj.type === "INCREASE" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}>
-                              {adj.type}
-                            </Badge>
-                          </td>
-                          <td className="font-bold">{adj.qty} Pcs</td>
-                          <td>{adj.reason}</td>
-                          <td className="text-muted-foreground">{adj.createdBy || "Admin"}</td>
+                <>
+                  {/* Mobile View */}
+                  <div className="block md:hidden divide-y">
+                    {stockAdjustments.map((adj: any) => (
+                      <div key={adj._id || adj.id} className="p-3 space-y-2 hover:bg-muted/10 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-bold text-xs text-foreground">{adj.adjustmentNo}</span>
+                          <Badge className={adj.type === "INCREASE" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}>
+                            {adj.type} ({adj.qty} Pcs)
+                          </Badge>
+                        </div>
+                        <div className="font-semibold text-sm">{adj.itemName}</div>
+                        <div className="text-xs text-muted-foreground flex justify-between">
+                          <span>Reason: {adj.reason}</span>
+                          <span>{adj.date}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop View */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-sm text-left border-collapse min-w-[700px]">
+                      <thead className="bg-muted/40 text-muted-foreground text-xs uppercase border-b">
+                        <tr>
+                          <th className="py-3 px-4">Adj #</th>
+                          <th>Date</th>
+                          <th>Item</th>
+                          <th>Type</th>
+                          <th>Qty Change</th>
+                          <th>Reason</th>
+                          <th>Recorded By</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {stockAdjustments.map((adj: any) => (
+                          <tr key={adj._id || adj.id} className="border-b last:border-0">
+                            <td className="py-3 px-4 font-mono font-semibold">{adj.adjustmentNo}</td>
+                            <td>{adj.date}</td>
+                            <td className="font-medium">{adj.itemName}</td>
+                            <td>
+                              <Badge className={adj.type === "INCREASE" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}>
+                                {adj.type}
+                              </Badge>
+                            </td>
+                            <td className="font-bold">{adj.qty} Pcs</td>
+                            <td>{adj.reason}</td>
+                            <td className="text-muted-foreground">{adj.createdBy || "Admin"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -966,38 +1157,60 @@ export default function InventoryPage() {
                   No stock transfers recorded yet.
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left border-collapse">
-                    <thead className="bg-muted/40 text-muted-foreground text-xs uppercase border-b">
-                      <tr>
-                        <th className="py-3 px-4">Transfer #</th>
-                        <th>Date</th>
-                        <th>Item</th>
-                        <th>From</th>
-                        <th>To</th>
-                        <th>Qty</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stockTransfers.map((trf: any) => (
-                        <tr key={trf._id || trf.id} className="border-b last:border-0">
-                          <td className="py-3 px-4 font-mono font-semibold">{trf.transferNo}</td>
-                          <td>{trf.date}</td>
-                          <td className="font-medium">{trf.itemName}</td>
-                          <td>{trf.fromBranch}</td>
-                          <td>{trf.toBranch} ({trf.toGodown || 'Vault'})</td>
-                          <td className="font-bold">{trf.qty} Pcs</td>
-                          <td>
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                              {trf.status}
-                            </Badge>
-                          </td>
+                <>
+                  {/* Mobile View */}
+                  <div className="block md:hidden divide-y">
+                    {stockTransfers.map((trf: any) => (
+                      <div key={trf._id || trf.id} className="p-3 space-y-2 hover:bg-muted/10 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-bold text-xs">{trf.transferNo}</span>
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                            {trf.status}
+                          </Badge>
+                        </div>
+                        <div className="font-semibold text-sm">{trf.itemName} ({trf.qty} Pcs)</div>
+                        <div className="text-xs text-muted-foreground flex justify-between">
+                          <span>{trf.fromBranch} → {trf.toBranch}</span>
+                          <span>{trf.date}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop View */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-sm text-left border-collapse min-w-[700px]">
+                      <thead className="bg-muted/40 text-muted-foreground text-xs uppercase border-b">
+                        <tr>
+                          <th className="py-3 px-4">Transfer #</th>
+                          <th>Date</th>
+                          <th>Item</th>
+                          <th>From</th>
+                          <th>To</th>
+                          <th>Qty</th>
+                          <th>Status</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {stockTransfers.map((trf: any) => (
+                          <tr key={trf._id || trf.id} className="border-b last:border-0">
+                            <td className="py-3 px-4 font-mono font-semibold">{trf.transferNo}</td>
+                            <td>{trf.date}</td>
+                            <td className="font-medium">{trf.itemName}</td>
+                            <td>{trf.fromBranch}</td>
+                            <td>{trf.toBranch} ({trf.toGodown || 'Vault'})</td>
+                            <td className="font-bold">{trf.qty} Pcs</td>
+                            <td>
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                {trf.status}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -1019,40 +1232,63 @@ export default function InventoryPage() {
                   Stock Ledger is empty. Movements will be recorded automatically during Sales, Purchases, Adjustments and Transfers.
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left border-collapse">
-                    <thead className="bg-muted/40 text-muted-foreground text-xs uppercase border-b">
-                      <tr>
-                        <th className="py-3 px-4">Date</th>
-                        <th>Item</th>
-                        <th>Txn Type</th>
-                        <th>Qty Change</th>
-                        <th>Running Balance</th>
-                        <th>Reference #</th>
-                        <th>Remarks</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stockLedger.map((led: any) => (
-                        <tr key={led._id || led.id} className="border-b last:border-0 hover:bg-muted/20">
-                          <td className="py-3 px-4 font-mono">{led.date}</td>
-                          <td className="font-medium">{led.itemName}</td>
-                          <td>
-                            <Badge variant="outline" className="font-semibold">
-                              {led.transactionType}
-                            </Badge>
-                          </td>
-                          <td className={`font-bold ${led.qtyChange >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                            {led.qtyChange >= 0 ? `+${led.qtyChange}` : led.qtyChange} Pcs
-                          </td>
-                          <td className="font-bold">{led.balanceQty} Pcs</td>
-                          <td className="font-mono text-xs">{led.referenceNo || "-"}</td>
-                          <td className="text-xs text-muted-foreground">{led.remarks || "-"}</td>
+                <>
+                  {/* Mobile View */}
+                  <div className="block md:hidden divide-y">
+                    {stockLedger.map((led: any) => (
+                      <div key={led._id || led.id} className="p-3 space-y-2 hover:bg-muted/10 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-xs text-muted-foreground">{led.date}</span>
+                          <Badge variant="outline" className="font-semibold text-xs">
+                            {led.transactionType}
+                          </Badge>
+                        </div>
+                        <div className="font-bold text-sm">{led.itemName}</div>
+                        <div className="flex items-center justify-between text-xs font-mono">
+                          <span>Qty: <strong className={led.qtyChange >= 0 ? "text-emerald-600" : "text-rose-600"}>{led.qtyChange >= 0 ? `+${led.qtyChange}` : led.qtyChange} Pcs</strong></span>
+                          <span>Bal: <strong>{led.balanceQty} Pcs</strong></span>
+                        </div>
+                        {led.remarks && <div className="text-[11px] text-muted-foreground italic">{led.remarks}</div>}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop View */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-sm text-left border-collapse min-w-[800px]">
+                      <thead className="bg-muted/40 text-muted-foreground text-xs uppercase border-b">
+                        <tr>
+                          <th className="py-3 px-4">Date</th>
+                          <th>Item</th>
+                          <th>Txn Type</th>
+                          <th>Qty Change</th>
+                          <th>Running Balance</th>
+                          <th>Reference #</th>
+                          <th>Remarks</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {stockLedger.map((led: any) => (
+                          <tr key={led._id || led.id} className="border-b last:border-0 hover:bg-muted/20">
+                            <td className="py-3 px-4 font-mono">{led.date}</td>
+                            <td className="font-medium">{led.itemName}</td>
+                            <td>
+                              <Badge variant="outline" className="font-semibold">
+                                {led.transactionType}
+                              </Badge>
+                            </td>
+                            <td className={`font-bold ${led.qtyChange >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                              {led.qtyChange >= 0 ? `+${led.qtyChange}` : led.qtyChange} Pcs
+                            </td>
+                            <td className="font-bold">{led.balanceQty} Pcs</td>
+                            <td className="font-mono text-xs">{led.referenceNo || "-"}</td>
+                            <td className="text-xs text-muted-foreground">{led.remarks || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -1570,15 +1806,15 @@ export default function InventoryPage() {
           </DialogHeader>
 
           {selectedTagItem && (
-            <div id="printableTag" className="p-4 border-2 border-dashed rounded-lg bg-white text-black space-y-2 text-center">
+            <div id="printableTag" className="p-4 border-2 border-dashed border-border rounded-lg bg-white text-black space-y-2 text-center max-w-sm mx-auto overflow-hidden shadow-sm">
               <div className="font-bold text-sm tracking-tight uppercase">{tenantSession?.shop?.shopName || "JewelShop ERP"}</div>
               <div className="text-xs font-semibold">{selectedTagItem.name}</div>
               <div className="text-[11px] font-mono">
                 {selectedTagItem.category} | {selectedTagItem.purity} | G: {selectedTagItem.grossWeight}g | N: {selectedTagItem.netWeight}g
               </div>
 
-              <div className="flex justify-center py-2">
-                <svg ref={barcodeCanvasRef}></svg>
+              <div className="flex justify-center py-2 overflow-hidden">
+                <svg ref={barcodeCanvasRef} className="max-w-full h-auto mx-auto block"></svg>
               </div>
 
               {selectedTagItem.huid && (
