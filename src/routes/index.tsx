@@ -192,7 +192,7 @@ export default function Dashboard() {
               <span className="text-xs text-amber-200/80 font-mono">Date: {dateString}</span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-display font-bold text-amber-50 mt-2">
-              Welcome back, {shopName}!
+              {shopName} — Jewellery ERP Dashboard
             </h1>
             <p className="text-amber-200/90 text-sm mt-1 max-w-xl">
               Live Jewellery Showroom Intelligence: Manage POS Billing, Bullion Reserves, Girvi Loans, Karigars & Daybook Ledgers.

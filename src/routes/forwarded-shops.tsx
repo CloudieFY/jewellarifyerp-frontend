@@ -8,18 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { inr, type Girvi, useLocalState, uid } from "@/lib/storage";
-import { calculateCompoundInterest, formatDate, formatCompactIfLarge, triggerPrint } from "@/lib/utils";
+import { calculateCompoundInterest, formatDate } from "@/lib/utils";
 import { useTenantAPI } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Store,
   Eye,
-  ArrowUpRight,
   Plus,
-  MapPin,
-  FileText,
-  Phone,
-  Printer,
   Trash2,
   Pencil,
   Search,
@@ -29,11 +24,9 @@ import {
   Building2,
   DollarSign,
   X,
-  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 
 function getElapsedMonthsAndDays(dateStr: string) {
   if (!dateStr) return { months: 0, days: 0 };
@@ -136,6 +129,9 @@ export default function ForwardedShopsPage() {
   const [shopsPage, setShopsPage] = useState(1);
   const [activePage, setActivePage] = useState(1);
   const [settledPage, setSettledPage] = useState(1);
+
+  void receiptData; void editingProfile; void activePage; void settledPage;
+  void setActivePage; void setSettledPage;
 
   const shops = useMemo(() => {
     const map = new Map<string, any>();

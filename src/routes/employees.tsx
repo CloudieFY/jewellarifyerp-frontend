@@ -23,6 +23,7 @@ import {
   Phone,
   UserCheck,
   Award,
+  Eye,
 } from "lucide-react";
 import { inr } from "@/lib/storage";
 import { formatDate, triggerPrint } from "@/lib/utils";
@@ -146,6 +147,7 @@ export default function EmployeesPage() {
 
   // Payment History Drawer State
   const [historyEmp, setHistoryEmp] = useState<Employee | null>(null);
+  const [viewDetailsEmp, setViewDetailsEmp] = useState<Employee | null>(null);
 
   // Print Payslip Voucher State
   const [printingVoucher, setPrintingVoucher] = useState<{
@@ -458,15 +460,26 @@ export default function EmployeesPage() {
 
                       {/* Mobile Actions Toolbar */}
                       <div className="flex items-center justify-between pt-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-50 px-2 rounded-lg border border-amber-200/60"
-                          onClick={() => setHistoryEmp(e)}
-                        >
-                          <History className="w-3.5 h-3.5 mr-1 text-amber-600" />
-                          {e.payments?.length || 0} Paid
-                        </Button>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-50 px-2 rounded-lg border border-amber-200/60"
+                            onClick={() => setHistoryEmp(e)}
+                          >
+                            <History className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                            {e.payments?.length || 0} Paid
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7 rounded-lg text-amber-700 border-amber-300"
+                            title="View Full Profile Details"
+                            onClick={() => setViewDetailsEmp(e)}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
 
                         {canManage && (
                           <div className="flex items-center gap-1.5">
@@ -588,37 +601,46 @@ export default function EmployeesPage() {
                         </td>
 
                         <td className="py-3 px-4 text-right pr-6 space-x-1.5">
-                          {canManage ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <Button
-                                size="sm"
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-7 px-2.5 rounded-lg shadow-2xs font-semibold flex items-center gap-1"
-                                onClick={() => openSalaryModal(e)}
-                              >
-                                <CreditCard className="w-3.5 h-3.5" /> Pay Salary
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                className="h-7 w-7 rounded-lg text-slate-700 hover:text-slate-900 border-slate-300"
-                                title="Edit Employee Profile"
-                                onClick={() => startEdit(e)}
-                              >
-                                <Pencil className="w-3.5 h-3.5" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                className="h-7 w-7 rounded-lg text-rose-600 hover:text-rose-700 border-rose-200 hover:bg-rose-50"
-                                title="Delete Employee"
-                                onClick={() => remove(empId)}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">View only</span>
-                          )}
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-7 w-7 rounded-lg text-amber-700 hover:text-amber-800 border-amber-300"
+                              title="View Full Employee Profile"
+                              onClick={() => setViewDetailsEmp(e)}
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </Button>
+                            {canManage && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-7 px-2.5 rounded-lg shadow-2xs font-semibold flex items-center gap-1"
+                                  onClick={() => openSalaryModal(e)}
+                                >
+                                  <CreditCard className="w-3.5 h-3.5" /> Pay Salary
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-7 w-7 rounded-lg text-slate-700 hover:text-slate-900 border-slate-300"
+                                  title="Edit Employee Profile"
+                                  onClick={() => startEdit(e)}
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-7 w-7 rounded-lg text-rose-600 hover:text-rose-700 border-rose-200 hover:bg-rose-50"
+                                  title="Delete Employee"
+                                  onClick={() => remove(empId)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -996,6 +1018,164 @@ export default function EmployeesPage() {
                     Close
                   </Button>
                 </DialogFooter>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* EMPLOYEE DETAILS DIALOG */}
+      <Dialog open={!!viewDetailsEmp} onOpenChange={(val) => !val && setViewDetailsEmp(null)}>
+        <DialogContent className="w-[95vw] sm:max-w-2xl p-0 rounded-2xl border border-border shadow-2xl bg-card overflow-hidden [&>button.absolute]:hidden">
+          {viewDetailsEmp && (() => {
+            const emp = viewDetailsEmp;
+            const completedMonths = getCompletedMonths(emp.joinDate);
+            const pending = (completedMonths * emp.salary) - (emp.totalPaid || 0);
+            return (
+              <div>
+                {/* Header Banner */}
+                <div className="bg-gradient-to-r from-amber-900 via-amber-800 to-stone-900 text-white p-5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-amber-500/30 border border-amber-400/40 flex items-center justify-center text-xl font-extrabold text-amber-200">
+                        {emp.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <DialogTitle className="text-lg font-bold text-white">{emp.name}</DialogTitle>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-amber-200 font-mono">💼 {emp.role}</span>
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${emp.status === "Active" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" : "bg-slate-500/20 text-slate-300 border-slate-500/40"}`}>
+                            {emp.status}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <Button size="icon" onClick={() => setViewDetailsEmp(null)} className="h-7 w-7 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-md shrink-0 border-0">
+                      <X className="w-4 h-4 stroke-[2.5]" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="p-5 space-y-4 max-h-[68vh] overflow-y-auto">
+                  {/* Payroll Summary */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-muted/40 border border-border rounded-xl p-3 text-center">
+                      <div className="text-muted-foreground text-[10px] uppercase font-semibold">Monthly Salary</div>
+                      <div className="font-mono font-bold text-lg text-foreground mt-0.5">{inr(emp.salary)}</div>
+                    </div>
+                    <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 rounded-xl p-3 text-center">
+                      <div className="text-emerald-700 dark:text-emerald-300 text-[10px] uppercase font-semibold">Total Paid</div>
+                      <div className="font-mono font-bold text-lg text-emerald-600 dark:text-emerald-400 mt-0.5">{inr(emp.totalPaid || 0)}</div>
+                    </div>
+                    <div className={`border rounded-xl p-3 text-center ${pending > 0 ? "bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40" : "bg-muted/40 border-border"}`}>
+                      <div className={`text-[10px] uppercase font-semibold ${pending > 0 ? "text-rose-700 dark:text-rose-300" : "text-muted-foreground"}`}>Pending Dues</div>
+                      <div className={`font-mono font-bold text-base mt-0.5 ${pending > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600"}`}>
+                        {pending > 0 ? inr(pending) : "Up to Date ✓"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Contact & Employment */}
+                  <div className="space-y-2">
+                    <p className="text-[11px] uppercase font-bold text-muted-foreground tracking-wider">Contact & Employment</p>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-muted/30 rounded-lg p-2.5 border border-border/60">
+                        <div className="text-muted-foreground text-[10px]">Mobile Number</div>
+                        <div className="font-semibold text-foreground mt-0.5 font-mono">{emp.phone || "—"}</div>
+                      </div>
+                      <div className="bg-muted/30 rounded-lg p-2.5 border border-border/60">
+                        <div className="text-muted-foreground text-[10px]">Service Duration</div>
+                        <div className="font-semibold text-foreground mt-0.5 font-mono">{formatDate(emp.joinDate)} ({completedMonths}m)</div>
+                      </div>
+                      {emp.address && (
+                        <div className="col-span-2 bg-muted/30 rounded-lg p-2.5 border border-border/60">
+                          <div className="text-muted-foreground text-[10px]">Residential Address</div>
+                          <div className="font-semibold text-foreground mt-0.5">{emp.address}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Identity & Banking */}
+                  {(emp.aadhaar || emp.pan || emp.upiId || emp.bankDetails) && (
+                    <div className="space-y-2">
+                      <p className="text-[11px] uppercase font-bold text-muted-foreground tracking-wider">Identity & Banking</p>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {emp.aadhaar && (
+                          <div className="bg-muted/30 rounded-lg p-2.5 border border-border/60">
+                            <div className="text-muted-foreground text-[10px]">Aadhaar Number</div>
+                            <div className="font-semibold font-mono text-foreground mt-0.5">{emp.aadhaar}</div>
+                          </div>
+                        )}
+                        {emp.pan && (
+                          <div className="bg-muted/30 rounded-lg p-2.5 border border-border/60">
+                            <div className="text-muted-foreground text-[10px]">PAN Card</div>
+                            <div className="font-semibold font-mono text-foreground mt-0.5">{emp.pan}</div>
+                          </div>
+                        )}
+                        {emp.upiId && (
+                          <div className="bg-muted/30 rounded-lg p-2.5 border border-border/60">
+                            <div className="text-muted-foreground text-[10px]">UPI ID</div>
+                            <div className="font-semibold font-mono text-amber-700 dark:text-amber-400 mt-0.5">{emp.upiId}</div>
+                          </div>
+                        )}
+                        {emp.bankDetails && (
+                          <div className="bg-muted/30 rounded-lg p-2.5 border border-border/60">
+                            <div className="text-muted-foreground text-[10px]">Bank Account</div>
+                            <div className="font-semibold text-foreground mt-0.5 text-[11px]">{emp.bankDetails}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Payment History Mini Log */}
+                  <div className="space-y-2">
+                    <p className="text-[11px] uppercase font-bold text-muted-foreground tracking-wider">Salary Payment History ({emp.payments?.length || 0})</p>
+                    {(!emp.payments || emp.payments.length === 0) ? (
+                      <p className="text-xs text-muted-foreground text-center py-4">No salary payments recorded yet.</p>
+                    ) : (
+                      <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                        {[...(emp.payments || [])].reverse().map((p, idx) => (
+                          <div key={idx} className="flex items-center justify-between bg-muted/30 border border-border/60 rounded-lg px-3 py-2 text-xs">
+                            <div>
+                              <span className="font-semibold text-foreground">{p.monthFor}</span>
+                              <span className="text-muted-foreground ml-2 font-mono">{formatDate(p.date)} · {p.mode}</span>
+                              {p.note && <span className="text-muted-foreground italic ml-1">· {p.note}</span>}
+                            </div>
+                            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 ml-4 shrink-0">+{inr(p.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-4 bg-muted/20 border-t border-border flex items-center justify-between gap-2">
+                  {canManage && (
+                    <Button
+                      size="sm"
+                      className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs h-8 px-4"
+                      onClick={() => { const e = viewDetailsEmp; setViewDetailsEmp(null); openSalaryModal(e!); }}
+                    >
+                      <CreditCard className="w-3.5 h-3.5 mr-1.5" /> Pay Salary
+                    </Button>
+                  )}
+                  <div className="flex gap-2 ml-auto">
+                    {canManage && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs h-8"
+                        onClick={() => { const e = viewDetailsEmp; setViewDetailsEmp(null); startEdit(e!); }}
+                      >
+                        <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit Profile
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setViewDetailsEmp(null)}>Close</Button>
+                  </div>
+                </div>
               </div>
             );
           })()}

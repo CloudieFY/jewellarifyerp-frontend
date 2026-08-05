@@ -116,7 +116,6 @@ export default function PurchasesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewPurchase, setViewPurchase] = useState<any>(null);
   const [searchSup, setSearchSup] = useState("");
-  const debouncedSearchSup = useDebounce(searchSup, 300);
   const [page, setPage] = useState(1);
   const [orderPage, setOrderPage] = useState(1);
   const [gstOnly, setGstOnly] = useState(false);
@@ -131,6 +130,34 @@ export default function PurchasesPage() {
   const [form, setForm] = useState<any>({ ...empty, type: isOperator ? "NON-GST" : "GST", gstPct: isOperator ? 0 : 3 });
   const isOrderForm = form.docType === "Order";
   const gstCalc = calcGST(form);
+
+  const selectedSupplier = useMemo(() => {
+    if (form.supplierId) {
+      return suppliers.find((s: any) => (s._id || s.id) === form.supplierId) || null;
+    }
+    if (form.supplierName?.trim()) {
+      const q = form.supplierName.trim().toLowerCase();
+      return suppliers.find(
+        (s: any) =>
+          s.name.toLowerCase() === q ||
+          (s.mobile && s.mobile === q) ||
+          (s.company && s.company.toLowerCase() === q)
+      ) || null;
+    }
+    return null;
+  }, [suppliers, form.supplierId, form.supplierName]);
+
+  const matchingSuppliers = useMemo(() => {
+    const q = (searchSup || form.supplierName || "").trim().toLowerCase();
+    if (!q || form.supplierId) return [];
+    return suppliers.filter(
+      (s: any) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.mobile || "").includes(q) ||
+        (s.company || "").toLowerCase().includes(q) ||
+        (s.gstNumber || "").toLowerCase().includes(q)
+    );
+  }, [suppliers, searchSup, form.supplierName, form.supplierId]);
 
   const openNewEntry = () => {
     setEditingId(null);
@@ -833,33 +860,115 @@ export default function PurchasesPage() {
             {/* Section: Supplier */}
             <div className="bg-muted/30 rounded-lg p-3 space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Supplier Details</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">Search Supplier</Label>
-                  <Input placeholder="Name, mobile..." value={searchSup} onChange={e => {
-                    setSearchSup(e.target.value);
-                    const match = suppliers.find(s => s.name.toLowerCase() === e.target.value.toLowerCase() || (s.mobile || "").includes(e.target.value));
-                    if (match) setForm((f: any) => ({ ...f, supplierId: match._id || match.id, supplierName: match.name, supplierGstin: (match as any).gstNumber || "" }));
-                  }} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="relative">
+                  <Label className="text-xs">Type or Search Supplier Name *</Label>
+                  <Input
+                    placeholder="Type name, company or mobile..."
+                    value={form.supplierName || searchSup}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setSearchSup(val);
+                      setForm((f: any) => ({ ...f, supplierName: val, supplierId: "" }));
+                      const match = suppliers.find(s => s.name.toLowerCase() === val.trim().toLowerCase() || (s.mobile && s.mobile === val.trim()));
+                      if (match) {
+                        setForm((f: any) => ({
+                          ...f,
+                          supplierId: match._id || match.id,
+                          supplierName: match.name,
+                          supplierGstin: (match as any).gstNumber || ""
+                        }));
+                      }
+                    }}
+                  />
+                  {matchingSuppliers.length > 0 && !form.supplierId && (
+                    <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-popover border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                      {matchingSuppliers.map((s: any) => (
+                        <div
+                          key={s._id || s.id}
+                          className="p-2 hover:bg-accent cursor-pointer text-xs border-b border-border/50 last:border-b-0 flex items-center justify-between"
+                          onClick={() => {
+                            setForm((f: any) => ({
+                              ...f,
+                              supplierId: s._id || s.id,
+                              supplierName: s.name,
+                              supplierGstin: (s as any).gstNumber || ""
+                            }));
+                            setSearchSup(s.name);
+                          }}
+                        >
+                          <div>
+                            <span className="font-semibold text-foreground">{s.name}</span>
+                            {s.company && <span className="text-muted-foreground ml-1">({s.company})</span>}
+                            <div className="text-[11px] text-muted-foreground">{s.mobile} {s.gstNumber ? `· GST: ${s.gstNumber}` : ""}</div>
+                          </div>
+                          <Badge variant="outline" className="text-[10px] whitespace-nowrap">
+                            Bal: {inr(s.outstanding || 0)}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
+
                 <div>
-                  <Label className="text-xs">Supplier *</Label>
+                  <Label className="text-xs">Select Supplier from Dropdown</Label>
                   <Select value={form.supplierId || ""} onValueChange={val => {
                     const s = suppliers.find(x => (x._id || x.id) === val);
-                    if (s) setForm((f: any) => ({ ...f, supplierId: val, supplierName: s.name, supplierGstin: (s as any).gstNumber || "" }));
+                    if (s) {
+                      setForm((f: any) => ({ ...f, supplierId: val, supplierName: s.name, supplierGstin: (s as any).gstNumber || "" }));
+                      setSearchSup(s.name);
+                    }
                   }}>
                     <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
                     <SelectContent>
-                      {suppliers.filter(s => s.name.toLowerCase().includes(debouncedSearchSup.toLowerCase()) || (s.mobile || "").includes(debouncedSearchSup)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(s => (
-                        <SelectItem key={s._id || s.id} value={s._id || s.id}>{s.name} · {s.mobile}</SelectItem>
+                      {suppliers.sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(s => (
+                        <SelectItem key={s._id || s.id} value={s._id || s.id}>{s.name} {s.company ? `(${s.company})` : ""} · {s.mobile}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="col-span-2">
+
+                <div className="col-span-1 sm:col-span-2">
                   <Label className="text-xs">Supplier GSTIN</Label>
                   <Input placeholder="27AAACR1234A1Z5" value={form.supplierGstin || ""} onChange={e => setForm((f: any) => ({ ...f, supplierGstin: e.target.value.toUpperCase() }))} className="font-mono" />
                 </div>
+
+                {/* Fetched Supplier Profile Card */}
+                {selectedSupplier && (
+                  <div className="col-span-1 sm:col-span-2 bg-emerald-50/90 border border-emerald-300 rounded-lg p-3 text-xs space-y-1.5 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="bg-emerald-700 text-white font-semibold px-2 py-0.5 rounded text-[10px]">
+                          ✓ Existing Supplier Found &amp; Fetched
+                        </span>
+                        <span className="font-bold text-emerald-950 text-sm">{selectedSupplier.name}</span>
+                        {selectedSupplier.company && <span className="text-emerald-800 font-medium">({selectedSupplier.company})</span>}
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-[10px] text-emerald-800 hover:text-emerald-950 hover:bg-emerald-200"
+                        onClick={() => {
+                          setForm((f: any) => ({ ...f, supplierId: "", supplierName: "", supplierGstin: "" }));
+                          setSearchSup("");
+                        }}
+                      >
+                        Clear / Change
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-emerald-200/60 text-slate-800">
+                      <div><span className="text-slate-500">Mobile:</span> <span className="font-semibold">{selectedSupplier.mobile || "—"}</span></div>
+                      <div><span className="text-slate-500">GSTIN:</span> <span className="font-semibold font-mono">{selectedSupplier.gstNumber || "—"}</span></div>
+                      <div><span className="text-slate-500">Outstanding:</span> <strong className="text-emerald-800 font-bold">{inr(selectedSupplier.outstanding || 0)}</strong></div>
+                      <div><span className="text-slate-500">Metal Bal:</span> <span className="font-semibold">Gold {selectedSupplier.balanceGold || 0}g / Silver {selectedSupplier.balanceSilver || 0}g</span></div>
+                    </div>
+                    {selectedSupplier.address && (
+                      <div className="text-[11px] text-slate-600"><span className="text-slate-500">Address:</span> {selectedSupplier.address}</div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

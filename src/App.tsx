@@ -57,11 +57,11 @@ function App() {
           {/* Public-facing routes */}
           <Route path="/" element={<PublicRouteWrapper><LandingPage /></PublicRouteWrapper>} />
           <Route path="/login" element={<PublicRouteWrapper><LoginPage /></PublicRouteWrapper>} />
-          <Route path="/about" element={<PublicRouteWrapper><AboutPage /></PublicRouteWrapper>} />
-          <Route path="/features/girvi" element={<PublicRouteWrapper><GirviFeaturePage /></PublicRouteWrapper>} />
-          <Route path="/contact" element={<PublicRouteWrapper><ContactPage /></PublicRouteWrapper>} />
-          <Route path="/privacy-policy" element={<PublicRouteWrapper><PrivacyPolicyPage /></PublicRouteWrapper>} />
-          <Route path="/terms-and-conditions" element={<PublicRouteWrapper><TermsAndConditionsPage /></PublicRouteWrapper>} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/features/girvi" element={<GirviFeaturePage />} />
+          <Route path="/contact" element={<ContactPage />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+          <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
 
           {/* Super Admin Routes */}
           <Route path="/superadmin/login" element={<SuperAdminLoginPage />} />
