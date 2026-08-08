@@ -904,7 +904,7 @@ export default function BalanceSheetPage() {
       </div>
 
       {/* ISOLATED PRINTABLE CONTAINER (FORMATTED FOR PDF & PRINT DOWNLOAD) */}
-      <div id="printable-balance-sheet" className="hidden text-slate-900 bg-white p-6">
+      <div id="printable-balance-sheet" className="print-section hidden print:block text-slate-900 bg-white p-6">
         <ShopHeader documentLabel="Consolidated Financial Balance Sheet" compact />
 
         <div className="text-center my-3 border-b border-slate-300 pb-3">

@@ -788,7 +788,7 @@ export default function LedgerPage() {
       </div>
 
       {/* ISOLATED PRINTABLE LEDGER STATEMENT */}
-      <div id="printable-ledger-statement" className="hidden print:block text-slate-900 bg-white p-6">
+      <div id="printable-ledger-statement" className="print-section hidden print:block text-slate-900 bg-white p-6">
         <ShopHeader documentLabel={viewMode === "daily" ? "Daily Daybook Statement" : "Monthly Cashflow Statement"} compact />
 
         <div className="text-center my-3 border-b border-slate-300 pb-3">

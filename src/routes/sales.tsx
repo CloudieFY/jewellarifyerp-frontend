@@ -5,10 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { inr, type Invoice } from "@/lib/storage";
 import { useAuth } from "@/lib/auth";
 import { formatDate, useDebounce, triggerPrint } from "@/lib/utils";
-import { Receipt, Trash2, TrendingUp, Printer, Eye, Award, Scale, DollarSign, Search, FileText, Plus } from "lucide-react";
+import { Receipt, Trash2, TrendingUp, Printer, Eye, Award, DollarSign, Search, FileText, Plus, RotateCcw } from "lucide-react";
 import { useTenantAPI } from "@/lib/api";
 import { toast } from "sonner";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
@@ -22,7 +27,7 @@ export default function SalesPage() {
   const queryClient = useQueryClient();
 
   const { data: allInvoices = [], isLoading } = useQuery<Invoice[]>({ queryKey: ["invoices"], queryFn: api.invoices.getAll });
-
+  const { data: salesReturns = [], isLoading: isLoadingReturns } = useQuery<any[]>({ queryKey: ["salesReturns"], queryFn: api.salesReturns.getAll });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.invoices.remove(id),
@@ -32,14 +37,151 @@ export default function SalesPage() {
     }
   });
 
+  const createReturnMutation = useMutation({
+    mutationFn: (data: any) => api.salesReturns.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["salesReturns"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    }
+  });
+
+  const deleteReturnMutation = useMutation({
+    mutationFn: (id: string) => api.salesReturns.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["salesReturns"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    }
+  });
+
   const isOperator = authUser?.role === "operator";
   const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type !== "GST" : i.type === "GST"), [allInvoices, isOperator]);
 
+  const [activeMainTab, setActiveMainTab] = useState("invoices");
   const [q, setQ] = useState("");
   const debouncedQ = useDebounce(q, 300);
   const [filterType, setFilterType] = useState<"ALL" | "PAID" | "DUE">("ALL");
   const [page, setPage] = useState(1);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
+
+  /* ------------------------------------------------------------------ */
+  /* Sales Return Dialog State & Logic                                  */
+  /* ------------------------------------------------------------------ */
+  const [openReturnDialog, setOpenReturnDialog] = useState(false);
+  const [selectedInvoiceForReturn, setSelectedInvoiceForReturn] = useState<Invoice | null>(null);
+  const [returnItemsState, setReturnItemsState] = useState<Array<{
+    productId: string;
+    name: string;
+    purity?: string;
+    netWeight: number;
+    ratePerGram: number;
+    makingCharge: number;
+    gstPct: number;
+    qty: number;
+    huid?: string;
+    returnAmount: number;
+    selected: boolean;
+  }>>([]);
+  const [refundMode, setRefundMode] = useState<"Cash" | "UPI" | "Card" | "Adjust Dues" | "Store Credit">("Cash");
+  const [returnReason, setReturnReason] = useState("");
+  const [returnNotes, setReturnNotes] = useState("");
+
+  const handleOpenReturnDialog = () => {
+    setSelectedInvoiceForReturn(null);
+    setReturnItemsState([]);
+    setRefundMode("Cash");
+    setReturnReason("Defective / Mind Change");
+    setReturnNotes("");
+    setOpenReturnDialog(true);
+  };
+
+  const handleSelectInvoiceForReturn = (invoiceId: string) => {
+    const inv = invoices.find(i => (i._id || i.id) === invoiceId);
+    if (!inv) return;
+    setSelectedInvoiceForReturn(inv);
+    setReturnItemsState((inv.items || []).map((it: any) => {
+      const lineTotal = ((it.netWeight || 0) * (it.ratePerGram || 0)) + (it.makingCharge || 0);
+      return {
+        productId: it.productId,
+        name: it.name,
+        purity: it.purity || '22K',
+        netWeight: it.netWeight || 0,
+        ratePerGram: it.ratePerGram || 0,
+        makingCharge: it.makingCharge || 0,
+        gstPct: it.gstPct || 0,
+        qty: it.qty || 1,
+        huid: it.huid || '',
+        returnAmount: lineTotal,
+        selected: true,
+      };
+    }));
+  };
+
+  const calculateReturnTotals = useMemo(() => {
+    const selectedItems = returnItemsState.filter(i => i.selected);
+    const subtotal = selectedItems.reduce((sum, item) => sum + item.returnAmount, 0);
+    const gstAmount = selectedItems.reduce((sum, item) => sum + (item.returnAmount * (item.gstPct || 0) / 100), 0);
+    const totalRefund = subtotal + gstAmount;
+    return { subtotal, gstAmount, totalRefund, count: selectedItems.length };
+  }, [returnItemsState]);
+
+  const handleSaveSalesReturn = async () => {
+    if (!selectedInvoiceForReturn) {
+      toast.error("Please select an invoice to return against.");
+      return;
+    }
+    const selectedItems = returnItemsState.filter(i => i.selected);
+    if (selectedItems.length === 0) {
+      toast.error("Select at least one item to return.");
+      return;
+    }
+
+    const payload = {
+      invoiceId: selectedInvoiceForReturn._id || selectedInvoiceForReturn.id,
+      invoiceNumber: selectedInvoiceForReturn.number,
+      customerId: selectedInvoiceForReturn.customerId,
+      customerName: selectedInvoiceForReturn.customerName,
+      customerMobile: selectedInvoiceForReturn.customerMobile,
+      items: selectedItems.map(it => ({
+        productId: it.productId,
+        name: it.name,
+        purity: it.purity,
+        netWeight: Number(it.netWeight),
+        ratePerGram: Number(it.ratePerGram),
+        makingCharge: Number(it.makingCharge),
+        gstPct: Number(it.gstPct),
+        qty: Number(it.qty),
+        huid: it.huid,
+        returnAmount: Number(it.returnAmount),
+      })),
+      subtotal: calculateReturnTotals.subtotal,
+      gstAmount: calculateReturnTotals.gstAmount,
+      totalRefund: calculateReturnTotals.totalRefund,
+      refundMode,
+      reason: returnReason,
+      notes: returnNotes,
+    };
+
+    try {
+      await createReturnMutation.mutateAsync(payload);
+      setOpenReturnDialog(false);
+      toast.success("Sales Return processed successfully! Inventory stock has been restored.");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to process sales return.");
+    }
+  };
+
+  const handleRemoveSalesReturn = async (returnDoc: any) => {
+    if (window.confirm(`Are you sure you want to delete Sales Return ${returnDoc.returnNo}? This will re-deduct the returned items from your active inventory.`)) {
+      try {
+        await deleteReturnMutation.mutateAsync(returnDoc._id || returnDoc.id || "");
+        toast.success("Sales Return deleted and inventory adjusted.");
+      } catch (e) {
+        toast.error("Failed to delete sales return.");
+      }
+    }
+  };
 
   // Filtered Invoices
   const filtered = useMemo(() => {
@@ -75,7 +217,6 @@ export default function SalesPage() {
     }, 0);
   }, [filtered]);
 
-  const totalOldGoldExchanged = useMemo(() => filtered.reduce((s, i) => s + (i.oldGoldAmount || 0), 0), [filtered]);
   const totalGstTaxCollected = useMemo(() => filtered.reduce((s, i) => s + (i.gstAmount || 0), 0), [filtered]);
 
   // 30 Days Sales Trend Data
@@ -124,11 +265,16 @@ export default function SalesPage() {
             {isOperator ? "Estimate Order & Billing History" : "Tax Invoices, Metal Weights Sold & Revenue Ledger"}
           </p>
         </div>
-        <Link to="/billing">
-          <Button size="lg" className="bg-primary text-white hover:bg-primary/90">
-            <Plus className="w-4 h-4 mr-2" /> Issue New Invoice
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="lg" onClick={handleOpenReturnDialog} className="border-rose-300 text-rose-700 hover:bg-rose-50">
+            <RotateCcw className="w-4 h-4 mr-2" /> Issue Sales Return
           </Button>
-        </Link>
+          <Link to="/billing">
+            <Button size="lg" className="bg-primary text-white hover:bg-primary/90">
+              <Plus className="w-4 h-4 mr-2" /> Issue New Invoice
+            </Button>
+          </Link>
+        </div>
       </header>
 
       {/* METRICS DASHBOARD */}
@@ -162,12 +308,14 @@ export default function SalesPage() {
         <Card className="border shadow-sm">
           <CardContent className="pt-5 flex items-center justify-between">
             <div>
-              <div className="text-xs font-medium text-muted-foreground uppercase">Old Gold Exchanged</div>
-              <div className="text-2xl font-bold font-display text-blue-600 mt-1">{inr(totalOldGoldExchanged)}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Scrap Metal Trade-in Credit</div>
+              <div className="text-xs font-medium text-muted-foreground uppercase">Sales Returns</div>
+              <div className="text-2xl font-bold font-display text-rose-600 mt-1">
+                {inr(salesReturns.reduce((sum, r) => sum + (r.totalRefund || 0), 0))}
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">{salesReturns.length} Return Vouchers</div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 grid place-items-center">
-              <Scale className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 grid place-items-center">
+              <RotateCcw className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
@@ -188,161 +336,355 @@ export default function SalesPage() {
         </Card>
       </div>
 
-      {/* SALES TREND CHART */}
-      <Card className="mb-6 shadow-sm">
-        <CardHeader className="pb-3 border-b bg-muted/20">
-          <CardTitle className="font-display text-base flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-primary" /> 30-Day Sales Trend Analysis
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="h-64 pt-4">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={last30Days} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} tickFormatter={formatYAxis} />
-              <RechartsTooltip formatter={(value: number) => [inr(value), "Sales"]} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-              <Line type="monotone" dataKey="Sales" stroke="#3b82f6" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      <Tabs value={activeMainTab} onValueChange={setActiveMainTab} className="space-y-6">
+        <TabsList className="grid grid-cols-2 w-full max-w-md h-auto bg-muted/60 p-1 rounded-xl">
+          <TabsTrigger value="invoices" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5">
+            <Receipt className="w-4 h-4" /> Sales Invoices ({invoices.length})
+          </TabsTrigger>
+          <TabsTrigger value="returns" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5">
+            <RotateCcw className="w-4 h-4" /> Sales Returns ({salesReturns.length})
+          </TabsTrigger>
+        </TabsList>
 
-      {/* SEARCH & FILTERS BAR */}
-      <Card className="mb-6 shadow-sm">
-        <CardContent className="pt-4 pb-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 absolute left-3 top-2.5 text-muted-foreground" />
-              <Input
-                placeholder="Search Invoice #, Customer, Mobile, HUID, Item..."
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                className="pl-9 h-9 text-xs"
-              />
-            </div>
+        <TabsContent value="invoices" className="space-y-6">
+          {/* SALES TREND CHART */}
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3 border-b bg-muted/20">
+              <CardTitle className="font-display text-base flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-primary" /> 30-Day Sales Trend Analysis
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="h-64 pt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={last30Days} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} tickFormatter={formatYAxis} />
+                  <RechartsTooltip formatter={(value: number) => [inr(value), "Sales"]} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Line type="monotone" dataKey="Sales" stroke="#3b82f6" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
 
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant={filterType === "ALL" ? "default" : "outline"}
-                className="h-8 text-xs"
-                onClick={() => setFilterType("ALL")}
-              >
-                All ({invoices.length})
-              </Button>
-              <Button
-                size="sm"
-                variant={filterType === "PAID" ? "default" : "outline"}
-                className="h-8 text-xs"
-                onClick={() => setFilterType("PAID")}
-              >
-                Fully Paid ({invoices.filter(i => (i.balanceDue || 0) <= 0).length})
-              </Button>
-              <Button
-                size="sm"
-                variant={filterType === "DUE" ? "default" : "outline"}
-                className="h-8 text-xs"
-                onClick={() => setFilterType("DUE")}
-              >
-                Balance Due ({invoices.filter(i => (i.balanceDue || 0) > 0).length})
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          {/* SEARCH & FILTERS BAR */}
+          <Card className="shadow-sm">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="relative w-full sm:w-80">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Search Invoice #, Customer, Mobile, HUID, Item..."
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    className="pl-9 h-9 text-xs"
+                  />
+                </div>
 
-      {/* DETAILED SALES TABLE */}
-      <Card className="shadow-sm border overflow-hidden flex flex-col">
-        <CardHeader className="bg-muted/20 border-b pb-3 pt-4 flex flex-row items-center justify-between">
-          <CardTitle className="text-base font-semibold font-display flex items-center gap-2">
-            <Receipt className="w-5 h-5 text-primary" />
-            {isOperator ? "Estimate Order Sales History" : "Tax Invoices & Sales Register"}
-          </CardTitle>
-          <Badge variant="outline" className="text-xs">
-            Showing {filtered.length} Invoices
-          </Badge>
-        </CardHeader>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={filterType === "ALL" ? "default" : "outline"}
+                    className="h-8 text-xs"
+                    onClick={() => setFilterType("ALL")}
+                  >
+                    All ({invoices.length})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={filterType === "PAID" ? "default" : "outline"}
+                    className="h-8 text-xs"
+                    onClick={() => setFilterType("PAID")}
+                  >
+                    Fully Paid ({invoices.filter(i => (i.balanceDue || 0) <= 0).length})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={filterType === "DUE" ? "default" : "outline"}
+                    className="h-8 text-xs"
+                    onClick={() => setFilterType("DUE")}
+                  >
+                    Balance Due ({invoices.filter(i => (i.balanceDue || 0) > 0).length})
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="py-12 text-center text-muted-foreground text-sm">Loading sales register...</div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-              <Receipt className="w-10 h-10 mb-3 opacity-20" />
-              <p className="text-sm">No sales invoices match your search.</p>
-            </div>
-          ) : (
-            <div>
-              <div className="hidden md:block overflow-x-auto w-full">
-                <table className="w-full text-sm text-left border-collapse min-w-[950px]">
-                  <thead className="bg-muted/40 text-muted-foreground text-[11px] uppercase tracking-wider border-b">
-                    <tr>
-                      <th className="py-3 px-4">Invoice # / Date</th>
-                      <th className="py-3 px-4">Customer Details</th>
-                      <th className="py-3 px-4">Jewellery Items Sold</th>
-                      <th className="py-3 px-4 text-center">Net Metal Wt</th>
-                      {!isOperator && <th className="py-3 px-4">Type</th>}
-                      <th className="py-3 px-4">Payment</th>
-                      <th className="py-3 px-4 text-right">Invoice Total</th>
-                      <th className="py-3 px-4 text-center">Status</th>
-                      <th className="py-3 px-4 text-right pr-6">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+          {/* DETAILED SALES TABLE */}
+          <Card className="shadow-sm border overflow-hidden flex flex-col">
+            <CardHeader className="bg-muted/20 border-b pb-3 pt-4 flex flex-row items-center justify-between">
+              <CardTitle className="text-base font-semibold font-display flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-primary" />
+                {isOperator ? "Estimate Order Sales History" : "Tax Invoices & Sales Register"}
+              </CardTitle>
+              <Badge variant="outline" className="text-xs">
+                Showing {filtered.length} Invoices
+              </Badge>
+            </CardHeader>
+
+            <CardContent className="p-0">
+              {isLoading ? (
+                <div className="py-12 text-center text-muted-foreground text-sm">Loading sales register...</div>
+              ) : filtered.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                  <Receipt className="w-10 h-10 mb-3 opacity-20" />
+                  <p className="text-sm">No sales invoices match your search.</p>
+                </div>
+              ) : (
+                <div>
+                  <div className="hidden md:block overflow-x-auto w-full">
+                    <table className="w-full text-sm text-left border-collapse min-w-[950px]">
+                      <thead className="bg-muted/40 text-muted-foreground text-[11px] uppercase tracking-wider border-b">
+                        <tr>
+                          <th className="py-3 px-4">Invoice # / Date</th>
+                          <th className="py-3 px-4">Customer Details</th>
+                          <th className="py-3 px-4">Jewellery Items Sold</th>
+                          <th className="py-3 px-4 text-center">Net Metal Wt</th>
+                          {!isOperator && <th className="py-3 px-4">Type</th>}
+                          <th className="py-3 px-4">Payment</th>
+                          <th className="py-3 px-4 text-right">Invoice Total</th>
+                          <th className="py-3 px-4 text-center">Status</th>
+                          <th className="py-3 px-4 text-right pr-6">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedInvoices.map((i) => {
+                          const invoiceNetWt = (i.items || []).reduce((sum, it) => sum + ((it.netWeight || 0) * (it.qty || 1)), 0);
+                          return (
+                            <tr key={i._id || i.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                              <td className="py-3 px-4 font-medium text-foreground whitespace-nowrap">
+                                <div className="font-mono font-bold text-primary">{i.number}</div>
+                                <div className="text-xs text-muted-foreground">{formatDate(i.createdAt)}</div>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <div className="font-semibold text-foreground">{i.customerName}</div>
+                                <div className="text-xs text-muted-foreground">{i.customerMobile}</div>
+                              </td>
+
+                              <td className="py-3 px-4 max-w-xs">
+                                <div className="space-y-1">
+                                  {(i.items || []).map((it: any, idx: number) => (
+                                    <div key={idx} className="flex items-center gap-1.5 text-xs">
+                                      <span className="font-medium text-foreground line-clamp-1">{it.name}</span>
+                                      {it.purity && <Badge variant="secondary" className="text-[10px] py-0 px-1">{it.purity}</Badge>}
+                                      {it.huid && <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono text-amber-700 bg-amber-50">{it.huid}</Badge>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4 text-center whitespace-nowrap font-bold text-amber-700">
+                                {invoiceNetWt.toFixed(2)} g
+                              </td>
+
+                              {!isOperator && (
+                                <td className="py-3 px-4 whitespace-nowrap">
+                                  <Badge className={i.type === "GST" ? "bg-indigo-100 text-indigo-800 border-indigo-200" : "bg-emerald-100 text-emerald-800 border-emerald-200"}>
+                                    {i.type === "GST" ? "GST Invoice" : "Estimate"}
+                                  </Badge>
+                                </td>
+                              )}
+
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <div className="font-medium text-foreground">{i.paymentMode}</div>
+                                {i.oldGoldAmount ? <div className="text-[11px] text-amber-700">Old Gold: {inr(i.oldGoldAmount)}</div> : null}
+                              </td>
+
+                              <td className="py-3 px-4 text-right font-bold text-emerald-600 whitespace-nowrap">
+                                {inr(i.total)}
+                              </td>
+
+                              <td className="py-3 px-4 text-center whitespace-nowrap">
+                                {(i.balanceDue || 0) <= 0 ? (
+                                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">Paid</Badge>
+                                ) : (
+                                  <Badge variant="destructive">Due: {inr(i.balanceDue || 0)}</Badge>
+                                )}
+                              </td>
+
+                              <td className="py-3 px-4 text-right whitespace-nowrap pr-4">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
+                                    title="View & Print Invoice"
+                                    onClick={() => setSelectedInvoice(i)}
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 w-8 p-0 text-rose-500 hover:text-rose-600"
+                                    title="Delete Invoice & Restore Stock"
+                                    onClick={() => removeInvoice(i)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile Cards View */}
+                  <div className="md:hidden grid grid-cols-1 sm:grid-cols-2 gap-3 p-3">
                     {paginatedInvoices.map((i) => {
                       const invoiceNetWt = (i.items || []).reduce((sum, it) => sum + ((it.netWeight || 0) * (it.qty || 1)), 0);
                       return (
-                        <tr key={i._id || i.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                        <div key={i._id || i.id} className="p-3.5 rounded-xl border border-border bg-card shadow-sm space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="font-mono text-xs font-bold text-primary">{i.number}</div>
+                              <div className="font-semibold text-base text-foreground mt-0.5">{i.customerName}</div>
+                              <div className="text-xs text-muted-foreground">{i.customerMobile}</div>
+                            </div>
+                            {(i.balanceDue || 0) <= 0 ? (
+                              <Badge className="bg-emerald-100 text-emerald-800">Paid</Badge>
+                            ) : (
+                              <Badge variant="destructive">Due: {inr(i.balanceDue || 0)}</Badge>
+                            )}
+                          </div>
+
+                          <div className="p-2.5 rounded-lg bg-muted/40 space-y-1">
+                            {(i.items || []).map((it: any, idx: number) => (
+                              <div key={idx} className="text-xs flex items-center justify-between">
+                                <span className="font-medium text-foreground truncate">{it.name} ({it.purity || '22K'})</span>
+                                <span className="font-mono text-amber-700">{it.netWeight || 0}g</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 py-2 px-2.5 rounded-lg bg-muted/30 text-center text-xs">
+                            <div>
+                              <div className="text-[10px] text-muted-foreground uppercase font-medium">Gold Wt</div>
+                              <div className="font-bold text-amber-700 mt-0.5">{invoiceNetWt.toFixed(2)}g</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-muted-foreground uppercase font-medium">Mode</div>
+                              <div className="font-semibold mt-0.5 text-foreground">{i.paymentMode}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-muted-foreground uppercase font-medium">Total</div>
+                              <div className="font-bold text-emerald-600 mt-0.5">{inr(i.total)}</div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-1 border-t border-border/60 text-xs">
+                            <div className="text-[11px] text-muted-foreground">{formatDate(i.createdAt)}</div>
+                            <div className="flex items-center gap-1">
+                              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setSelectedInvoice(i)}>
+                                <Eye className="w-3.5 h-3.5 text-primary" /> View
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-rose-500" onClick={() => removeInvoice(i)}>
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Pagination */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                      <div className="text-xs text-muted-foreground">
+                        Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filtered.length)} of {filtered.length} entries
+                      </div>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                        <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ==================================================================== */}
+        {/* TAB: SALES RETURNS                                                   */}
+        {/* ==================================================================== */}
+        <TabsContent value="returns" className="space-y-6">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="text-lg font-display font-semibold">Sales Return Credit Vouchers</h2>
+              <p className="text-xs text-muted-foreground">Process customer returned jewellery, issue credit notes &amp; automatically restore inventory stock.</p>
+            </div>
+            <Button size="lg" onClick={handleOpenReturnDialog} className="bg-rose-600 text-white hover:bg-rose-700">
+              <Plus className="w-4 h-4 mr-2" /> Issue Sales Return
+            </Button>
+          </div>
+
+          <Card className="shadow-sm border">
+            <CardContent className="p-0">
+              {isLoadingReturns ? (
+                <div className="py-12 text-center text-muted-foreground text-sm">Loading sales returns...</div>
+              ) : salesReturns.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                  <RotateCcw className="w-10 h-10 mb-3 opacity-20" />
+                  <p className="text-sm">No sales returns recorded yet.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto w-full">
+                  <table className="w-full text-sm text-left border-collapse min-w-[850px]">
+                    <thead className="bg-muted/40 text-muted-foreground text-[11px] uppercase tracking-wider border-b">
+                      <tr>
+                        <th className="py-3 px-4">Return # / Date</th>
+                        <th className="py-3 px-4">Original Invoice</th>
+                        <th className="py-3 px-4">Customer</th>
+                        <th className="py-3 px-4">Returned Items</th>
+                        <th className="py-3 px-4">Refund Mode</th>
+                        <th className="py-3 px-4 text-right">Total Refund</th>
+                        <th className="py-3 px-4 text-right pr-6">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {salesReturns.map((r: any) => (
+                        <tr key={r._id || r.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
                           <td className="py-3 px-4 font-medium text-foreground whitespace-nowrap">
-                            <div className="font-mono font-bold text-primary">{i.number}</div>
-                            <div className="text-xs text-muted-foreground">{formatDate(i.createdAt)}</div>
+                            <div className="font-mono font-bold text-rose-600">{r.returnNo}</div>
+                            <div className="text-xs text-muted-foreground">{formatDate(r.createdAt || r.date)}</div>
+                          </td>
+
+                          <td className="py-3 px-4 font-mono text-primary font-semibold">
+                            {r.invoiceNumber || "Direct Return"}
                           </td>
 
                           <td className="py-3 px-4">
-                            <div className="font-semibold text-foreground">{i.customerName}</div>
-                            <div className="text-xs text-muted-foreground">{i.customerMobile}</div>
+                            <div className="font-semibold text-foreground">{r.customerName}</div>
+                            <div className="text-xs text-muted-foreground">{r.customerMobile}</div>
                           </td>
 
                           <td className="py-3 px-4 max-w-xs">
                             <div className="space-y-1">
-                              {(i.items || []).map((it: any, idx: number) => (
+                              {(r.items || []).map((it: any, idx: number) => (
                                 <div key={idx} className="flex items-center gap-1.5 text-xs">
-                                  <span className="font-medium text-foreground line-clamp-1">{it.name}</span>
-                                  {it.purity && <Badge variant="secondary" className="text-[10px] py-0 px-1">{it.purity}</Badge>}
-                                  {it.huid && <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono text-amber-700 bg-amber-50">{it.huid}</Badge>}
+                                  <span className="font-medium text-foreground">{it.name}</span>
+                                  <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono text-amber-700 bg-amber-50">
+                                    {it.netWeight}g
+                                  </Badge>
                                 </div>
                               ))}
                             </div>
                           </td>
 
-                          <td className="py-3 px-4 text-center whitespace-nowrap font-bold text-amber-700">
-                            {invoiceNetWt.toFixed(2)} g
-                          </td>
-
-                          {!isOperator && (
-                            <td className="py-3 px-4 whitespace-nowrap">
-                              <Badge className={i.type === "GST" ? "bg-indigo-100 text-indigo-800 border-indigo-200" : "bg-emerald-100 text-emerald-800 border-emerald-200"}>
-                                {i.type === "GST" ? "GST Invoice" : "Estimate"}
-                              </Badge>
-                            </td>
-                          )}
-
                           <td className="py-3 px-4 whitespace-nowrap">
-                            <div className="font-medium text-foreground">{i.paymentMode}</div>
-                            {i.oldGoldAmount ? <div className="text-[11px] text-amber-700">Old Gold: {inr(i.oldGoldAmount)}</div> : null}
+                            <Badge className="bg-rose-100 text-rose-800 border-rose-200">
+                              {r.refundMode}
+                            </Badge>
                           </td>
 
-                          <td className="py-3 px-4 text-right font-bold text-emerald-600 whitespace-nowrap">
-                            {inr(i.total)}
-                          </td>
-
-                          <td className="py-3 px-4 text-center whitespace-nowrap">
-                            {(i.balanceDue || 0) <= 0 ? (
-                              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">Paid</Badge>
-                            ) : (
-                              <Badge variant="destructive">Due: {inr(i.balanceDue || 0)}</Badge>
-                            )}
+                          <td className="py-3 px-4 text-right font-bold text-rose-600 whitespace-nowrap">
+                            -{inr(r.totalRefund)}
                           </td>
 
                           <td className="py-3 px-4 text-right whitespace-nowrap pr-4">
@@ -351,8 +693,8 @@ export default function SalesPage() {
                                 size="sm"
                                 variant="ghost"
                                 className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
-                                title="View & Print Invoice"
-                                onClick={() => setSelectedInvoice(i)}
+                                title="View Credit Note"
+                                onClick={() => setSelectedReturn(r)}
                               >
                                 <Eye className="w-4 h-4" />
                               </Button>
@@ -360,101 +702,276 @@ export default function SalesPage() {
                                 size="sm"
                                 variant="ghost"
                                 className="h-8 w-8 p-0 text-rose-500 hover:text-rose-600"
-                                title="Delete Invoice & Restore Stock"
-                                onClick={() => removeInvoice(i)}
+                                title="Delete Sales Return & Deduct Stock"
+                                onClick={() => handleRemoveSalesReturn(r)}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </Button>
                             </div>
                           </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile Cards View */}
-              <div className="md:hidden grid grid-cols-1 sm:grid-cols-2 gap-3 p-3">
-                {paginatedInvoices.map((i) => {
-                  const invoiceNetWt = (i.items || []).reduce((sum, it) => sum + ((it.netWeight || 0) * (it.qty || 1)), 0);
-                  return (
-                    <div key={i._id || i.id} className="p-3.5 rounded-xl border border-border bg-card shadow-sm space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="font-mono text-xs font-bold text-primary">{i.number}</div>
-                          <div className="font-semibold text-base text-foreground mt-0.5">{i.customerName}</div>
-                          <div className="text-xs text-muted-foreground">{i.customerMobile}</div>
-                        </div>
-                        {(i.balanceDue || 0) <= 0 ? (
-                          <Badge className="bg-emerald-100 text-emerald-800">Paid</Badge>
-                        ) : (
-                          <Badge variant="destructive">Due: {inr(i.balanceDue || 0)}</Badge>
-                        )}
-                      </div>
-
-                      <div className="p-2.5 rounded-lg bg-muted/40 space-y-1">
-                        {(i.items || []).map((it: any, idx: number) => (
-                          <div key={idx} className="text-xs flex items-center justify-between">
-                            <span className="font-medium text-foreground truncate">{it.name} ({it.purity || '22K'})</span>
-                            <span className="font-mono text-amber-700">{it.netWeight || 0}g</span>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 py-2 px-2.5 rounded-lg bg-muted/30 text-center text-xs">
-                        <div>
-                          <div className="text-[10px] text-muted-foreground uppercase font-medium">Gold Wt</div>
-                          <div className="font-bold text-amber-700 mt-0.5">{invoiceNetWt.toFixed(2)}g</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] text-muted-foreground uppercase font-medium">Mode</div>
-                          <div className="font-semibold mt-0.5 text-foreground">{i.paymentMode}</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] text-muted-foreground uppercase font-medium">Total</div>
-                          <div className="font-bold text-emerald-600 mt-0.5">{inr(i.total)}</div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-1 border-t border-border/60 text-xs">
-                        <div className="text-[11px] text-muted-foreground">{formatDate(i.createdAt)}</div>
-                        <div className="flex items-center gap-1">
-                          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setSelectedInvoice(i)}>
-                            <Eye className="w-3.5 h-3.5 text-primary" /> View
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-rose-500" onClick={() => removeInvoice(i)}>
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-                  <div className="text-xs text-muted-foreground">
-                    Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filtered.length)} of {filtered.length} entries
-                  </div>
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
-                    <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
-                  </div>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* CREATE SALES RETURN DIALOG */}
+      <Dialog open={openReturnDialog} onOpenChange={setOpenReturnDialog}>
+        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-display flex items-center gap-2 text-rose-700">
+              <RotateCcw className="w-5 h-5" /> Issue Sales Return (Credit Note)
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            {/* 1. Select Invoice */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Select Original Invoice *</Label>
+              <Select value={selectedInvoiceForReturn?._id || selectedInvoiceForReturn?.id || ""} onValueChange={handleSelectInvoiceForReturn}>
+                <SelectTrigger><SelectValue placeholder="Choose an invoice..." /></SelectTrigger>
+                <SelectContent className="max-h-56">
+                  {invoices.map((i) => (
+                    <SelectItem key={i._id || i.id} value={(i._id || i.id) as string}>
+                      {i.number} · {i.customerName} ({i.customerMobile}) · Total: {inr(i.total)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          )}
-        </CardContent>
-      </Card>
+
+            {/* 2. Items List */}
+            {selectedInvoiceForReturn && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Select Items to Return</p>
+                <div className="border rounded-lg overflow-hidden divide-y">
+                  {returnItemsState.map((item, idx) => (
+                    <div key={idx} className="p-3 bg-muted/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={item.selected}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setReturnItemsState(arr => arr.map((it, i) => i === idx ? { ...it, selected: val } : it));
+                          }}
+                          className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 h-4 w-4"
+                        />
+                        <div>
+                          <div className="font-bold text-foreground">{item.name} ({item.purity})</div>
+                          <div className="text-muted-foreground font-mono">Original Wt: {item.netWeight}g @ {inr(item.ratePerGram)}/g</div>
+                        </div>
+                      </div>
+
+                      {item.selected && (
+                        <div className="flex items-center gap-2 ml-6 sm:ml-0">
+                          <div>
+                            <span className="text-[10px] text-muted-foreground block">Returned Wt (g)</span>
+                            <Input
+                              type="number"
+                              value={item.netWeight}
+                              onChange={(e) => {
+                                const wt = Number(e.target.value) || 0;
+                                setReturnItemsState(arr => arr.map((it, i) => i === idx ? { ...it, netWeight: wt, returnAmount: wt * it.ratePerGram + it.makingCharge } : it));
+                              }}
+                              className="w-24 h-7 text-xs font-mono"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-muted-foreground block">Return Amount</span>
+                            <div className="font-bold text-rose-600 font-mono text-sm py-1">{inr(item.returnAmount)}</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* 3. Refund Details */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                  <div>
+                    <Label className="text-xs font-semibold">Refund Mode *</Label>
+                    <select
+                      value={refundMode}
+                      onChange={(e) => setRefundMode(e.target.value as any)}
+                      className="w-full h-9 border rounded-md px-3 bg-background text-xs font-medium"
+                    >
+                      <option value="Cash">Cash Refund</option>
+                      <option value="UPI">UPI / Online Transfer</option>
+                      <option value="Card">Card Refund</option>
+                      <option value="Adjust Dues">Adjust Against Invoice Dues</option>
+                      <option value="Store Credit">Store Credit / Advance</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs font-semibold">Return Reason</Label>
+                    <Input
+                      value={returnReason}
+                      onChange={(e) => setReturnReason(e.target.value)}
+                      placeholder="e.g. Size Issue, Quality Concern, Exchange..."
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs font-semibold">Additional Notes</Label>
+                  <Textarea
+                    value={returnNotes}
+                    onChange={(e) => setReturnNotes(e.target.value)}
+                    placeholder="Internal remarks..."
+                    className="text-xs min-h-[60px]"
+                  />
+                </div>
+
+                {/* 4. Live Calculation Box */}
+                <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 flex justify-between items-center text-rose-950">
+                  <div>
+                    <div className="text-xs font-bold uppercase">Total Refund Amount</div>
+                    <div className="text-[11px] text-rose-700">{calculateReturnTotals.count} items selected for return</div>
+                  </div>
+                  <div className="text-xl font-bold font-display text-rose-700">
+                    {inr(calculateReturnTotals.totalRefund)}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Button
+              onClick={handleSaveSalesReturn}
+              disabled={createReturnMutation.isPending || !selectedInvoiceForReturn || calculateReturnTotals.count === 0}
+              className="w-full bg-rose-600 text-white hover:bg-rose-700"
+            >
+              {createReturnMutation.isPending ? "Processing Return..." : "Confirm & Process Sales Return"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* VIEW & PRINT INVOICE MODAL */}
       {selectedInvoice && (
         <InvoiceViewModal invoice={selectedInvoice} onClose={() => setSelectedInvoice(null)} />
       )}
+
+      {/* VIEW & PRINT SALES RETURN CREDIT NOTE MODAL */}
+      {selectedReturn && (
+        <CreditNoteViewModal salesReturn={selectedReturn} onClose={() => setSelectedReturn(null)} />
+      )}
     </Layout>
+  );
+}
+
+function CreditNoteViewModal({ salesReturn, onClose }: { salesReturn: any; onClose: () => void }) {
+  return (
+    <div className="print-section fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:static print:block print:bg-white print:p-0 print:overflow-visible print:h-auto overflow-y-auto pointer-events-auto">
+      <div className="bg-white w-full max-w-3xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:my-0 print:max-h-none print:block">
+        <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
+        <div className="p-6 sm:p-10 print:p-2 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
+
+          <ShopHeader documentLabel="SALES RETURN CREDIT NOTE" compact />
+
+          {/* Customer & Meta Details */}
+          <div className="flex justify-between items-start mb-6 text-sm">
+            <div>
+              <div className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-1">Customer Details:</div>
+              <div className="font-bold text-lg">{salesReturn.customerName}</div>
+              <div className="text-slate-700">{salesReturn.customerMobile}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-display font-bold mb-2 text-rose-700">
+                CREDIT NOTE
+              </div>
+              <table className="ml-auto text-left text-slate-700 text-xs">
+                <tbody>
+                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Return No:</td><td className="font-semibold text-slate-900">{salesReturn.returnNo}</td></tr>
+                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Against Invoice:</td><td className="font-semibold text-slate-900">{salesReturn.invoiceNumber || "N/A"}</td></tr>
+                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Date:</td><td className="font-semibold text-slate-900">{formatDate(salesReturn.createdAt || salesReturn.date)}</td></tr>
+                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Refund Mode:</td><td className="font-semibold text-slate-900">{salesReturn.refundMode}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Returned Items Table */}
+          <div className="overflow-x-auto w-full mb-6">
+            <table className="w-full text-xs border-collapse border border-slate-300">
+              <thead className="bg-rose-50 text-rose-900 uppercase">
+                <tr>
+                  <th className="border border-slate-300 py-2 px-3 text-center w-10">#</th>
+                  <th className="border border-slate-300 py-2 px-3 text-left">Returned Item</th>
+                  <th className="border border-slate-300 py-2 px-3 text-center">Purity</th>
+                  <th className="border border-slate-300 py-2 px-3 text-center">Returned Wt</th>
+                  <th className="border border-slate-300 py-2 px-3 text-right">Rate/g</th>
+                  <th className="border border-slate-300 py-2 px-3 text-right">Total Refund</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(salesReturn.items || []).map((it: any, idx: number) => (
+                  <tr key={idx} className="border-b border-slate-300">
+                    <td className="border border-slate-300 py-2 px-3 text-center text-slate-600">{idx + 1}</td>
+                    <td className="border border-slate-300 py-2 px-3 font-semibold">
+                      {it.name} {it.huid ? <span className="ml-1 text-[10px] font-mono text-amber-800 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">HUID: {it.huid}</span> : ''}
+                    </td>
+                    <td className="border border-slate-300 py-2 px-3 text-center">{it.purity || '22K'}</td>
+                    <td className="border border-slate-300 py-2 px-3 text-center font-bold text-amber-800">{it.netWeight} g</td>
+                    <td className="border border-slate-300 py-2 px-3 text-right">{inr(it.ratePerGram)}</td>
+                    <td className="border border-slate-300 py-2 px-3 text-right font-bold text-rose-700">{inr(it.returnAmount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Reason & Totals */}
+          <div className="flex flex-col sm:flex-row justify-between items-start text-xs gap-6 mb-6">
+            <div className="w-full sm:w-1/2">
+              {salesReturn.reason && (
+                <div className="p-3 border rounded bg-slate-50">
+                  <div className="font-bold text-slate-700 uppercase mb-1">Return Reason</div>
+                  <div className="text-slate-800 font-medium">{salesReturn.reason}</div>
+                  {salesReturn.notes && <div className="text-slate-600 text-[11px] mt-1">{salesReturn.notes}</div>}
+                </div>
+              )}
+            </div>
+
+            <div className="w-full sm:w-1/2 max-w-sm ml-auto space-y-1.5 border-t-2 border-slate-300 pt-2">
+              <div className="flex justify-between text-slate-700">
+                <span>Subtotal Refund:</span>
+                <span className="font-semibold">{inr(salesReturn.subtotal || salesReturn.totalRefund)}</span>
+              </div>
+              {salesReturn.gstAmount ? (
+                <div className="flex justify-between text-slate-700">
+                  <span>GST Credit:</span>
+                  <span className="font-semibold">{inr(salesReturn.gstAmount)}</span>
+                </div>
+              ) : null}
+              <div className="flex justify-between border-t border-slate-300 pt-1.5 font-bold text-sm text-slate-900">
+                <span>Total Credit Refund:</span>
+                <span className="text-rose-700">{inr(salesReturn.totalRefund)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 border-t border-slate-200 pt-4 text-center text-xs text-slate-600">
+            <InvoiceTerms compact />
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="shrink-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
+          <Button variant="outline" onClick={onClose}>Close</Button>
+          <Button onClick={triggerPrint} className="bg-rose-600 text-white hover:bg-rose-700">
+            <Printer className="w-4 h-4 mr-2" /> Print Credit Note
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -164,6 +164,7 @@ export const tenantApiResources = {
   inventory: createApiResource<any>('inventory', 'tenant'),
   customers: createApiResource<any>('customers', 'tenant'),
   invoices: createApiResource<any>('invoices', 'tenant'),
+  salesReturns: createApiResource<any>('sales-returns', 'tenant'),
   expenses: createApiResource<any>('expenses', 'tenant'),
   repairs: createApiResource<any>('repairs', 'tenant'),
   purchases: createApiResource<any>('purchases', 'tenant'),
@@ -200,6 +201,7 @@ export function useTenantAPI() {
       inventory: tenantApiResources.inventory(token),
       customers: tenantApiResources.customers(token),
       invoices: tenantApiResources.invoices(token),
+      salesReturns: tenantApiResources.salesReturns(token),
       expenses: tenantApiResources.expenses(token),
       repairs: tenantApiResources.repairs(token),
       purchases: {

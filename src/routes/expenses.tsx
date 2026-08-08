@@ -669,7 +669,7 @@ export default function ExpensesPage() {
                                 title="Print Expense Voucher"
                                 onClick={() => {
                                   setSelectedVoucher(e);
-                                  setTimeout(() => triggerPrint(), 100);
+                                  setTimeout(() => triggerPrint(), 150);
                                 }}
                               >
                                 <Printer className="w-3.5 h-3.5 text-muted-foreground" />
@@ -746,7 +746,7 @@ export default function ExpensesPage() {
                                   title="Print Expense Voucher"
                                   onClick={() => {
                                     setSelectedVoucher(e);
-                                    setTimeout(() => triggerPrint(), 100);
+                                    setTimeout(() => triggerPrint(), 150);
                                   }}
                                 >
                                   <Printer className="w-4 h-4 text-muted-foreground" />
@@ -805,7 +805,7 @@ export default function ExpensesPage() {
 
       {/* ISOLATED PRINTABLE EXPENSE VOUCHER */}
       {selectedVoucher && (
-        <div id="printable-expense-voucher" className="hidden text-slate-900 bg-white p-6">
+        <div id="printable-expense-voucher" className="print-section hidden print:block text-slate-900 bg-white p-6">
           <ShopHeader documentLabel="Expense Payment Voucher" compact />
 
           <div className="border-2 border-slate-900 rounded-lg p-6 my-4 space-y-4">
@@ -813,7 +813,7 @@ export default function ExpensesPage() {
               <div>
                 <div className="text-xs text-slate-500 font-bold uppercase">Voucher Number</div>
                 <div className="text-lg font-mono font-bold text-slate-900">
-                  {selectedVoucher.voucherNo || `EXP-${selectedVoucher.id}`}
+                  {selectedVoucher.voucherNo || `EXP-${((selectedVoucher as any)._id || selectedVoucher.id || "").slice(-6)}`}
                 </div>
               </div>
               <div className="text-right">
