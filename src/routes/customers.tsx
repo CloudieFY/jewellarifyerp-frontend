@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import { formatDate, useDebounce, triggerPrint } from "@/lib/utils";
 import { useTenantAPI } from "@/lib/api";
-import { inr, getUpiQrCodeUrl, defaultInvoiceSettings, type InvoiceSettings, type Invoice, type InvoicePayment, type Order, type Repair, type Girvi, type Customer } from "@/lib/storage";
+import { inr, calcItem, getUpiQrCodeUrl, defaultInvoiceSettings, type InvoiceSettings, type Invoice, type InvoicePayment, type Order, type Repair, type Girvi, type Customer } from "@/lib/storage";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShopHeader, InvoiceTerms } from "@/components/InvoiceBranding";
@@ -1721,6 +1721,7 @@ export default function CustomersPage() {
                           <th className="py-2.5 px-3 border-r border-slate-300 text-center w-10">#</th>
                           <th className="py-2.5 px-3 border-r border-slate-300">Item Description</th>
                           <th className="py-2.5 px-3 border-r border-slate-300 text-center">Purity</th>
+                          <th className="py-2.5 px-3 border-r border-slate-300 text-center">Qty</th>
                           <th className="py-2.5 px-3 border-r border-slate-300 text-right">Net Wt</th>
                           <th className="py-2.5 px-3 border-r border-slate-300 text-right">Rate/g</th>
                           <th className="py-2.5 px-3 border-r border-slate-300 text-right">Making</th>
@@ -1729,7 +1730,10 @@ export default function CustomersPage() {
                       </thead>
                       <tbody>
                         {items.map((it: any, idx: number) => {
-                          const lineTotal = ((it.netWeight || 0) * (it.ratePerGram || 0)) + (it.makingCharge || 0) + (it.stoneCharge || 0);
+                          const isGst = inv.type === "GST";
+                          const c = calcItem(it, isGst);
+                          const qty = it.qty || 1;
+                          const lineTotal = c.line;
                           return (
                             <tr key={idx} className="border-b border-slate-200 last:border-0 font-sans">
                               <td className="py-2 px-3 border-r border-slate-200 text-center text-slate-500 font-mono">{idx + 1}</td>
@@ -1742,12 +1746,13 @@ export default function CustomersPage() {
                                 )}
                               </td>
                               <td className="py-2 px-3 border-r border-slate-200 text-center font-medium">{it.purity || "22K"}</td>
+                              <td className="py-2 px-3 border-r border-slate-200 text-center font-mono font-bold text-slate-900">{qty}</td>
                               <td className="py-2 px-3 border-r border-slate-200 text-right font-mono font-bold text-amber-900">
                                 {it.netWeight || 0} g
                               </td>
                               <td className="py-2 px-3 border-r border-slate-200 text-right font-mono">{inr(it.ratePerGram || 0)}</td>
                               <td className="py-2 px-3 border-r border-slate-200 text-right font-mono">{inr(it.makingCharge || 0)}</td>
-                              <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{inr(lineTotal || it.totalPrice || 0)}</td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{inr(lineTotal)}</td>
                             </tr>
                           );
                         })}

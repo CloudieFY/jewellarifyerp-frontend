@@ -17,10 +17,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormKeyboardNav } from "@/lib/useFormKeyboardNav";
-import { Plus, Trash2, Printer, Receipt, Pencil, Search, Calendar, Calculator, Scale, Palette } from "lucide-react";
+import { Plus, Trash2, Printer, Receipt, Pencil, Search, Calendar, Calculator, Scale, Palette, AlertCircle, NotebookPen } from "lucide-react";
 import {
   inr,
   calcItem,
@@ -97,6 +98,7 @@ export default function BillingPage() {
   const { data: ratesList = [] } = useQuery({ queryKey: ["goldRates"], queryFn: api.goldRates.getAll });
   const { data: orders = [] } = useQuery({ queryKey: ["orders"], queryFn: api.orders.getAll });
   const { data: repairs = [] } = useQuery({ queryKey: ["repairs"], queryFn: api.repairs.getAll });
+  const { data: salesReturns = [] } = useQuery<any[]>({ queryKey: ["salesReturns"], queryFn: api.salesReturns.getAll });
   const latestRates = ratesList[0];
   
   const useApiMutation = (mutationFn: (...args: any[]) => Promise<any>, queryKeys: string | string[]) => {
@@ -148,6 +150,103 @@ export default function BillingPage() {
     purityPct: 91.6,
     scrapRate: 7100,
   });
+
+  const [manualDueOpen, setManualDueOpen] = useState(false);
+  const [manualDue, setManualDue] = useState({
+    customerId: "NEW",
+    customerName: "",
+    phone: "",
+    itemName: "",
+    dueAmount: "" as number | "",
+    date: formatDDMMYYYY(new Date()),
+  });
+
+  const saveManualDue = async () => {
+    if (!manualDue.customerName || !manualDue.customerName.trim() || !manualDue.itemName || !manualDue.itemName.trim() || !manualDue.dueAmount || Number(manualDue.dueAmount) <= 0) {
+      toast.error("Please enter Customer Name, Item Name/Reason, and a valid Due Amount.");
+      return;
+    }
+
+    const parsedDt = parseDDMMYYYY(manualDue.date);
+    if (!parsedDt) {
+      toast.error("Invalid date. Use DD/MM/YYYY.");
+      return;
+    }
+    const isoDate = parsedDt.toISOString();
+
+    const amount = Number(manualDue.dueAmount);
+    const initialPayment: any = {
+      date: isoDate,
+      amount: 0,
+      mode: "Pending",
+      note: "Manual Due Entry Created",
+    };
+
+    let custId = manualDue.customerId;
+    let custName = manualDue.customerName.trim();
+    let custMobile = manualDue.phone.trim();
+
+    if (custId === "NEW") {
+      try {
+        const created = await createCustomerMutation.mutateAsync({
+          name: custName,
+          phone: custMobile,
+          notes: "Created via Manual Due entry in Billing",
+        });
+        if (created?._id || created?.id) {
+          custId = created._id || created.id;
+        }
+      } catch (e) {
+        // fail silently or continue
+      }
+    }
+
+    const newInvoice: any = {
+      number: `MAN-${Date.now().toString().slice(-6)}`,
+      createdAt: isoDate,
+      customerId: custId !== "NEW" ? custId : undefined,
+      customerName: custName,
+      customerMobile: custMobile,
+      type: "NON-GST",
+      subtotal: amount,
+      discount: 0,
+      makingCharges: 0,
+      gstAmount: 0,
+      total: amount,
+      amountPaid: 0,
+      balanceDue: amount,
+      paymentMode: "Pending",
+      payments: [initialPayment],
+      items: [
+        {
+          name: manualDue.itemName.trim(),
+          purity: "22K",
+          netWeight: 0,
+          grossWeight: 0,
+          ratePerGram: 0,
+          totalPrice: amount,
+          makingCharge: 0,
+          qty: 1,
+        },
+      ],
+    };
+
+    try {
+      await createMutation.mutateAsync(newInvoice);
+      toast.success("Manual Due entry created successfully!");
+      setManualDueOpen(false);
+      setManualDue({
+        customerId: "NEW",
+        customerName: "",
+        phone: "",
+        itemName: "",
+        dueAmount: "",
+        date: formatDDMMYYYY(new Date()),
+      });
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to create manual due entry.");
+    }
+  };
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -561,7 +660,7 @@ export default function BillingPage() {
       const { _id, id, grossWeight, stoneWeight, ...rest } = it;
       const gw = grossWeight !== undefined ? grossWeight : rest.netWeight;
       const sw = stoneWeight || 0;
-      return { ...rest, productId: `${rest.productId}__GW_${gw}__SW_${sw}` };
+      return { ...rest, grossWeight: gw, stoneWeight: sw, productId: `${rest.productId}__GW_${gw}__SW_${sw}` };
     });
 
     let cleanPayments = initialPayment;
@@ -694,12 +793,17 @@ export default function BillingPage() {
 
   const nonGstInvoices = useMemo(() => {
     let list = dedupeInvoices(invoices.filter((i) => i.type === "NON-GST"));
+    if (nonGstFilter === "INV") {
+      list = list.filter((i) => !i.number?.startsWith("MAN-"));
+    } else if (nonGstFilter === "MAN") {
+      list = list.filter((i) => i.number?.startsWith("MAN-"));
+    }
     if (debouncedSearchQuery) {
       const q = debouncedSearchQuery.toLowerCase().trim();
       list = list.filter((i) => (i.number || "").toLowerCase().includes(q) || (i.customerName || "").toLowerCase().includes(q) || (i.customerMobile || "").includes(q) || (i.customerAddress || "").toLowerCase().includes(q));
     }
     return list.sort(compareByInvoiceNumber);
-  }, [invoices, debouncedSearchQuery]);
+  }, [invoices, debouncedSearchQuery, nonGstFilter]);
 
   return (
     <Layout>
@@ -722,7 +826,7 @@ export default function BillingPage() {
               <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-amber-400/80">Point of Sale</span>
             </div>
             <h1 className="text-xl sm:text-3xl font-display font-bold text-white tracking-tight">Billing &amp; Invoices</h1>
-            <p className="text-amber-200/60 text-[11px] sm:text-xs mt-0.5">Tax Invoices · Trade-ins · HUID Scanning · GST</p>
+            <p className="text-amber-200/60 text-[11px] sm:text-xs mt-0.5">Tax Invoices · Trade-ins · HUID Scanning · GST · Manual Dues</p>
           </div>
 
           {/* Live rates ticker (4-col grid on mobile, flex on desktop) */}
@@ -756,15 +860,38 @@ export default function BillingPage() {
           )}
 
           {/* Action buttons */}
-          <div className="grid grid-cols-2 gap-2 w-full md:w-auto">
-            <Link to="/invoice-designer" className="w-full">
-              <Button variant="outline" size="sm" className="h-9 text-xs font-semibold bg-white/5 border-amber-500/40 text-amber-200 hover:bg-amber-500/15 hover:border-amber-400 hover:text-amber-100 transition-all w-full">
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            <Link to="/dues">
+              <Button variant="outline" size="sm" className="h-9 text-xs font-semibold bg-white/5 border-rose-500/40 text-rose-200 hover:bg-rose-500/15 hover:border-rose-400 hover:text-rose-100 transition-all">
+                <AlertCircle className="w-3.5 h-3.5 mr-1 text-rose-400" /> Customer Dues
+              </Button>
+            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 text-xs font-semibold bg-white/5 border-amber-500/40 text-amber-200 hover:bg-amber-500/15 hover:border-amber-400 hover:text-amber-100 transition-all"
+              onClick={() => {
+                setManualDue({
+                  customerId: "NEW",
+                  customerName: "",
+                  phone: "",
+                  itemName: "",
+                  dueAmount: "",
+                  date: formatDDMMYYYY(new Date()),
+                });
+                setManualDueOpen(true);
+              }}
+            >
+              <NotebookPen className="w-3.5 h-3.5 mr-1 text-amber-400" /> + Manual Due
+            </Button>
+            <Link to="/invoice-designer">
+              <Button variant="outline" size="sm" className="h-9 text-xs font-semibold bg-white/5 border-amber-500/40 text-amber-200 hover:bg-amber-500/15 hover:border-amber-400 hover:text-amber-100 transition-all">
                 <Palette className="w-3.5 h-3.5 mr-1" /> Designer
               </Button>
             </Link>
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="h-9 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold shadow-lg shadow-amber-900/30 transition-all w-full" onClick={() => reset()}>
+                <Button size="sm" className="h-9 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold shadow-lg shadow-amber-900/30 transition-all" onClick={() => reset()}>
                   <Plus className="w-4 h-4 mr-1" /> New Invoice
                 </Button>
               </DialogTrigger>
@@ -1683,6 +1810,7 @@ export default function BillingPage() {
       {(isOperator ? [{ title: "Estimate Order History", data: nonGstInvoices }] : [
         { title: "GST Invoice History", data: gstInvoices }
       ]).map(({ title, data }, index) => {
+        const returnedInvoiceIds = new Set(salesReturns.map((r: any) => r.invoiceId));
         let tableData = data;
         const totalPages = Math.ceil(tableData.length / 10) || 1;
         const currentPage = Math.min(pages[index] || 1, totalPages);
@@ -1775,6 +1903,7 @@ export default function BillingPage() {
                             : <span className="text-muted-foreground/40 text-xs">—</span>}
                         </td>
                         <td className="py-3 px-4 text-center whitespace-nowrap">
+                          <div className="flex flex-col items-center gap-1">
                           {(i.balanceDue || 0) <= 0 ? (
                             <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Paid
@@ -1784,6 +1913,12 @@ export default function BillingPage() {
                               <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />Due
                             </span>
                           )}
+                          {returnedInvoiceIds.has(i._id || i.id) && (
+                            <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 border border-orange-200 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase">
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />Returned
+                            </span>
+                          )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-right whitespace-nowrap">
                           <div className="flex justify-end items-center gap-1 opacity-70 group-hover:opacity-100 transition-opacity">
@@ -1821,6 +1956,11 @@ export default function BillingPage() {
                       ) : (
                         <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-700 border border-rose-200 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />Due: {inr(i.balanceDue || 0)}
+                        </span>
+                      )}
+                      {returnedInvoiceIds.has(i._id || i.id) && (
+                        <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 border border-orange-200 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />Returned
                         </span>
                       )}
                     </div>
@@ -1959,7 +2099,116 @@ export default function BillingPage() {
         </DialogContent>
       </Dialog>
 
-      {viewing && <InvoiceModal inv={viewing} onClose={() => setViewing(null)} />}
+      {/* MANUAL DUE ENTRY DIALOG */}
+      <Dialog open={manualDueOpen} onOpenChange={setManualDueOpen}>
+        <DialogContent className="w-[95vw] sm:max-w-md p-4 sm:p-6" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold font-display flex items-center gap-2">
+              <NotebookPen className="w-5 h-5 text-amber-600" />
+              Add Manual Due Record
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={(e) => { e.preventDefault(); saveManualDue(); }} className="space-y-3 py-2 text-sm">
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground uppercase">Customer *</Label>
+              <Select
+                value={manualDue.customerId}
+                onValueChange={(val) => {
+                  if (val === "NEW") {
+                    setManualDue(prev => ({ ...prev, customerId: "NEW" }));
+                  } else {
+                    const c = customers.find(x => (x._id || x.id) === val);
+                    if (c) {
+                      setManualDue(prev => ({
+                        ...prev,
+                        customerId: val,
+                        customerName: c.name,
+                        phone: c.mobile || c.phone || "",
+                      }));
+                    }
+                  }
+                }}
+              >
+                <SelectTrigger className="bg-background mt-1">
+                  <SelectValue placeholder="Select or create new customer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NEW" className="font-semibold text-primary">+ New Customer</SelectItem>
+                  {customers.map((c) => (
+                    <SelectItem key={c._id || c.id} value={c._id || c.id}>
+                      {c.name} · {c.mobile || c.phone}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground uppercase">Customer Name *</Label>
+              <Input
+                value={manualDue.customerName}
+                onChange={(e) => setManualDue({ ...manualDue, customerName: e.target.value })}
+                placeholder="Enter customer name"
+                className="mt-1 bg-background"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground uppercase">Mobile Number</Label>
+              <Input
+                value={manualDue.phone}
+                onChange={(e) => setManualDue({ ...manualDue, phone: e.target.value })}
+                placeholder="Enter mobile number"
+                className="mt-1 bg-background"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground uppercase">Item Name / Reason *</Label>
+              <Input
+                value={manualDue.itemName}
+                onChange={(e) => setManualDue({ ...manualDue, itemName: e.target.value })}
+                placeholder="e.g. Old Bahi-Khata Pending Balance"
+                className="mt-1 bg-background"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground uppercase">Due Amount (₹) *</Label>
+              <Input
+                type="number"
+                value={manualDue.dueAmount}
+                onChange={(e) => setManualDue({ ...manualDue, dueAmount: e.target.value ? Number(e.target.value) : "" })}
+                placeholder="e.g. 15000"
+                className="mt-1 font-mono font-bold bg-background"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground uppercase">Date (DD/MM/YYYY)</Label>
+              <Input
+                type="text"
+                value={manualDue.date}
+                onChange={(e) => setManualDue({ ...manualDue, date: e.target.value })}
+                placeholder="DD/MM/YYYY"
+                className="mt-1 bg-background"
+              />
+            </div>
+
+            <DialogFooter className="mt-4 pt-2">
+              <Button type="button" variant="outline" onClick={() => setManualDueOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold">
+                Save Manual Due
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {viewing && <InvoiceModal inv={viewing} isReturned={new Set(salesReturns.map((r: any) => r.invoiceId)).has((viewing as any)._id || (viewing as any).id)} onClose={() => setViewing(null)} />}
     </Layout>
   );
 }
@@ -2016,7 +2265,7 @@ function NumI({ v, on, className = "w-24 h-8", onKeyDown }: { v: number; on: (n:
 
 
 
-function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
+function InvoiceModal({ inv, onClose, isReturned }: { inv: any; onClose: () => void; isReturned?: boolean }) {
   const { tenantSession } = useAuth();
   const invSettings: InvoiceSettings = { ...defaultInvoiceSettings, ...((tenantSession?.shop as any)?.invoiceSettings || {}) };
 
@@ -2046,6 +2295,37 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
     <div className="print-section fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:static print:block print:bg-white print:p-0 print:overflow-visible print:h-auto overflow-y-auto pointer-events-auto">
       <div className={`bg-white w-full rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:my-0 print:max-h-none print:block ${printMode === "thermal58" || printMode === "thermal78" ? "max-w-xs" : printMode === "a5" ? "max-w-2xl" : "max-w-4xl"}`}>
         <style>{`@media print { ${pageCss} }`}</style>
+
+        {/* RETURNED Watermark Overlay — covers all template modes */}
+        {isReturned && (() => {
+          const isThermal = printMode === "thermal58" || printMode === "thermal78";
+          const fontSize = isThermal ? '2rem' : '6rem';
+          const borderWidth = isThermal ? '3px' : '6px';
+          return (
+            <div
+              className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-20 print:flex"
+              style={{ transform: 'rotate(-35deg)' }}
+            >
+              <span
+                style={{
+                  fontSize,
+                  fontWeight: 900,
+                  color: 'rgba(220, 38, 38, 0.18)',
+                  letterSpacing: '0.08em',
+                  whiteSpace: 'nowrap',
+                  border: `${borderWidth} solid rgba(220, 38, 38, 0.18)`,
+                  padding: '0.25em 0.6em',
+                  borderRadius: '0.2em',
+                  lineHeight: 1,
+                  userSelect: 'none',
+                }}
+              >
+                RETURNED
+              </span>
+            </div>
+          );
+        })()}
+
         {printMode === "thermal58" || printMode === "thermal78" ? (
           <div className="p-4 print:p-0 overflow-y-auto flex-1 print:overflow-visible flex justify-center">
             <ThermalInvoiceReceipt inv={inv} widthMm={printMode === "thermal58" ? 58 : 78} />

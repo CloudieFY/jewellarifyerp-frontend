@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { inr, type Invoice } from "@/lib/storage";
+import { inr, calcItem, type Invoice } from "@/lib/storage";
 import { useAuth } from "@/lib/auth";
 import { formatDate, useDebounce, triggerPrint } from "@/lib/utils";
 import { Receipt, Trash2, TrendingUp, Printer, Eye, Award, DollarSign, Search, FileText, Plus, RotateCcw } from "lucide-react";
@@ -46,13 +46,7 @@ export default function SalesPage() {
     }
   });
 
-  const deleteReturnMutation = useMutation({
-    mutationFn: (id: string) => api.salesReturns.remove(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["salesReturns"] });
-      queryClient.invalidateQueries({ queryKey: ["inventory"] });
-    }
-  });
+
 
   const isOperator = authUser?.role === "operator";
   const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type !== "GST" : i.type === "GST"), [allInvoices, isOperator]);
@@ -63,6 +57,8 @@ export default function SalesPage() {
   const [filterType, setFilterType] = useState<"ALL" | "PAID" | "DUE">("ALL");
   const [page, setPage] = useState(1);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+
+  const returnedInvoiceIds = useMemo(() => new Set(salesReturns.map((r: any) => r.invoiceId)), [salesReturns]);
   const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
 
   /* ------------------------------------------------------------------ */
@@ -74,7 +70,14 @@ export default function SalesPage() {
     productId: string;
     name: string;
     purity?: string;
+    origNetWeight: number;
+    origGrossWeight: number;
+    origStoneWeight: number;
+    origQty: number;
+    origLineTotal: number;
     netWeight: number;
+    grossWeight: number;
+    stoneWeight: number;
     ratePerGram: number;
     makingCharge: number;
     gstPct: number;
@@ -100,19 +103,45 @@ export default function SalesPage() {
     const inv = invoices.find(i => (i._id || i.id) === invoiceId);
     if (!inv) return;
     setSelectedInvoiceForReturn(inv);
-    setReturnItemsState((inv.items || []).map((it: any) => {
-      const lineTotal = ((it.netWeight || 0) * (it.ratePerGram || 0)) + (it.makingCharge || 0);
+
+    const isGstInvoice = inv.type === "GST";
+
+    // 1. Calculate raw line totals per item via calcItem
+    const rawLineTotals = (inv.items || []).map((it: any) => calcItem(it, isGstInvoice).line);
+    const rawSubtotal = rawLineTotals.reduce((s: number, v: number) => s + v, 0);
+
+    // 2. Use inv.total (which includes round-off + discount) as the truth.
+    //    Distribute it proportionally across items.
+    const invTotal = inv.total || 0;
+
+    setReturnItemsState((inv.items || []).map((it: any, itemIdx: number) => {
+      const origQty = it.qty || 1;
+      const origNetWeight = it.netWeight || 0;
+      const origStoneWeight = (it as any).stoneWeight || 0;
+      const origGrossWeight = (it as any).grossWeight || (origNetWeight + origStoneWeight);
+
+      // Proportional share of actual invoice total (covers discount + round-off)
+      const share = rawSubtotal > 0 ? rawLineTotals[itemIdx] / rawSubtotal : (1 / (inv.items || []).length);
+      const origLineTotal = Math.round(invTotal * share * 100) / 100;
+
       return {
         productId: it.productId,
         name: it.name,
         purity: it.purity || '22K',
-        netWeight: it.netWeight || 0,
+        origNetWeight,
+        origGrossWeight,
+        origStoneWeight,
+        origQty,
+        origLineTotal,
+        netWeight: origNetWeight,
+        grossWeight: origGrossWeight,
+        stoneWeight: origStoneWeight,
         ratePerGram: it.ratePerGram || 0,
         makingCharge: it.makingCharge || 0,
-        gstPct: it.gstPct || 0,
-        qty: it.qty || 1,
+        gstPct: it.gstPct !== undefined ? it.gstPct : (isGstInvoice ? 3 : 0),
+        qty: origQty,
         huid: it.huid || '',
-        returnAmount: lineTotal,
+        returnAmount: origLineTotal,
         selected: true,
       };
     }));
@@ -120,11 +149,19 @@ export default function SalesPage() {
 
   const calculateReturnTotals = useMemo(() => {
     const selectedItems = returnItemsState.filter(i => i.selected);
-    const subtotal = selectedItems.reduce((sum, item) => sum + item.returnAmount, 0);
-    const gstAmount = selectedItems.reduce((sum, item) => sum + (item.returnAmount * (item.gstPct || 0) / 100), 0);
-    const totalRefund = subtotal + gstAmount;
+    const subtotal = selectedItems.reduce((sum, item) => sum + Number(item.returnAmount || 0), 0);
+    const isGstInvoice = selectedInvoiceForReturn?.type === "GST";
+    const gstAmount = isGstInvoice
+      ? selectedItems.reduce((sum, item) => sum + (Number(item.returnAmount || 0) * (item.gstPct || 3) / 100), 0)
+      : 0;
+
+    // Cap total refund to invoice total, and floor to avoid floating-point over-payment
+    let totalRefund = Math.floor((subtotal + gstAmount) * 100) / 100;
+    if (selectedInvoiceForReturn && typeof selectedInvoiceForReturn.total === 'number' && selectedInvoiceForReturn.total > 0) {
+      totalRefund = Math.min(selectedInvoiceForReturn.total, totalRefund);
+    }
     return { subtotal, gstAmount, totalRefund, count: selectedItems.length };
-  }, [returnItemsState]);
+  }, [returnItemsState, selectedInvoiceForReturn]);
 
   const handleSaveSalesReturn = async () => {
     if (!selectedInvoiceForReturn) {
@@ -148,6 +185,8 @@ export default function SalesPage() {
         name: it.name,
         purity: it.purity,
         netWeight: Number(it.netWeight),
+        grossWeight: Number(it.grossWeight || it.netWeight),
+        stoneWeight: Number(it.stoneWeight || 0),
         ratePerGram: Number(it.ratePerGram),
         makingCharge: Number(it.makingCharge),
         gstPct: Number(it.gstPct),
@@ -172,16 +211,7 @@ export default function SalesPage() {
     }
   };
 
-  const handleRemoveSalesReturn = async (returnDoc: any) => {
-    if (window.confirm(`Are you sure you want to delete Sales Return ${returnDoc.returnNo}? This will re-deduct the returned items from your active inventory.`)) {
-      try {
-        await deleteReturnMutation.mutateAsync(returnDoc._id || returnDoc.id || "");
-        toast.success("Sales Return deleted and inventory adjusted.");
-      } catch (e) {
-        toast.error("Failed to delete sales return.");
-      }
-    }
-  };
+
 
   // Filtered Invoices
   const filtered = useMemo(() => {
@@ -450,7 +480,7 @@ export default function SalesPage() {
                       </thead>
                       <tbody>
                         {paginatedInvoices.map((i) => {
-                          const invoiceNetWt = (i.items || []).reduce((sum, it) => sum + ((it.netWeight || 0) * (it.qty || 1)), 0);
+                          const invoiceNetWt = (i.items || []).reduce((sum, it) => sum + (it.netWeight || 0), 0);
                           return (
                             <tr key={i._id || i.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
                               <td className="py-3 px-4 font-medium text-foreground whitespace-nowrap">
@@ -466,9 +496,10 @@ export default function SalesPage() {
                               <td className="py-3 px-4 max-w-xs">
                                 <div className="space-y-1">
                                   {(i.items || []).map((it: any, idx: number) => (
-                                    <div key={idx} className="flex items-center gap-1.5 text-xs">
+                                    <div key={idx} className="flex items-center gap-1.5 text-xs flex-wrap">
                                       <span className="font-medium text-foreground line-clamp-1">{it.name}</span>
                                       {it.purity && <Badge variant="secondary" className="text-[10px] py-0 px-1">{it.purity}</Badge>}
+                                      {(it.qty || 1) > 1 && <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono text-slate-700 bg-slate-100">{it.qty} Pcs</Badge>}
                                       {it.huid && <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono text-amber-700 bg-amber-50">{it.huid}</Badge>}
                                     </div>
                                   ))}
@@ -497,11 +528,16 @@ export default function SalesPage() {
                               </td>
 
                               <td className="py-3 px-4 text-center whitespace-nowrap">
+                                <div className="flex flex-col items-center gap-1">
                                 {(i.balanceDue || 0) <= 0 ? (
                                   <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">Paid</Badge>
                                 ) : (
                                   <Badge variant="destructive">Due: {inr(i.balanceDue || 0)}</Badge>
                                 )}
+                                {returnedInvoiceIds.has(i._id || i.id) && (
+                                  <Badge className="bg-orange-100 text-orange-800 border border-orange-300 text-[10px]">↩ Returned</Badge>
+                                )}
+                                </div>
                               </td>
 
                               <td className="py-3 px-4 text-right whitespace-nowrap pr-4">
@@ -515,15 +551,17 @@ export default function SalesPage() {
                                   >
                                     <Eye className="w-4 h-4" />
                                   </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-8 w-8 p-0 text-rose-500 hover:text-rose-600"
-                                    title="Delete Invoice & Restore Stock"
-                                    onClick={() => removeInvoice(i)}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
+                                  {!returnedInvoiceIds.has(i._id || i.id) && (
+                                   <Button
+                                     size="sm"
+                                     variant="ghost"
+                                     className="h-8 w-8 p-0 text-rose-500 hover:text-rose-600"
+                                     title="Delete Invoice & Restore Stock"
+                                     onClick={() => removeInvoice(i)}
+                                   >
+                                     <Trash2 className="w-4 h-4" />
+                                   </Button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -536,7 +574,7 @@ export default function SalesPage() {
                   {/* Mobile Cards View */}
                   <div className="md:hidden grid grid-cols-1 sm:grid-cols-2 gap-3 p-3">
                     {paginatedInvoices.map((i) => {
-                      const invoiceNetWt = (i.items || []).reduce((sum, it) => sum + ((it.netWeight || 0) * (it.qty || 1)), 0);
+                      const invoiceNetWt = (i.items || []).reduce((sum, it) => sum + (it.netWeight || 0), 0);
                       return (
                         <div key={i._id || i.id} className="p-3.5 rounded-xl border border-border bg-card shadow-sm space-y-3">
                           <div className="flex items-start justify-between gap-2">
@@ -549,6 +587,9 @@ export default function SalesPage() {
                               <Badge className="bg-emerald-100 text-emerald-800">Paid</Badge>
                             ) : (
                               <Badge variant="destructive">Due: {inr(i.balanceDue || 0)}</Badge>
+                            )}
+                            {returnedInvoiceIds.has(i._id || i.id) && (
+                              <Badge className="bg-orange-100 text-orange-800 border border-orange-300 text-[10px]">↩ Returned</Badge>
                             )}
                           </div>
 
@@ -582,9 +623,11 @@ export default function SalesPage() {
                               <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setSelectedInvoice(i)}>
                                 <Eye className="w-3.5 h-3.5 text-primary" /> View
                               </Button>
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-rose-500" onClick={() => removeInvoice(i)}>
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
+                              {!returnedInvoiceIds.has(i._id || i.id) && (
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-rose-500" onClick={() => removeInvoice(i)}>
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -698,15 +741,6 @@ export default function SalesPage() {
                               >
                                 <Eye className="w-4 h-4" />
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 w-8 p-0 text-rose-500 hover:text-rose-600"
-                                title="Delete Sales Return & Deduct Stock"
-                                onClick={() => handleRemoveSalesReturn(r)}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
                             </div>
                           </td>
                         </tr>
@@ -764,27 +798,79 @@ export default function SalesPage() {
                         />
                         <div>
                           <div className="font-bold text-foreground">{item.name} ({item.purity})</div>
-                          <div className="text-muted-foreground font-mono">Original Wt: {item.netWeight}g @ {inr(item.ratePerGram)}/g</div>
+                          <div className="text-muted-foreground font-mono space-x-2">
+                            <span>Gross: {item.origGrossWeight}g</span>
+                            {item.origStoneWeight > 0 && <span className="text-rose-500">Less: {item.origStoneWeight}g</span>}
+                            <span>Net: {item.origNetWeight}g</span>
+                            <span>· {inr(item.origLineTotal)}</span>
+                          </div>
                         </div>
                       </div>
 
                       {item.selected && (
-                        <div className="flex items-center gap-2 ml-6 sm:ml-0">
+                        <div className="flex items-center gap-3 ml-6 sm:ml-0 flex-wrap">
+                          {item.origQty > 1 && (
+                            <div>
+                              <span className="text-[10px] text-muted-foreground block font-medium">Returned Qty</span>
+                              <Input
+                                type="number"
+                                min={1}
+                                max={item.origQty}
+                                value={item.qty}
+                                onChange={(e) => {
+                                  const q = Math.max(1, Number(e.target.value) || 1);
+                                  setReturnItemsState(arr => arr.map((it, i) => {
+                                    if (i !== idx) return it;
+                                    const ratio = it.origQty > 0 ? Math.min(1, q / it.origQty) : 1;
+                                    const calcAmt = Math.round(it.origLineTotal * ratio * 100) / 100;
+                                    const calcNetWt = Math.round(it.origNetWeight * ratio * 1000) / 1000;
+                                    const calcGrossWt = Math.round(it.origGrossWeight * ratio * 1000) / 1000;
+                                    const calcStoneWt = Math.round(it.origStoneWeight * ratio * 1000) / 1000;
+                                    return { ...it, qty: q, netWeight: calcNetWt, grossWeight: calcGrossWt, stoneWeight: calcStoneWt, returnAmount: calcAmt };
+                                  }));
+                                }}
+                                className="w-16 h-7 text-xs font-mono"
+                              />
+                            </div>
+                          )}
                           <div>
-                            <span className="text-[10px] text-muted-foreground block">Returned Wt (g)</span>
+                            <span className="text-[10px] text-muted-foreground block font-medium">Returned Wt (g)</span>
                             <Input
                               type="number"
+                              step="any"
                               value={item.netWeight}
                               onChange={(e) => {
-                                const wt = Number(e.target.value) || 0;
-                                setReturnItemsState(arr => arr.map((it, i) => i === idx ? { ...it, netWeight: wt, returnAmount: wt * it.ratePerGram + it.makingCharge } : it));
+                                const wt = Math.max(0, Number(e.target.value) || 0);
+                                setReturnItemsState(arr => arr.map((it, i) => {
+                                  if (i !== idx) return it;
+                                  let ratio = 1;
+                                  if (it.origNetWeight > 0) {
+                                    ratio = Math.min(1, Math.max(0, wt / it.origNetWeight));
+                                  } else if (it.origQty > 0) {
+                                    ratio = Math.min(1, Math.max(0, it.qty / it.origQty));
+                                  }
+                                  const calcAmt = Math.round(it.origLineTotal * ratio * 100) / 100;
+                                  const gwRatio = it.origNetWeight > 0 ? (wt / it.origNetWeight) : 1;
+                                  const calcGrossWt = Math.round(it.origGrossWeight * gwRatio * 1000) / 1000;
+                                  const calcStoneWt = Math.round(it.origStoneWeight * gwRatio * 1000) / 1000;
+                                  return { ...it, netWeight: wt, grossWeight: calcGrossWt, stoneWeight: calcStoneWt, returnAmount: calcAmt };
+                                }));
                               }}
                               className="w-24 h-7 text-xs font-mono"
                             />
                           </div>
                           <div>
-                            <span className="text-[10px] text-muted-foreground block">Return Amount</span>
-                            <div className="font-bold text-rose-600 font-mono text-sm py-1">{inr(item.returnAmount)}</div>
+                            <span className="text-[10px] text-muted-foreground block font-medium">Return Amount (₹)</span>
+                            <Input
+                              type="number"
+                              step="any"
+                              value={item.returnAmount}
+                              onChange={(e) => {
+                                const amt = Number(e.target.value) || 0;
+                                setReturnItemsState(arr => arr.map((it, i) => i === idx ? { ...it, returnAmount: amt } : it));
+                              }}
+                              className="w-28 h-7 text-xs font-mono font-bold text-rose-600"
+                            />
                           </div>
                         </div>
                       )}
@@ -856,7 +942,11 @@ export default function SalesPage() {
 
       {/* VIEW & PRINT INVOICE MODAL */}
       {selectedInvoice && (
-        <InvoiceViewModal invoice={selectedInvoice} onClose={() => setSelectedInvoice(null)} />
+        <InvoiceViewModal
+          invoice={selectedInvoice}
+          isReturned={returnedInvoiceIds.has((selectedInvoice as any)._id || (selectedInvoice as any).id)}
+          onClose={() => setSelectedInvoice(null)}
+        />
       )}
 
       {/* VIEW & PRINT SALES RETURN CREDIT NOTE MODAL */}
@@ -975,12 +1065,37 @@ function CreditNoteViewModal({ salesReturn, onClose }: { salesReturn: any; onClo
   );
 }
 
-function InvoiceViewModal({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
+function InvoiceViewModal({ invoice, onClose, isReturned }: { invoice: Invoice; onClose: () => void; isReturned?: boolean }) {
   return (
     <div className="print-section fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:static print:block print:bg-white print:p-0 print:overflow-visible print:h-auto overflow-y-auto pointer-events-auto">
       <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:my-0 print:max-h-none print:block">
         <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
-        <div className="p-6 sm:p-10 print:p-2 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
+        <div className="p-6 sm:p-10 print:p-2 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible relative">
+
+          {/* RETURNED Watermark */}
+          {isReturned && (
+            <div
+              className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-10 print:flex"
+              style={{ transform: 'rotate(-35deg)' }}
+            >
+              <span
+                style={{
+                  fontSize: '6rem',
+                  fontWeight: 900,
+                  color: 'rgba(220, 38, 38, 0.12)',
+                  letterSpacing: '0.08em',
+                  whiteSpace: 'nowrap',
+                  border: '6px solid rgba(220, 38, 38, 0.12)',
+                  padding: '0.25em 0.6em',
+                  borderRadius: '0.2em',
+                  lineHeight: 1,
+                  userSelect: 'none',
+                }}
+              >
+                RETURNED
+              </span>
+            </div>
+          )}
 
           <ShopHeader documentLabel={invoice.type === "GST" ? "Invoice" : "Estimate Sales Receipt"} compact />
 
@@ -1014,6 +1129,7 @@ function InvoiceViewModal({ invoice, onClose }: { invoice: Invoice; onClose: () 
                   <th className="border border-slate-300 py-2 px-3 text-center w-10">#</th>
                   <th className="border border-slate-300 py-2 px-3 text-left">Item Description</th>
                   <th className="border border-slate-300 py-2 px-3 text-center">Purity</th>
+                  <th className="border border-slate-300 py-2 px-3 text-center">Qty</th>
                   <th className="border border-slate-300 py-2 px-3 text-center">Net Wt</th>
                   <th className="border border-slate-300 py-2 px-3 text-right">Rate/g</th>
                   <th className="border border-slate-300 py-2 px-3 text-right">Making</th>
@@ -1022,7 +1138,10 @@ function InvoiceViewModal({ invoice, onClose }: { invoice: Invoice; onClose: () 
               </thead>
               <tbody>
                 {(invoice.items || []).map((it: any, idx: number) => {
-                  const lineTotal = ((it.netWeight || 0) * (it.ratePerGram || 0)) + (it.makingCharge || 0) + (it.stoneCharge || 0);
+                  const isGst = invoice.type === "GST";
+                  const c = calcItem(it, isGst);
+                  const qty = it.qty || 1;
+                  const lineTotal = c.line;
                   return (
                     <tr key={idx} className="border-b border-slate-300">
                       <td className="border border-slate-300 py-2 px-3 text-center text-slate-600">{idx + 1}</td>
@@ -1030,7 +1149,10 @@ function InvoiceViewModal({ invoice, onClose }: { invoice: Invoice; onClose: () 
                         {it.name} {it.huid ? <span className="ml-1.5 text-[10px] font-mono text-amber-800 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">HUID: {it.huid}</span> : ''}
                       </td>
                       <td className="border border-slate-300 py-2 px-3 text-center">{it.purity || '22K'}</td>
-                      <td className="border border-slate-300 py-2 px-3 text-center font-bold text-amber-800">{it.netWeight} g</td>
+                      <td className="border border-slate-300 py-2 px-3 text-center font-semibold">{qty}</td>
+                      <td className="border border-slate-300 py-2 px-3 text-center font-bold text-amber-800">
+                        {it.netWeight} g
+                      </td>
                       <td className="border border-slate-300 py-2 px-3 text-right">{inr(it.ratePerGram)}</td>
                       <td className="border border-slate-300 py-2 px-3 text-right">{inr(it.makingCharge || 0)}</td>
                       <td className="border border-slate-300 py-2 px-3 text-right font-bold text-slate-900">{inr(lineTotal)}</td>
