@@ -1159,10 +1159,14 @@ export default function BillingPage() {
                           if (searchProd.trim() !== "") {
                             const query = searchProd.toLowerCase().trim();
                           const matches = products.filter(
-                            (p) =>
-                              p.name.toLowerCase().includes(query) ||
-                              (p.barcode || "").toLowerCase() === query ||
-                              (p.huid || "").toLowerCase() === query
+                            (p) => {
+                              if (!isGst && (p.gstPct || 0) > 0) return false;
+                              return (
+                                p.name.toLowerCase().includes(query) ||
+                                (p.barcode || "").toLowerCase() === query ||
+                                (p.huid || "").toLowerCase() === query
+                              );
+                            }
                           );
                           if (matches.length > 0) {
                             const exact = matches.find(
@@ -1200,14 +1204,18 @@ export default function BillingPage() {
                         <SelectContent>
                           {products
                             .filter(
-                              (p) =>
-                                p.name.toLowerCase().includes(debouncedSearchProd.toLowerCase()) ||
-                                (p.barcode || "")
-                                  .toLowerCase()
-                                  .includes(debouncedSearchProd.toLowerCase()) ||
-                                (p.huid || "")
-                                  .toLowerCase()
-                                  .includes(debouncedSearchProd.toLowerCase())
+                              (p) => {
+                                if (!isGst && (p.gstPct || 0) > 0) return false;
+                                return (
+                                  p.name.toLowerCase().includes(debouncedSearchProd.toLowerCase()) ||
+                                  (p.barcode || "")
+                                    .toLowerCase()
+                                    .includes(debouncedSearchProd.toLowerCase()) ||
+                                  (p.huid || "")
+                                    .toLowerCase()
+                                    .includes(debouncedSearchProd.toLowerCase())
+                                );
+                              }
                             )
                             .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
                             .map((p) => (
@@ -1244,10 +1252,14 @@ export default function BillingPage() {
                             <div className="max-h-48 overflow-y-auto border rounded-md">
                               {products
                                 .filter(
-                                  (p) =>
-                                    p.name.toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
-                                    (p.barcode || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
-                                    (p.huid || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase())
+                                  (p) => {
+                                    if (!isGst && (p.gstPct || 0) > 0) return false;
+                                    return (
+                                      p.name.toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
+                                      (p.barcode || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
+                                      (p.huid || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase())
+                                    );
+                                  }
                                 )
                                 .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
                                 .map((p) => (
@@ -1268,10 +1280,14 @@ export default function BillingPage() {
                                   </div>
                                 ))}
                               {products.filter(
-                                (p) =>
-                                  p.name.toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
-                                  (p.barcode || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
-                                  (p.huid || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase())
+                                (p) => {
+                                  if (!isGst && (p.gstPct || 0) > 0) return false;
+                                  return (
+                                    p.name.toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
+                                    (p.barcode || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
+                                    (p.huid || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase())
+                                  );
+                                }
                               ).length === 0 && (
                                 <div className="p-3 text-sm text-muted-foreground text-center">
                                   No products found
