@@ -42,12 +42,19 @@ export default function BalanceSheetPage() {
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
 
+  const currentFY = useMemo(() => {
+    const m = now.getMonth();
+    const y = now.getFullYear();
+    const startY = m >= 3 ? y : y - 1;
+    return `${startY}-${startY + 1}`;
+  }, [now]);
+
   // Date filter state
   const [viewMode, setViewMode] = useState<ViewMode>("year");
   const [singleDate, setSingleDate] = useState<string>(todayStr);
   const [selectedMonth, setSelectedMonth] = useState<string>(String(now.getMonth() + 1));
   const [selectedYear, setSelectedYear] = useState<string>(String(now.getFullYear()));
-  const [financialYear, setFinancialYear] = useState<string>("2025-2026");
+  const [financialYear, setFinancialYear] = useState<string>(currentFY);
   const [startDate, setStartDate] = useState<string>(`${now.getFullYear()}-04-01`);
   const [endDate, setEndDate] = useState<string>(todayStr);
   const [showDetailedSchedule, setShowDetailedSchedule] = useState<boolean>(true);
@@ -87,8 +94,8 @@ export default function BalanceSheetPage() {
       };
     } else if (viewMode === "year") {
       const [startYStr, endYStr] = financialYear.split("-");
-      const startY = parseInt(startYStr) || 2025;
-      const endY = parseInt(endYStr) || 2026;
+      const startY = parseInt(startYStr) || (now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1);
+      const endY = parseInt(endYStr) || startY + 1;
       const fyStart = `${startY}-04-01`;
       const fyEnd = `${endY}-03-31`;
       return {
@@ -103,7 +110,7 @@ export default function BalanceSheetPage() {
         rangeLabel: `Period: ${formatDate(startDate)} to ${formatDate(endDate)}`,
       };
     }
-  }, [viewMode, singleDate, selectedMonth, selectedYear, financialYear, startDate, endDate]);
+  }, [viewMode, singleDate, selectedMonth, selectedYear, financialYear, startDate, endDate, now]);
 
   // Queries
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery<Invoice[]>({
@@ -142,10 +149,23 @@ export default function BalanceSheetPage() {
     queryKey: ["expenses"],
     queryFn: api.expenses.getAll,
   });
+  const { data: salesReturns = [] } = useQuery<any[]>({
+    queryKey: ["salesReturns"],
+    queryFn: api.salesReturns.getAll,
+  });
   const { data: ratesList = [] } = useQuery<any[]>({
     queryKey: ["goldRates"],
     queryFn: api.goldRates.getAll,
   });
+
+  const isOperator = tenantSession?.user?.role === "operator";
+  const roleInvoices = useMemo(() => invoices.filter(i => isOperator ? i.type !== "GST" : i.type === "GST"), [invoices, isOperator]);
+  const rolePurchases = useMemo(() => purchases.filter(p => isOperator ? !((p as any).type === "GST" || p.gstPct > 0) : ((p as any).type === "GST" || p.gstPct > 0)), [purchases, isOperator]);
+
+  const returnedInvoiceIds = useMemo(
+    () => new Set((salesReturns || []).map((r: any) => r.invoiceId)),
+    [salesReturns]
+  );
 
   const latestRates = ratesList[0] || { gold24: 7850, gold22: 7200, silver: 92 };
 
@@ -160,12 +180,16 @@ export default function BalanceSheetPage() {
 
   // Filtered collections up to date
   const filteredInvoices = useMemo(
-    () => invoices.filter((i) => isUpToDate(i.createdAt || (i as any).date)),
-    [invoices, effectiveEndDate]
+    () => roleInvoices.filter((i) => isUpToDate(i.createdAt || (i as any).date)),
+    [roleInvoices, effectiveEndDate]
+  );
+  const filteredSalesReturns = useMemo(
+    () => salesReturns.filter((r) => isUpToDate(r.createdAt || r.date)),
+    [salesReturns, effectiveEndDate]
   );
   const filteredPurchases = useMemo(
-    () => purchases.filter((p) => isUpToDate((p as any).createdAt || (p as any).date)),
-    [purchases, effectiveEndDate]
+    () => rolePurchases.filter((p) => isUpToDate((p as any).createdAt || (p as any).date)),
+    [rolePurchases, effectiveEndDate]
   );
   const filteredExpenses = useMemo(
     () => expenses.filter((e) => isUpToDate(e.date || e.createdAt)),
@@ -191,34 +215,53 @@ export default function BalanceSheetPage() {
   // 1. Inventory Stock Asset Valuation & Gold/Silver Weights (MMI Standard)
   const inventoryMetrics = useMemo(() => {
     let totalValue = 0;
+    let goldValuation = 0;
+    let silverValuation = 0;
     let goldWeightNet = 0;
     let silverWeightNet = 0;
     let totalPcs = 0;
 
-    inventory.forEach((p) => {
-      const stockQty = p.stock || 0;
-      if (stockQty > 0) {
-        totalPcs += stockQty;
-        const itemVal =
-          ((p as any).sellingPrice || p.netWeight * (p.ratePerGram || latestRates.gold22 || 7200) || 0) * stockQty;
-        totalValue += itemVal;
+    inventory.forEach((item: any) => {
+      const stock = typeof item.stock === "number" ? item.stock : 1;
+      if (stock <= 0) return; // Skip items with 0 stock or deleted items
 
-        const categoryUpper = (p.category || "").toUpperCase();
-        if (categoryUpper.includes("SILVER")) {
-          silverWeightNet += (p.netWeight || 0) * stockQty;
-        } else {
-          goldWeightNet += (p.netWeight || 0) * stockQty;
-        }
+      const netWt = item.netWeight || item.weight || 0;
+      const metalLower = (item.metal || item.metalType || item.category || "").toString().toLowerCase();
+      const nameLower = (item.name || "").toString().toLowerCase();
+      const isSilver = metalLower.includes("silver") || nameLower.includes("silver");
+
+      // User entered cost, purchase price or selling price
+      const val = item.costPrice 
+        ? item.costPrice * stock 
+        : item.purchasePrice
+        ? item.purchasePrice * stock
+        : item.sellingPrice 
+        ? item.sellingPrice * stock 
+        : 0; // Only show valuation if explicitly entered by user
+
+      totalValue += val;
+
+      if (isSilver) {
+        silverWeightNet += netWt;
+        silverValuation += val;
+      } else {
+        goldWeightNet += netWt;
+        goldValuation += val;
       }
+      totalPcs += stock;
     });
 
-    return { totalValue, goldWeightNet, silverWeightNet, totalPcs };
-  }, [inventory, latestRates]);
+    return { totalValue, goldValuation, silverValuation, goldWeightNet, silverWeightNet, totalPcs };
+  }, [inventory]);
+
+
 
   // 2. Customer Dues / Accounts Receivable (Sundry Debtors)
   const customerDuesTotal = useMemo(() => {
-    return filteredInvoices.reduce((s, i) => s + (i.balanceDue || 0), 0);
-  }, [filteredInvoices]);
+    return filteredInvoices
+      .filter((i) => !((i as any).isReturned || returnedInvoiceIds.has(i._id || i.id)))
+      .reduce((s, i) => s + (i.balanceDue || 0), 0);
+  }, [filteredInvoices, returnedInvoiceIds]);
 
   // 3. Girvi Pledged Loans Receivable
   const girviPrincipalTotal = useMemo(() => {
@@ -229,14 +272,19 @@ export default function BalanceSheetPage() {
 
   // 4. Cash & Bank Balances (Inflows - Outflows)
   const cashAndBankBalance = useMemo(() => {
-    const totalInvoiceCashPaid = filteredInvoices.reduce((s, i) => s + (i.amountPaid || i.total || 0), 0);
-    const totalPurchaseCashPaid = filteredPurchases.reduce((s, p) => s + ((p as any).amountPaid || p.total || 0), 0);
+    const totalInvoiceCashPaid = filteredInvoices.reduce((s, i) => s + (i.amountPaid || (i.balanceDue === 0 ? i.total : i.total - (i.balanceDue || 0))), 0);
+    const totalReturnsPaid = filteredSalesReturns.reduce((s, r) => s + (r.totalRefund || 0), 0);
+    const totalPurchaseCashPaid = filteredPurchases
+      .filter((p) => !((p as any).isReturned || (p as any).status === "Cancelled" || (p as any).status === "Returned"))
+      .reduce((s, p) => s + ((p as any).amountPaid || p.total || 0), 0);
+
     const totalExpensesPaid = filteredExpenses.reduce((s, e) => s + (e.amount || 0), 0);
     const totalGirviDisbursed = filteredGirvi.reduce((s, g) => s + (g.principal || 0), 0);
 
-    const netCash = totalInvoiceCashPaid - totalPurchaseCashPaid - totalExpensesPaid - totalGirviDisbursed;
-    return Math.max(50000, netCash); // Baseline cash reserve
-  }, [filteredInvoices, filteredPurchases, filteredExpenses, filteredGirvi]);
+    const netCash = (totalInvoiceCashPaid - totalReturnsPaid) - totalPurchaseCashPaid - totalExpensesPaid - totalGirviDisbursed;
+    return Math.max(0, netCash);
+  }, [filteredInvoices, filteredSalesReturns, filteredPurchases, filteredExpenses, filteredGirvi]);
+
 
   // Total Assets
   const totalAssets = useMemo(() => {
@@ -702,13 +750,13 @@ export default function BalanceSheetPage() {
             <div className="p-4 space-y-1">
               <span className="text-muted-foreground font-medium">Gold Stock Wt</span>
               <div className="text-base font-bold font-mono text-amber-700">{inventoryMetrics.goldWeightNet.toFixed(2)} g</div>
-              <div className="text-[11px] text-muted-foreground">{inr(inventoryMetrics.goldWeightNet * (latestRates.gold22 || 7200))}</div>
+              <div className="text-[11px] text-muted-foreground">{inr(inventoryMetrics.goldValuation)}</div>
             </div>
 
             <div className="p-4 space-y-1">
               <span className="text-muted-foreground font-medium">Silver Stock Wt</span>
               <div className="text-base font-bold font-mono text-slate-700 dark:text-slate-300">{inventoryMetrics.silverWeightNet.toFixed(2)} g</div>
-              <div className="text-[11px] text-muted-foreground">{inr(inventoryMetrics.silverWeightNet * (latestRates.silver || 92))}</div>
+              <div className="text-[11px] text-muted-foreground">{inr(inventoryMetrics.silverValuation)}</div>
             </div>
 
             <div className="p-4 space-y-1">
@@ -832,30 +880,15 @@ export default function BalanceSheetPage() {
 
                     <div className="flex justify-between text-sm py-1.5 border-b border-dashed">
                       <div>
-                        <span className="font-semibold text-foreground">Finished Jewellery Stock</span>
-                        <div className="text-xs text-muted-foreground">Total In-House Inventory ({inventoryMetrics.totalPcs} pcs)</div>
+                        <span className="font-semibold text-foreground">Finished Jewellery Stock ({inventoryMetrics.totalPcs} pcs)</span>
+                        <div className="text-xs text-muted-foreground">
+                          Gold Wt: <strong>{inventoryMetrics.goldWeightNet.toFixed(2)} g</strong> {inventoryMetrics.silverWeightNet > 0 ? `| Silver Wt: ${inventoryMetrics.silverWeightNet.toFixed(2)} g` : ""}
+                        </div>
                       </div>
                       <span className="font-bold text-foreground">{inr(inventoryMetrics.totalValue)}</span>
                     </div>
-
-                    <div className="flex justify-between text-sm py-1.5 border-b border-dashed">
-                      <div>
-                        <span className="font-medium text-foreground">Pure Gold Inventory ({inventoryMetrics.goldWeightNet.toFixed(2)} g)</span>
-                        <div className="text-xs text-muted-foreground">Valued @ {inr(latestRates.gold22 || 7200)}/g</div>
-                      </div>
-                      <span className="font-mono text-amber-700 font-medium">{inr(inventoryMetrics.goldWeightNet * (latestRates.gold22 || 7200))}</span>
-                    </div>
-
-                    {inventoryMetrics.silverWeightNet > 0 && (
-                      <div className="flex justify-between text-sm py-1.5 border-b border-dashed">
-                        <div>
-                          <span className="font-medium text-foreground">Silver Inventory ({inventoryMetrics.silverWeightNet.toFixed(2)} g)</span>
-                          <div className="text-xs text-muted-foreground">Valued @ {inr(latestRates.silver || 92)}/g</div>
-                        </div>
-                        <span className="font-mono text-slate-700 font-medium">{inr(inventoryMetrics.silverWeightNet * (latestRates.silver || 92))}</span>
-                      </div>
-                    )}
                   </div>
+
 
                   {/* Section 2: Receivables */}
                   <div className="space-y-3">

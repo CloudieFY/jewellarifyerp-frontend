@@ -456,68 +456,68 @@ export default function SuppliersPage() {
                     <Plus className="w-4 h-4 mr-2" /> Add Supplier
                   </Button>
                 </DialogTrigger>
-              <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
-                <DialogHeader>
-                  <DialogTitle className="font-display text-2xl">{editingId ? "Edit" : "New"} supplier</DialogTitle>
-                  <DialogDescription>Add or update supplier information</DialogDescription>
-                </DialogHeader>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Supplier Name *" v={form.name} on={v => setForm({ ...form, name: v })} />
-                  <Field label="Mobile No *" v={form.mobile} on={v => setForm({ ...form, mobile: v })} />
-                  <Field label="Company No *" v={(form as any).companyNo} on={v => setForm({ ...form, companyNo: v } as any)} />
-                  <Field label="Email (optional)" v={form.email || ""} on={v => setForm({ ...form, email: v })} />
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium text-muted-foreground">Category *</Label>
-                    <div className="flex gap-2 items-center">
-                      <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                        <SelectTrigger className="flex-1"><SelectValue placeholder="Select category" /></SelectTrigger>
-                        <SelectContent>
-                          {categories.map((c) => (
-                            <SelectItem key={c} value={c}>{c}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Dialog open={addCatOpen} onOpenChange={setAddCatOpen}>
-                        <DialogTrigger asChild>
-                          <Button size="icon" variant="outline" className="shrink-0" title="Add Category">
-                            <Plus className="w-4 h-4" />
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-h-[60vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
-                          <DialogHeader>
-                            <DialogTitle>Add Category</DialogTitle>
-                            <DialogDescription>Add a new category label for your suppliers.</DialogDescription>
-                          </DialogHeader>
-                          <div className="py-4">
-                            <Input value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder="Category name" autoFocus />
-                          </div>
-                          <DialogFooter>
-                            <Button variant="outline" onClick={() => setAddCatOpen(false)}>Cancel</Button>
-                            <Button onClick={addCategory}>Add</Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
+                <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
+                  <DialogHeader>
+                    <DialogTitle className="font-display text-2xl">{editingId ? "Edit" : "New"} supplier</DialogTitle>
+                    <DialogDescription>Add or update supplier information</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="Supplier Name *" v={form.name} on={v => setForm({ ...form, name: v })} />
+                    <Field label="Mobile No *" v={form.mobile} on={v => setForm({ ...form, mobile: v })} />
+                    <Field label="Company No *" v={(form as any).companyNo} on={v => setForm({ ...form, companyNo: v } as any)} />
+                    <Field label="Email (optional)" v={form.email || ""} on={v => setForm({ ...form, email: v })} />
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium text-muted-foreground">Category *</Label>
+                      <div className="flex gap-2 items-center">
+                        <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
+                          <SelectTrigger className="flex-1"><SelectValue placeholder="Select category" /></SelectTrigger>
+                          <SelectContent>
+                            {categories.map((c) => (
+                              <SelectItem key={c} value={c}>{c}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Dialog open={addCatOpen} onOpenChange={setAddCatOpen}>
+                          <DialogTrigger asChild>
+                            <Button size="icon" variant="outline" className="shrink-0" title="Add Category">
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-h-[60vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
+                            <DialogHeader>
+                              <DialogTitle>Add Category</DialogTitle>
+                              <DialogDescription>Add a new category label for your suppliers.</DialogDescription>
+                            </DialogHeader>
+                            <div className="py-4">
+                              <Input value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder="Category name" autoFocus />
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => setAddCatOpen(false)}>Cancel</Button>
+                              <Button onClick={addCategory}>Add</Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                    <Field label="GST No (optional)" v={form.gstNumber || ""} on={v => setForm({ ...form, gstNumber: v })} />
+                    <div className="col-span-2 grid grid-cols-2 gap-4 mt-2 p-3 bg-muted/30 rounded-md border border-border">
+                      <div className="col-span-2 text-xs font-semibold text-primary uppercase tracking-wider -mb-1">Opening Balance (Weight)</div>
+                      <div className="space-y-1.5"><Label className="text-xs font-medium text-muted-foreground">Gold Due (g)</Label><Input type="number" value={form.balanceGold === 0 ? "" : form.balanceGold} onChange={e => setForm({ ...form, balanceGold: Number(e.target.value) })} placeholder="0" /></div>
+                      <div className="space-y-1.5"><Label className="text-xs font-medium text-muted-foreground">Silver Due (g)</Label><Input type="number" value={form.balanceSilver === 0 ? "" : form.balanceSilver} onChange={e => setForm({ ...form, balanceSilver: Number(e.target.value) })} placeholder="0" /></div>
+                    </div>
+                    <div className="col-span-2 space-y-3 mt-1">
+                      <Field label="Address *" v={(form as any).address} on={v => setForm({ ...form, address: v } as any)} />
+                      <Field label="Note *" v={form.note || ""} on={v => setForm({ ...form, note: v })} />
                     </div>
                   </div>
-                  <Field label="GST No (optional)" v={form.gstNumber || ""} on={v => setForm({ ...form, gstNumber: v })} />
-                  <div className="col-span-2 grid grid-cols-2 gap-4 mt-2 p-3 bg-muted/30 rounded-md border border-border">
-                    <div className="col-span-2 text-xs font-semibold text-primary uppercase tracking-wider -mb-1">Opening Balance (Weight)</div>
-                    <div className="space-y-1.5"><Label className="text-xs font-medium text-muted-foreground">Gold Due (g)</Label><Input type="number" value={form.balanceGold === 0 ? "" : form.balanceGold} onChange={e => setForm({ ...form, balanceGold: Number(e.target.value) })} placeholder="0" /></div>
-                    <div className="space-y-1.5"><Label className="text-xs font-medium text-muted-foreground">Silver Due (g)</Label><Input type="number" value={form.balanceSilver === 0 ? "" : form.balanceSilver} onChange={e => setForm({ ...form, balanceSilver: Number(e.target.value) })} placeholder="0" /></div>
-                  </div>
-                  <div className="col-span-2 space-y-3 mt-1">
-                    <Field label="Address *" v={(form as any).address} on={v => setForm({ ...form, address: v } as any)} />
-                    <Field label="Note *" v={form.note || ""} on={v => setForm({ ...form, note: v })} />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading_UI}>Cancel</Button>
-                  <Button onClick={save} disabled={isLoading_UI || !form.name || !form.mobile || !(form as any).companyNo || !form.category || !(form as any).address || !form.note}>
-                    {isLoading_UI ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : "Save"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading_UI}>Cancel</Button>
+                    <Button onClick={save} disabled={isLoading_UI || !form.name || !form.mobile || !(form as any).companyNo || !form.category || !(form as any).address || !form.note}>
+                      {isLoading_UI ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : "Save"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
 

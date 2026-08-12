@@ -29,6 +29,7 @@ import {
   Landmark,
   Hammer,
   UserCheck,
+  RotateCcw,
 } from "lucide-react";
 import { DIRECT_EXPENSE_CATEGORIES } from "@/routes/expenses";
 import { ShopHeader } from "@/components/InvoiceBranding";
@@ -56,6 +57,8 @@ export default function LedgerPage() {
   const { data: girviList = [], isLoading: loadingGirvi } = useApi<any[]>(["girvi"], () => api.girvi.getAll());
   const { data: advances = [], isLoading: loadingAdvances } = useApi<any[]>(["advances"], () => api.advances.getAll());
   const { data: karigars = [], isLoading: loadingKarigars } = useApi<any[]>(["karigars"], () => api.karigars.getAll());
+  const { data: salesReturns = [] } = useApi<any[]>(["salesReturns"], () => api.salesReturns.getAll());
+
 
   const isOperator = authUser?.role === "operator";
   const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type !== "GST" : i.type === "GST"), [allInvoices, isOperator]);
@@ -115,11 +118,57 @@ export default function LedgerPage() {
       }
     });
 
-    rolePurchases.forEach(p => {
-      if (new Date(p.date).toDateString() === targetDateStr) {
-        arr.push({ id: p.id || (p as any)._id, date: p.date, time: p.date, type: 'Purchase', subCategory: 'Bullion Stock', icon: ShoppingBag, desc: `Purchase: ${p.billNo} - ${p.supplierName}`, in: 0, out: p.paymentMode === 'Credit' ? 0 : p.total, mode: p.paymentMode });
+    salesReturns.forEach((r: any) => {
+      const d = r.createdAt || r.date;
+      if (d && new Date(d).toDateString() === targetDateStr) {
+        arr.push({
+          id: r.id || r._id,
+          date: d,
+          time: d,
+          type: 'Sales Return',
+          subCategory: 'Customer Refund',
+          icon: RotateCcw,
+          desc: `Sales Return: ${r.returnNo || 'RET'} - ${r.customerName || 'Customer'} (Bill #${r.invoiceNumber || ''})`,
+          in: 0,
+          out: r.totalRefund || 0,
+          mode: r.refundMode || 'Cash',
+        });
       }
     });
+
+    rolePurchases.forEach((p: any) => {
+      if (new Date(p.date).toDateString() === targetDateStr) {
+        const isReturnedOrCancelled = p.isReturned || p.status === "Cancelled" || p.status === "Returned";
+        if (isReturnedOrCancelled) {
+          arr.push({
+            id: p.id || p._id,
+            date: p.date,
+            time: p.date,
+            type: 'Purchase Return',
+            subCategory: 'Supplier Return',
+            icon: RotateCcw,
+            desc: `Purchase Return/Cancelled: ${p.billNo} - ${p.supplierName}`,
+            in: p.paymentMode === 'Credit' ? 0 : (p.total || 0),
+            out: 0,
+            mode: p.paymentMode || 'Cash',
+          });
+        } else {
+          arr.push({
+            id: p.id || p._id,
+            date: p.date,
+            time: p.date,
+            type: 'Purchase',
+            subCategory: 'Bullion Stock',
+            icon: ShoppingBag,
+            desc: `Purchase: ${p.billNo} - ${p.supplierName}`,
+            in: 0,
+            out: p.paymentMode === 'Credit' ? 0 : p.total,
+            mode: p.paymentMode,
+          });
+        }
+      }
+    });
+
 
     customers.forEach(c => {
       if (c.createdAt && new Date(c.createdAt).toDateString() === targetDateStr) {
@@ -226,12 +275,61 @@ export default function LedgerPage() {
       }
     });
 
-    rolePurchases.forEach(p => {
-      const isoDate = new Date(p.date).toISOString().slice(0, 10);
+    salesReturns.forEach((r: any) => {
+      const d = r.createdAt || r.date;
+      if (!d) return;
+      const isoDate = new Date(d).toISOString().slice(0, 10);
       if (isoDate.startsWith(targetMonth)) {
-        arr.push({ id: p.id || (p as any)._id, date: isoDate, time: p.date, type: 'Purchase', subCategory: 'Bullion Stock', icon: ShoppingBag, desc: `Purchase: ${p.billNo} - ${p.supplierName}`, in: 0, out: p.paymentMode === 'Credit' ? 0 : p.total, mode: p.paymentMode });
+        arr.push({
+          id: r.id || r._id,
+          date: isoDate,
+          time: d,
+          type: 'Sales Return',
+          subCategory: 'Customer Refund',
+          icon: RotateCcw,
+          desc: `Sales Return: ${r.returnNo || 'RET'} - ${r.customerName || 'Customer'} (Bill #${r.invoiceNumber || ''})`,
+          in: 0,
+          out: r.totalRefund || 0,
+          mode: r.refundMode || 'Cash',
+        });
       }
     });
+
+    rolePurchases.forEach((p: any) => {
+      if (!p.date) return;
+      const isoDate = new Date(p.date).toISOString().slice(0, 10);
+      if (isoDate.startsWith(targetMonth)) {
+        const isReturnedOrCancelled = p.isReturned || p.status === "Cancelled" || p.status === "Returned";
+        if (isReturnedOrCancelled) {
+          arr.push({
+            id: p.id || p._id,
+            date: isoDate,
+            time: p.date,
+            type: 'Purchase Return',
+            subCategory: 'Supplier Return',
+            icon: RotateCcw,
+            desc: `Purchase Return/Cancelled: ${p.billNo} - ${p.supplierName}`,
+            in: p.paymentMode === 'Credit' ? 0 : (p.total || 0),
+            out: 0,
+            mode: p.paymentMode || 'Cash',
+          });
+        } else {
+          arr.push({
+            id: p.id || p._id,
+            date: isoDate,
+            time: p.date,
+            type: 'Purchase',
+            subCategory: 'Bullion Stock',
+            icon: ShoppingBag,
+            desc: `Purchase: ${p.billNo} - ${p.supplierName}`,
+            in: 0,
+            out: p.paymentMode === 'Credit' ? 0 : p.total,
+            mode: p.paymentMode,
+          });
+        }
+      }
+    });
+
 
     customers.forEach(c => {
       if (!c.createdAt) return;

@@ -9,30 +9,30 @@ import { inr, type Invoice, type Purchase, type Supplier, type Expense } from "@
 import { formatDate } from "@/lib/utils";
 import { useTenantAPI } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { 
-  TrendingUp, 
-  Wallet, 
-  AlertTriangle, 
-  PieChart as PieChartIcon, 
-  Receipt, 
-  ShoppingBag, 
-  Search, 
-  Coins, 
+import {
+  TrendingUp,
+  Wallet,
+  AlertTriangle,
+  PieChart as PieChartIcon,
+  Receipt,
+  ShoppingBag,
+  Search,
+  Coins,
   FileSpreadsheet
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip as RechartsTooltip, 
-  ResponsiveContainer, 
-  Legend, 
-  PieChart, 
-  Pie, 
-  Cell 
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  Legend,
+  PieChart,
+  Pie,
+  Cell
 } from "recharts";
 import { Select as CustomSelect, SelectContent as SC, SelectItem as SI, SelectTrigger as ST, SelectValue as SV } from "@/components/ui/select";
 
@@ -63,6 +63,11 @@ export default function ReportsPage() {
   const { data: suppliers = [] } = useQuery<Supplier[]>({
     queryKey: ["suppliers"],
     queryFn: api.suppliers.getAll
+  });
+
+  const { data: salesReturns = [] } = useQuery<any[]>({
+    queryKey: ["salesReturns"],
+    queryFn: api.salesReturns.getAll
   });
 
   // Date State
@@ -155,7 +160,7 @@ export default function ReportsPage() {
       // Type Filter based on Tab
       if (activeTab === "sales" && inv.type !== "GST") return false;
       if (activeTab === "estimate-sales" && inv.type === "GST") return false;
-      
+
       // Override UI Type Filter (we hide it from UI anyway)
       if (salesTypeFilter !== "ALL" && inv.type !== salesTypeFilter) return false;
       // Payment Mode Filter
@@ -175,6 +180,21 @@ export default function ReportsPage() {
     }).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   }, [rangeInvoices, salesTypeFilter, salesPaymentFilter, salesSearch, activeTab]);
 
+  const rangeSalesReturns = useMemo(() => {
+    if (!startDate || !endDate) return [];
+    return salesReturns.filter((r: any) => {
+      const dateStr = r.createdAt || r.date;
+      if (!dateStr) return false;
+      const d = String(dateStr).slice(0, 10);
+      return d >= startDate && d <= endDate;
+    });
+  }, [salesReturns, startDate, endDate]);
+
+  const returnedInvoiceIds = useMemo(
+    () => new Set((salesReturns || []).map((r: any) => r.invoiceId)),
+    [salesReturns]
+  );
+
   const salesStats = useMemo(() => {
     let count = filteredSales.length;
     let totalGrossSales = 0;
@@ -193,40 +213,70 @@ export default function ReportsPage() {
     let totalSilverNetWeightGrams = 0;
     let totalDiamondWeightCt = 0;
 
+    let returnedCount = 0;
+    let returnedTotalAmount = 0;
+    let returnedTaxable = 0;
+    let returnedGoldWeight = 0;
+    let returnedSilverWeight = 0;
+    let returnedDiamondWeight = 0;
+
     filteredSales.forEach((inv) => {
+      const isRet = (inv as any).isReturned || returnedInvoiceIds.has(inv._id || inv.id || "");
       const taxable = inv.subtotal - (inv.discount || 0) - (inv.oldGoldAmount || 0);
-      totalGrossSales += inv.subtotal;
-      totalDiscount += inv.discount || 0;
-      totalOldGold += inv.oldGoldAmount || 0;
-      totalTaxable += taxable;
-      totalTax += inv.gstAmount || 0;
 
-      // GST Split
-      totalCgst += (inv.gstAmount || 0) / 2;
-      totalSgst += (inv.gstAmount || 0) / 2;
+      let invGoldWt = 0;
+      let invSilverWt = 0;
+      let invDiamondWt = 0;
 
-      grandTotal += inv.total;
-      totalPaid += inv.amountPaid || (inv.balanceDue === 0 ? inv.total : inv.total - (inv.balanceDue || 0));
-      totalBalanceDue += inv.balanceDue || 0;
-
-      // Item weight aggregation
       inv.items?.forEach((item) => {
         const nameUpper = (item.name || "").toUpperCase();
         const purityUpper = (item.purity || "").toUpperCase();
         const netWt = item.netWeight * (item.qty || 1);
 
         if (nameUpper.includes("SILVER") || purityUpper.includes("925") || purityUpper.includes("SILVER")) {
-          totalSilverNetWeightGrams += netWt;
+          invSilverWt += netWt;
         } else if (nameUpper.includes("DIAMOND") || purityUpper.includes("CTS") || purityUpper.includes("CARAT")) {
-          totalDiamondWeightCt += netWt;
+          invDiamondWt += netWt;
         } else {
-          totalGoldNetWeightGrams += netWt;
+          invGoldWt += netWt;
         }
       });
+
+      if (isRet) {
+        returnedCount++;
+        returnedTotalAmount += inv.total;
+        returnedTaxable += taxable;
+        returnedGoldWeight += invGoldWt;
+        returnedSilverWeight += invSilverWt;
+        returnedDiamondWeight += invDiamondWt;
+      } else {
+        totalGrossSales += inv.subtotal;
+        totalDiscount += inv.discount || 0;
+        totalOldGold += inv.oldGoldAmount || 0;
+        totalTaxable += taxable;
+        totalTax += inv.gstAmount || 0;
+
+        // GST Split
+        totalCgst += (inv.gstAmount || 0) / 2;
+        totalSgst += (inv.gstAmount || 0) / 2;
+
+        grandTotal += inv.total;
+        totalPaid += inv.amountPaid || (inv.balanceDue === 0 ? inv.total : inv.total - (inv.balanceDue || 0));
+        totalBalanceDue += inv.balanceDue || 0;
+
+        totalGoldNetWeightGrams += invGoldWt;
+        totalSilverNetWeightGrams += invSilverWt;
+        totalDiamondWeightCt += invDiamondWt;
+      }
     });
+
+    const totalSalesReturnsRefund = rangeSalesReturns.reduce((s, r: any) => s + (r.totalRefund || 0), 0);
+    const finalReturnedAmount = Math.max(returnedTotalAmount, totalSalesReturnsRefund);
 
     return {
       count,
+      activeCount: count - returnedCount,
+      returnedCount,
       totalGrossSales,
       totalDiscount,
       totalOldGold,
@@ -236,13 +286,18 @@ export default function ReportsPage() {
       totalIgst,
       totalTax,
       grandTotal,
+      netGrandTotal: grandTotal,
       totalPaid,
+      netTotalPaid: totalPaid,
+      totalSalesReturnsRefund: finalReturnedAmount,
       totalBalanceDue,
       totalGoldNetWeightGrams,
       totalSilverNetWeightGrams,
       totalDiamondWeightCt,
+      returnedTotalAmount: finalReturnedAmount,
     };
-  }, [filteredSales]);
+  }, [filteredSales, returnedInvoiceIds, rangeSalesReturns]);
+
 
   // ----------------------------------------------------
   // PURCHASE REPORT SPECIFIC CALCULATIONS & FILTERING
@@ -252,7 +307,7 @@ export default function ReportsPage() {
       const pType = (p as any).type || (p.gstPct > 0 ? "GST" : "NON-GST");
       if (activeTab === "purchases" && pType !== "GST") return false;
       if (activeTab === "estimate-purchases" && pType === "GST") return false;
-      
+
       if (purchaseTypeFilter !== "ALL" && pType !== purchaseTypeFilter) return false;
       if (purchasePaymentFilter !== "ALL" && p.paymentMode !== purchasePaymentFilter) return false;
       if (purchaseMetalFilter !== "ALL" && p.metal !== purchaseMetalFilter) return false;
@@ -269,7 +324,7 @@ export default function ReportsPage() {
   }, [rangePurchases, purchaseTypeFilter, purchasePaymentFilter, purchaseMetalFilter, purchaseSearch, activeTab]);
 
   const purchaseStats = useMemo(() => {
-    let count = filteredPurchases.length;
+    let count = 0;
     let totalTaxable = 0;
     let totalCgst = 0;
     let totalSgst = 0;
@@ -278,8 +333,16 @@ export default function ReportsPage() {
     let goldWeightGrams = 0;
     let silverWeightGrams = 0;
     let creditOutstandingAdded = 0;
+    let totalPurchaseReturns = 0;
 
     filteredPurchases.forEach((p) => {
+      const isReturnedOrCancelled = (p as any).isReturned || (p as any).status === "Cancelled" || (p as any).status === "Returned";
+      if (isReturnedOrCancelled) {
+        totalPurchaseReturns += p.total || 0;
+        return;
+      }
+
+      count++;
       const base = p.weight * p.ratePerGram + (p.makingCharge || 0);
       const taxAmt = (base * (p.gstPct || 0)) / 100;
       totalTaxable += base;
@@ -304,27 +367,47 @@ export default function ReportsPage() {
       goldWeightGrams,
       silverWeightGrams,
       creditOutstandingAdded,
+      totalPurchaseReturns,
     };
   }, [filteredPurchases]);
 
-  // ----------------------------------------------------
-  // OVERVIEW DASHBOARD STATS
-  // ----------------------------------------------------
+
   const overviewStats = useMemo(() => {
-    const gstSales = rangeInvoices.filter(i => i.type === "GST").reduce((sum, i) => sum + i.total, 0);
-    const estSales = rangeInvoices.filter(i => i.type !== "GST").reduce((sum, i) => sum + i.total, 0);
+    const estReturns = rangeSalesReturns
+      .filter((r: any) => {
+        const linkedInv = allInvoices.find(inv => inv._id === r.invoiceId || inv.id === r.invoiceId);
+        return linkedInv ? linkedInv.type !== "GST" : true;
+      })
+      .reduce((s, r: any) => s + (r.totalRefund || 0), 0);
+
+    const gstReturns = rangeSalesReturns
+      .filter((r: any) => {
+        const linkedInv = allInvoices.find(inv => inv._id === r.invoiceId || inv.id === r.invoiceId);
+        return linkedInv ? linkedInv.type === "GST" : false;
+      })
+      .reduce((s, r: any) => s + (r.totalRefund || 0), 0);
+
+    const rawGstSales = rangeInvoices
+      .filter(i => i.type === "GST" && !((i as any).isReturned || returnedInvoiceIds.has(i._id || i.id)))
+      .reduce((sum, i) => sum + i.total, 0);
+
+    const rawEstSales = rangeInvoices
+      .filter(i => i.type !== "GST" && !((i as any).isReturned || returnedInvoiceIds.has(i._id || i.id)))
+      .reduce((sum, i) => sum + i.total, 0);
+
+    const gstSales = Math.max(0, rawGstSales - gstReturns);
+    const estSales = Math.max(0, rawEstSales - estReturns);
     const totalSalesIncome = gstSales + estSales;
 
-    const gstPurchases = rangePurchases.filter(p => (p as any).type === "GST" || p.gstPct > 0).reduce((sum, p) => sum + p.total, 0);
-    const estPurchases = rangePurchases.filter(p => (p as any).type !== "GST" && (!p.gstPct || p.gstPct === 0)).reduce((sum, p) => sum + p.total, 0);
+    const gstPurchases = rangePurchases.filter(p => ((p as any).type === "GST" || p.gstPct > 0) && !((p as any).isReturned || (p as any).status === "Cancelled" || (p as any).status === "Returned")).reduce((sum, p) => sum + p.total, 0);
+    const estPurchases = rangePurchases.filter(p => ((p as any).type !== "GST" && (!p.gstPct || p.gstPct === 0)) && !((p as any).isReturned || (p as any).status === "Cancelled" || (p as any).status === "Returned")).reduce((sum, p) => sum + p.total, 0);
     const totalPurchaseCost = gstPurchases + estPurchases;
 
     const totalExpenseCost = rangeExpenses.reduce((sum, e) => sum + e.amount, 0);
     const totalSupplierDue = suppliers.reduce((sum, s) => sum + (s.outstanding || 0), 0);
-    
-    // Separate Net Profits
-    const gstNetProfit = gstSales - gstPurchases - totalExpenseCost; // assigning expenses to GST side arbitrarily, or maybe we just don't calculate net revenue like this anymore.
-    // Let's just output them individually
+
+    const gstNetProfit = gstSales - gstPurchases - totalExpenseCost;
+    const estNetProfit = estSales - estPurchases - totalExpenseCost;
     const netRevenue = totalSalesIncome - totalPurchaseCost - totalExpenseCost;
 
     return {
@@ -332,12 +415,12 @@ export default function ReportsPage() {
       totalPurchaseCost, gstPurchases, estPurchases,
       totalExpenseCost,
       totalSupplierDue,
-      netRevenue, gstNetProfit,
+      netRevenue, gstNetProfit, estNetProfit,
       salesCount: rangeInvoices.length,
       purchasesCount: rangePurchases.length,
       expensesCount: rangeExpenses.length,
     };
-  }, [rangeInvoices, rangePurchases, rangeExpenses, suppliers]);
+  }, [rangeInvoices, rangePurchases, rangeExpenses, suppliers, rangeSalesReturns, returnedInvoiceIds, allInvoices]);
 
   // 15 Days Trend Data
   const trendData = useMemo(() => {
@@ -349,34 +432,53 @@ export default function ReportsPage() {
       const dStr = d.toISOString().slice(0, 10);
       const dateLabel = `${d.getDate()}/${d.getMonth() + 1}`;
 
-      const inc = allInvoices
-        .filter((inv) => inv.createdAt && inv.createdAt.slice(0, 10) === dStr)
+      const dayReturns = salesReturns.filter((r: any) => (r.createdAt || r.date) && String(r.createdAt || r.date).slice(0, 10) === dStr);
+
+      const gstRetRefund = dayReturns
+        .filter((r: any) => {
+          const linkedInv = allInvoices.find(inv => inv._id === r.invoiceId || inv.id === r.invoiceId);
+          return linkedInv ? linkedInv.type === "GST" : false;
+        })
+        .reduce((s, x: any) => s + (x.totalRefund || 0), 0);
+
+      const estRetRefund = dayReturns
+        .filter((r: any) => {
+          const linkedInv = allInvoices.find(inv => inv._id === r.invoiceId || inv.id === r.invoiceId);
+          return linkedInv ? linkedInv.type !== "GST" : true;
+        })
+        .reduce((s, x: any) => s + (x.totalRefund || 0), 0);
+
+      const rawIncGst = allInvoices
+        .filter((inv) => inv.createdAt && inv.createdAt.slice(0, 10) === dStr && inv.type === "GST" && !((inv as any).isReturned || returnedInvoiceIds.has(inv._id || inv.id)))
         .reduce((s, x) => s + x.total, 0);
-      const incGst = allInvoices
-        .filter((inv) => inv.createdAt && inv.createdAt.slice(0, 10) === dStr && inv.type === "GST")
+
+      const rawIncEst = allInvoices
+        .filter((inv) => inv.createdAt && inv.createdAt.slice(0, 10) === dStr && inv.type !== "GST" && !((inv as any).isReturned || returnedInvoiceIds.has(inv._id || inv.id)))
         .reduce((s, x) => s + x.total, 0);
-      const incEst = allInvoices
-        .filter((inv) => inv.createdAt && inv.createdAt.slice(0, 10) === dStr && inv.type !== "GST")
-        .reduce((s, x) => s + x.total, 0);
+
+      const incGst = Math.max(0, rawIncGst - gstRetRefund);
+      const incEst = Math.max(0, rawIncEst - estRetRefund);
+      const inc = incGst + incEst;
 
       const exp = expenses
         .filter((e) => e.date && e.date.slice(0, 10) === dStr)
         .reduce((s, x) => s + x.amount, 0);
 
-      const pur = allPurchases
-        .filter((p) => p.date && p.date.slice(0, 10) === dStr)
-        .reduce((s, x) => s + x.total, 0);
       const purGst = allPurchases
-        .filter((p) => p.date && p.date.slice(0, 10) === dStr && ((p as any).type === "GST" || p.gstPct > 0))
+        .filter((p) => p.date && p.date.slice(0, 10) === dStr && ((p as any).type === "GST" || p.gstPct > 0) && !((p as any).isReturned || (p as any).status === "Cancelled" || (p as any).status === "Returned"))
         .reduce((s, x) => s + x.total, 0);
+
       const purEst = allPurchases
-        .filter((p) => p.date && p.date.slice(0, 10) === dStr && ((p as any).type !== "GST" && (!p.gstPct || p.gstPct === 0)))
+        .filter((p) => p.date && p.date.slice(0, 10) === dStr && ((p as any).type !== "GST" && (!p.gstPct || p.gstPct === 0)) && !((p as any).isReturned || (p as any).status === "Cancelled" || (p as any).status === "Returned"))
         .reduce((s, x) => s + x.total, 0);
+
+      const pur = purGst + purEst;
 
       arr.push({ date: dateLabel, inc, incGst, incEst, exp, pur, purGst, purEst });
     }
     return arr;
-  }, [endDate, allInvoices, expenses, allPurchases]);
+  }, [endDate, allInvoices, expenses, allPurchases, salesReturns, returnedInvoiceIds]);
+
 
   // Pie chart expenses
   const pieData = useMemo(() => {
@@ -726,15 +828,13 @@ export default function ReportsPage() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{isOperator ? "Estimate Net Margin" : "GST Net Margin"}</div>
-                    <div className={`text-2xl font-display font-bold mt-1 ${
-                      (isOperator ? (overviewStats.estSales - overviewStats.estPurchases - overviewStats.totalExpenseCost) : overviewStats.gstNetProfit) >= 0 ? "text-emerald-600" : "text-rose-600"
-                    }`}>
+                    <div className={`text-2xl font-display font-bold mt-1 ${(isOperator ? (overviewStats.estSales - overviewStats.estPurchases - overviewStats.totalExpenseCost) : overviewStats.gstNetProfit) >= 0 ? "text-emerald-600" : "text-rose-600"
+                      }`}>
                       {inr(isOperator ? (overviewStats.estSales - overviewStats.estPurchases - overviewStats.totalExpenseCost) : overviewStats.gstNetProfit)}
                     </div>
                   </div>
-                  <div className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${
-                    (isOperator ? (overviewStats.estSales - overviewStats.estPurchases - overviewStats.totalExpenseCost) : overviewStats.gstNetProfit) >= 0 ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
-                  }`}>
+                  <div className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${(isOperator ? (overviewStats.estSales - overviewStats.estPurchases - overviewStats.totalExpenseCost) : overviewStats.gstNetProfit) >= 0 ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
+                    }`}>
                     <Coins className="w-5 h-5" />
                   </div>
                 </div>
@@ -867,7 +967,7 @@ export default function ReportsPage() {
                     />
                   </div>
 
-                  
+
 
                   {/* Payment Mode Filter */}
                   <CustomSelect value={salesPaymentFilter} onValueChange={setSalesPaymentFilter}>
@@ -892,10 +992,12 @@ export default function ReportsPage() {
           </Card>
 
           {/* Sales Key Metrics Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             <div className="bg-card border p-3 rounded-lg">
               <div className="text-[11px] text-muted-foreground uppercase font-semibold">Invoices</div>
-              <div className="text-xl font-bold font-display mt-0.5">{salesStats.count}</div>
+              <div className="text-xl font-bold font-display mt-0.5">
+                {salesStats.count} {salesStats.returnedCount > 0 ? <span className="text-xs font-semibold text-rose-600">({salesStats.activeCount} Active)</span> : null}
+              </div>
             </div>
             <div className="bg-card border p-3 rounded-lg">
               <div className="text-[11px] text-muted-foreground uppercase font-semibold">Taxable Value</div>
@@ -906,9 +1008,15 @@ export default function ReportsPage() {
               <div className="text-xl font-bold font-display mt-0.5 text-amber-600">{inr(salesStats.totalTax)}</div>
             </div>
             <div className="bg-card border p-3 rounded-lg">
-              <div className="text-[11px] text-muted-foreground uppercase font-semibold">Gross Sales</div>
+              <div className="text-[11px] text-muted-foreground uppercase font-semibold">Net Sales</div>
               <div className="text-xl font-bold font-display mt-0.5 text-emerald-600">{inr(salesStats.grandTotal)}</div>
             </div>
+            {salesStats.returnedTotalAmount > 0 && (
+              <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 p-3 rounded-lg">
+                <div className="text-[11px] text-rose-700 dark:text-rose-300 uppercase font-semibold">Sales Returns</div>
+                <div className="text-xl font-bold font-display mt-0.5 text-rose-600">-{inr(salesStats.returnedTotalAmount)}</div>
+              </div>
+            )}
             <div className="bg-card border p-3 rounded-lg">
               <div className="text-[11px] text-muted-foreground uppercase font-semibold">Gold Sold</div>
               <div className="text-xl font-bold font-display mt-0.5 text-amber-700">{salesStats.totalGoldNetWeightGrams.toFixed(2)} g</div>
@@ -949,11 +1057,19 @@ export default function ReportsPage() {
                     </thead>
                     <tbody>
                       {salesPaginated.map((inv) => {
+                        const isReturned = (inv as any).isReturned || returnedInvoiceIds.has(inv._id || inv.id || "");
                         const taxable = inv.subtotal - (inv.discount || 0) - (inv.oldGoldAmount || 0);
                         const isPaid = (inv.balanceDue || 0) <= 0;
                         return (
-                          <tr key={inv._id || inv.id} className="border-b last:border-0 hover:bg-muted/20">
-                            <td className="py-3 px-4 font-semibold text-foreground">{inv.number}</td>
+                          <tr key={inv._id || inv.id} className={`border-b last:border-0 hover:bg-muted/20 ${isReturned ? "bg-rose-50/40 dark:bg-rose-950/20" : ""}`}>
+                            <td className="py-3 px-4 font-semibold text-foreground">
+                              <div>{inv.number}</div>
+                              {isReturned && (
+                                <span className="text-[9px] font-extrabold text-rose-600 bg-rose-100 dark:bg-rose-900/50 px-1.5 py-0.5 rounded border border-rose-200 inline-block mt-0.5">
+                                  ↩ RETURNED
+                                </span>
+                              )}
+                            </td>
                             <td>
                               <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border ${inv.type === "GST" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-100 text-gray-700"}`}>
                                 {inv.type === "NON-GST" ? "Estimate Order" : inv.type}
@@ -965,11 +1081,42 @@ export default function ReportsPage() {
                               <div className="text-xs text-muted-foreground">{inv.customerMobile}</div>
                             </td>
                             <td>{inv.items?.length || 0} pcs</td>
-                            <td className="text-right font-medium">{inr(taxable)}</td>
-                            <td className="text-right text-amber-600 font-medium">{inr(inv.gstAmount || 0)}</td>
-                            <td className="text-right font-bold text-emerald-600">{inr(inv.total)}</td>
+                            <td className="text-right font-medium">
+                              {isReturned ? (
+                                <div>
+                                  <span className="line-through text-muted-foreground text-xs block">{inr(taxable)}</span>
+                                  <span className="text-rose-600 font-bold">₹0.00</span>
+                                </div>
+                              ) : (
+                                inr(taxable)
+                              )}
+                            </td>
+                            <td className="text-right text-amber-600 font-medium">
+                              {isReturned ? (
+                                <div>
+                                  <span className="line-through text-muted-foreground text-xs block">{inr(inv.gstAmount || 0)}</span>
+                                  <span className="text-rose-600 font-bold">₹0.00</span>
+                                </div>
+                              ) : (
+                                inr(inv.gstAmount || 0)
+                              )}
+                            </td>
+                            <td className="text-right font-bold text-emerald-600">
+                              {isReturned ? (
+                                <div>
+                                  <span className="line-through text-muted-foreground text-xs font-normal block">{inr(inv.total)}</span>
+                                  <span className="text-rose-600 font-bold">₹0.00</span>
+                                </div>
+                              ) : (
+                                inr(inv.total)
+                              )}
+                            </td>
                             <td className="text-right px-4">
-                              {isPaid ? (
+                              {isReturned ? (
+                                <span className="bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-bold uppercase px-2 py-0.5 rounded">
+                                  ↩ RETURNED
+                                </span>
+                              ) : isPaid ? (
                                 <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase px-2 py-0.5 rounded">Paid</span>
                               ) : (
                                 <span className="bg-rose-100 text-rose-800 text-[10px] font-bold uppercase px-2 py-0.5 rounded">
@@ -982,6 +1129,7 @@ export default function ReportsPage() {
                       })}
                     </tbody>
                   </table>
+
 
                   {/* Pagination */}
                   {salesTotalPages > 1 && (
@@ -1008,8 +1156,8 @@ export default function ReportsPage() {
         {/* ======================================================== */}
         {/* TAB 3: FULL PURCHASE REPORT */}
         {/* ======================================================== */}
-        
-<TabsContent value="estimate-sales" className="space-y-6">
+
+        <TabsContent value="estimate-sales" className="space-y-6">
           {/* Sales Filter Bar */}
           <Card className="shadow-sm bg-muted/20 border">
             <CardContent className="pt-4 pb-4">
@@ -1026,7 +1174,7 @@ export default function ReportsPage() {
                     />
                   </div>
 
-                  
+
 
                   {/* Payment Mode Filter */}
                   <CustomSelect value={salesPaymentFilter} onValueChange={setSalesPaymentFilter}>
@@ -1165,8 +1313,8 @@ export default function ReportsPage() {
         {/* ======================================================== */}
         {/* TAB 3: FULL PURCHASE REPORT */}
         {/* ======================================================== */}
-        
-<TabsContent value="purchases" className="space-y-6">
+
+        <TabsContent value="purchases" className="space-y-6">
           {/* Purchase Filter Bar */}
           <Card className="shadow-sm bg-muted/20 border">
             <CardContent className="pt-4 pb-4">
@@ -1183,7 +1331,7 @@ export default function ReportsPage() {
                     />
                   </div>
 
-                  
+
 
                   {/* Payment Mode Filter */}
                   <CustomSelect value={purchasePaymentFilter} onValueChange={setPurchasePaymentFilter}>
@@ -1326,7 +1474,7 @@ export default function ReportsPage() {
             </CardContent>
           </Card>
         </TabsContent>
-<TabsContent value="estimate-purchases" className="space-y-6">
+        <TabsContent value="estimate-purchases" className="space-y-6">
           {/* Purchase Filter Bar */}
           <Card className="shadow-sm bg-muted/20 border">
             <CardContent className="pt-4 pb-4">
@@ -1343,7 +1491,7 @@ export default function ReportsPage() {
                     />
                   </div>
 
-                  
+
 
                   {/* Payment Mode Filter */}
                   <CustomSelect value={purchasePaymentFilter} onValueChange={setPurchasePaymentFilter}>

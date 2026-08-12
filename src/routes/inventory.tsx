@@ -295,6 +295,20 @@ export default function InventoryPage() {
     });
   }, [allItems, debouncedSearch, categoryFilter, purityFilter]);
 
+  const activeItemIds = useMemo(() => new Set(allItems.map(i => i._id || i.id)), [allItems]);
+
+  const activeItemNames = useMemo(() => new Set(allItems.map(i => (i.name || "").trim().toLowerCase())), [allItems]);
+
+  const filteredStockLedger = useMemo(() => {
+    return stockLedger.filter((led: any) => {
+      if (led.itemId && activeItemIds.has(led.itemId)) return true;
+      if (led.itemName && activeItemNames.has((led.itemName || "").trim().toLowerCase())) return true;
+      if (led.item && activeItemNames.has((led.item || "").trim().toLowerCase())) return true;
+      return false;
+    });
+  }, [stockLedger, activeItemIds, activeItemNames]);
+
+
   // Open Create Modal
   const handleOpenCreate = () => {
     setDraft({
@@ -580,8 +594,16 @@ export default function InventoryPage() {
                 <div>
                   <div className="text-xs font-medium text-muted-foreground uppercase">Total Gold Net Weight</div>
                   <div className="text-2xl font-bold font-display text-amber-600 mt-1">
-                    {(summaryReport?.totalNetWeight || filteredItems.filter(p => p.metalType === "Gold" || p.category === "Gold").reduce((sum, p) => sum + ((p.netWeight || 0) * (p.stock || 1)), 0)).toFixed(2)} g
+                    {(summaryReport?.totalNetWeight || filteredItems.filter((p: any) => {
+                      const stock = typeof p.stock === "number" ? Math.max(0, p.stock) : 0;
+                      if (stock <= 0) return false;
+                      const metal = (p.metal || p.metalType || p.category || "").toString().toUpperCase();
+                      return metal.includes("GOLD") || metal === "GOLD";
+                    }).reduce((sum, p) => sum + (p.netWeight || 0), 0)).toFixed(2)} g
                   </div>
+
+
+
                   <div className="text-xs text-muted-foreground mt-1">Pure Metal Equivalent</div>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 grid place-items-center">
@@ -801,9 +823,8 @@ export default function InventoryPage() {
 
                           <div className="text-right shrink-0">
                             <div className="font-bold text-xs text-emerald-600">{inr(item.sellingPrice || 0)}</div>
-                            <span className={`inline-block mt-0.5 font-bold text-[10px] px-1.5 py-0.5 rounded ${
-                              item.stock <= (item.reorderLevel || 1) ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"
-                            }`}>
+                            <span className={`inline-block mt-0.5 font-bold text-[10px] px-1.5 py-0.5 rounded ${item.stock <= (item.reorderLevel || 1) ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"
+                              }`}>
                               {item.stock} Pcs
                             </span>
                           </div>
@@ -1227,7 +1248,7 @@ export default function InventoryPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              {stockLedger.length === 0 ? (
+              {filteredStockLedger.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground text-sm">
                   Stock Ledger is empty. Movements will be recorded automatically during Sales, Purchases, Adjustments and Transfers.
                 </div>
@@ -1235,7 +1256,7 @@ export default function InventoryPage() {
                 <>
                   {/* Mobile View */}
                   <div className="block md:hidden divide-y">
-                    {stockLedger.map((led: any) => (
+                    {filteredStockLedger.map((led: any) => (
                       <div key={led._id || led.id} className="p-3 space-y-2 hover:bg-muted/10 transition-colors">
                         <div className="flex items-center justify-between">
                           <span className="font-mono text-xs text-muted-foreground">{led.date}</span>
@@ -1268,7 +1289,7 @@ export default function InventoryPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {stockLedger.map((led: any) => (
+                        {filteredStockLedger.map((led: any) => (
                           <tr key={led._id || led.id} className="border-b last:border-0 hover:bg-muted/20">
                             <td className="py-3 px-4 font-mono">{led.date}</td>
                             <td className="font-medium">{led.itemName}</td>
@@ -1290,6 +1311,7 @@ export default function InventoryPage() {
                   </div>
                 </>
               )}
+
             </CardContent>
           </Card>
         </TabsContent>

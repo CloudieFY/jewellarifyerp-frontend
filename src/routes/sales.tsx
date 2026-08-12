@@ -13,10 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { inr, calcItem, type Invoice } from "@/lib/storage";
 import { useAuth } from "@/lib/auth";
 import { formatDate, useDebounce, triggerPrint } from "@/lib/utils";
-import { Receipt, Trash2, TrendingUp, Printer, Eye, Award, DollarSign, Search, FileText, Plus, RotateCcw } from "lucide-react";
+import { Receipt, Trash2, Printer, Eye, Award, DollarSign, Search, FileText, Plus, RotateCcw } from "lucide-react";
 import { useTenantAPI } from "@/lib/api";
 import { toast } from "sonner";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 
@@ -59,7 +58,8 @@ export default function SalesPage() {
 
 
   const isOperator = authUser?.role === "operator";
-  const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type !== "GST" : i.type === "GST"), [allInvoices, isOperator]);
+  const invoices = allInvoices;
+  const [docTypeFilter, setDocTypeFilter] = useState<"ALL" | "GST" | "NON-GST">("ALL");
 
   const [activeMainTab, setActiveMainTab] = useState("invoices");
   const [q, setQ] = useState("");
@@ -110,7 +110,7 @@ export default function SalesPage() {
   };
 
   const handleSelectInvoiceForReturn = (invoiceId: string) => {
-    const inv = invoices.find(i => (i._id || i.id) === invoiceId);
+    const inv = allInvoices.find(i => (i._id || i.id) === invoiceId);
     if (!inv) return;
     setSelectedInvoiceForReturn(inv);
 
@@ -243,12 +243,19 @@ export default function SalesPage() {
         (filterType === "PAID" && (i.balanceDue || 0) <= 0) ||
         (filterType === "DUE" && (i.balanceDue || 0) > 0);
 
-      return matchText && matchStatus;
+      const matchDocType =
+        docTypeFilter === "ALL" ||
+        (docTypeFilter === "GST" && i.type === "GST") ||
+        (docTypeFilter === "NON-GST" && i.type !== "GST");
+
+      return matchText && matchStatus && matchDocType;
     }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [invoices, debouncedQ, filterType]);
+  }, [invoices, debouncedQ, filterType, docTypeFilter]);
 
   // Aggregated Sales Statistics
-  const totalSalesValuation = useMemo(() => filtered.reduce((s, i) => s + (i.total || 0), 0), [filtered]);
+  const totalReturnsValuation = useMemo(() => salesReturns.reduce((s, r: any) => s + (r.totalRefund || 0), 0), [salesReturns]);
+  const totalSalesValuation = useMemo(() => Math.max(0, filtered.reduce((s, i) => s + (i.total || 0), 0) - totalReturnsValuation), [filtered, totalReturnsValuation]);
+
 
   const totalNetGoldWeightSold = useMemo(() => {
     return filtered.reduce((totalWt, inv) => {
@@ -258,25 +265,6 @@ export default function SalesPage() {
   }, [filtered]);
 
   const totalGstTaxCollected = useMemo(() => filtered.reduce((s, i) => s + (i.gstAmount || 0), 0), [filtered]);
-
-  // 30 Days Sales Trend Data
-  const last30Days = useMemo(() => {
-    const arr = [];
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dStr = d.toDateString();
-      const dayTotal = filtered.filter(inv => new Date(inv.createdAt).toDateString() === dStr).reduce((s, x) => s + x.total, 0);
-      arr.push({ date: `${d.getDate()}/${d.getMonth() + 1}`, Sales: dayTotal });
-    }
-    return arr;
-  }, [filtered]);
-
-  const formatYAxis = (tickItem: number) => {
-    if (tickItem >= 100000) return `₹${(tickItem / 100000).toFixed(1)}L`;
-    if (tickItem >= 1000) return `₹${(tickItem / 1000).toFixed(1)}k`;
-    return `₹${tickItem}`;
-  };
 
   const removeInvoice = async (invoice: Invoice) => {
     if (window.confirm(`Are you sure you want to delete Invoice ${invoice.number}? This will also add the sold items back to your inventory.`)) {
@@ -387,26 +375,6 @@ export default function SalesPage() {
         </TabsList>
 
         <TabsContent value="invoices" className="space-y-6">
-          {/* SALES TREND CHART */}
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3 border-b bg-muted/20">
-              <CardTitle className="font-display text-base flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-primary" /> 30-Day Sales Trend Analysis
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="h-64 pt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={last30Days} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} tickFormatter={formatYAxis} />
-                  <RechartsTooltip formatter={(value: number) => [inr(value), "Sales"]} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Line type="monotone" dataKey="Sales" stroke="#3b82f6" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
           {/* SEARCH & FILTERS BAR */}
           <Card className="shadow-sm">
             <CardContent className="pt-4 pb-4">
@@ -421,7 +389,37 @@ export default function SalesPage() {
                   />
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {!isOperator && (
+                    <div className="flex items-center gap-1 border-r pr-2 mr-1">
+                      <Button
+                        size="sm"
+                        variant={docTypeFilter === "ALL" ? "default" : "ghost"}
+                        className="h-8 text-xs font-semibold"
+                        onClick={() => setDocTypeFilter("ALL")}
+                      >
+                        All Types
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={docTypeFilter === "GST" ? "default" : "ghost"}
+                        className="h-8 text-xs font-semibold text-indigo-700 hover:text-indigo-800"
+                        onClick={() => setDocTypeFilter("GST")}
+                      >
+                        GST
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={docTypeFilter === "NON-GST" ? "default" : "ghost"}
+                        className="h-8 text-xs font-semibold text-emerald-700 hover:text-emerald-800"
+                        onClick={() => setDocTypeFilter("NON-GST")}
+                      >
+                        Estimate
+                      </Button>
+                    </div>
+                  )}
+
+
                   <Button
                     size="sm"
                     variant={filterType === "ALL" ? "default" : "outline"}
@@ -456,7 +454,7 @@ export default function SalesPage() {
             <CardHeader className="bg-muted/20 border-b pb-3 pt-4 flex flex-row items-center justify-between">
               <CardTitle className="text-base font-semibold font-display flex items-center gap-2">
                 <Receipt className="w-5 h-5 text-primary" />
-                {isOperator ? "Estimate Order Sales History" : "Tax Invoices & Sales Register"}
+                Sales Register & Invoice Ledger
               </CardTitle>
               <Badge variant="outline" className="text-xs">
                 Showing {filtered.length} Invoices
@@ -481,7 +479,7 @@ export default function SalesPage() {
                           <th className="py-3 px-4">Customer Details</th>
                           <th className="py-3 px-4">Jewellery Items Sold</th>
                           <th className="py-3 px-4 text-center">Net Metal Wt</th>
-                          {!isOperator && <th className="py-3 px-4">Type</th>}
+                          <th className="py-3 px-4">Type</th>
                           <th className="py-3 px-4">Payment</th>
                           <th className="py-3 px-4 text-right">Invoice Total</th>
                           <th className="py-3 px-4 text-center">Status</th>
@@ -500,33 +498,31 @@ export default function SalesPage() {
 
                               <td className="py-3 px-4">
                                 <div className="font-semibold text-foreground">{i.customerName}</div>
-                                <div className="text-xs text-muted-foreground">{i.customerMobile}</div>
+                                <div className="text-xs text-muted-foreground font-mono">{i.customerMobile}</div>
                               </td>
 
                               <td className="py-3 px-4 max-w-xs">
                                 <div className="space-y-1">
                                   {(i.items || []).map((it: any, idx: number) => (
-                                    <div key={idx} className="flex items-center gap-1.5 text-xs flex-wrap">
-                                      <span className="font-medium text-foreground line-clamp-1">{it.name}</span>
-                                      {it.purity && <Badge variant="secondary" className="text-[10px] py-0 px-1">{it.purity}</Badge>}
-                                      {(it.qty || 1) > 1 && <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono text-slate-700 bg-slate-100">{it.qty} Pcs</Badge>}
-                                      {it.huid && <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono text-amber-700 bg-amber-50">{it.huid}</Badge>}
+                                    <div key={idx} className="flex items-center gap-1.5 text-xs">
+                                      <span className="font-medium text-foreground truncate">{it.name}</span>
+                                      <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono text-amber-700 bg-amber-50 shrink-0">
+                                        {it.netWeight || 0}g
+                                      </Badge>
                                     </div>
                                   ))}
                                 </div>
                               </td>
 
-                              <td className="py-3 px-4 text-center whitespace-nowrap font-bold text-amber-700">
+                              <td className="py-3 px-4 text-center font-bold text-amber-700 whitespace-nowrap">
                                 {invoiceNetWt.toFixed(2)} g
                               </td>
 
-                              {!isOperator && (
-                                <td className="py-3 px-4 whitespace-nowrap">
-                                  <Badge className={i.type === "GST" ? "bg-indigo-100 text-indigo-800 border-indigo-200" : "bg-emerald-100 text-emerald-800 border-emerald-200"}>
-                                    {i.type === "GST" ? "GST Invoice" : "Estimate"}
-                                  </Badge>
-                                </td>
-                              )}
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <Badge className={i.type === "GST" ? "bg-indigo-100 text-indigo-800 border-indigo-200" : "bg-emerald-100 text-emerald-800 border-emerald-200"}>
+                                  {i.type === "GST" ? "GST Invoice" : "Estimate"}
+                                </Badge>
+                              </td>
 
                               <td className="py-3 px-4 whitespace-nowrap">
                                 <div className="font-medium text-foreground">{i.paymentMode}</div>
@@ -539,14 +535,14 @@ export default function SalesPage() {
 
                               <td className="py-3 px-4 text-center whitespace-nowrap">
                                 <div className="flex flex-col items-center gap-1">
-                                {(i.balanceDue || 0) <= 0 ? (
-                                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">Paid</Badge>
-                                ) : (
-                                  <Badge variant="destructive">Due: {inr(i.balanceDue || 0)}</Badge>
-                                )}
-                                {returnedInvoiceIds.has(i._id || i.id) && (
-                                  <Badge className="bg-orange-100 text-orange-800 border border-orange-300 text-[10px]">↩ Returned</Badge>
-                                )}
+                                  {(i.balanceDue || 0) <= 0 ? (
+                                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">Paid</Badge>
+                                  ) : (
+                                    <Badge variant="destructive">Due: {inr(i.balanceDue || 0)}</Badge>
+                                  )}
+                                  {returnedInvoiceIds.has(i._id || i.id) && (
+                                    <Badge className="bg-orange-100 text-orange-800 border border-orange-300 text-[10px]">↩ Returned</Badge>
+                                  )}
                                 </div>
                               </td>
 
@@ -562,15 +558,29 @@ export default function SalesPage() {
                                     <Eye className="w-4 h-4" />
                                   </Button>
                                   {!returnedInvoiceIds.has(i._id || i.id) && (
-                                   <Button
-                                     size="sm"
-                                     variant="ghost"
-                                     className="h-8 w-8 p-0 text-rose-500 hover:text-rose-600"
-                                     title="Delete Invoice & Restore Stock"
-                                     onClick={() => removeInvoice(i)}
-                                   >
-                                     <Trash2 className="w-4 h-4" />
-                                   </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                      title="Issue Sales Return for this Invoice"
+                                      onClick={() => {
+                                        handleOpenReturnDialog();
+                                        handleSelectInvoiceForReturn(i._id || i.id);
+                                      }}
+                                    >
+                                      <RotateCcw className="w-4 h-4" />
+                                    </Button>
+                                  )}
+                                  {!returnedInvoiceIds.has(i._id || i.id) && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-8 w-8 p-0 text-slate-500 hover:text-rose-600"
+                                      title="Delete Invoice & Restore Stock"
+                                      onClick={() => removeInvoice(i)}
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
                                   )}
                                 </div>
                               </td>
@@ -634,7 +644,20 @@ export default function SalesPage() {
                                 <Eye className="w-3.5 h-3.5 text-primary" /> View
                               </Button>
                               {!returnedInvoiceIds.has(i._id || i.id) && (
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-rose-500" onClick={() => removeInvoice(i)}>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs gap-1 border-rose-200 text-rose-700 hover:bg-rose-50"
+                                  onClick={() => {
+                                    handleOpenReturnDialog();
+                                    handleSelectInvoiceForReturn(i._id || i.id);
+                                  }}
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" /> Return
+                                </Button>
+                              )}
+                              {!returnedInvoiceIds.has(i._id || i.id) && (
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-rose-600" onClick={() => removeInvoice(i)}>
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
                               )}
@@ -799,7 +822,7 @@ export default function SalesPage() {
               <Select value={selectedInvoiceForReturn?._id || selectedInvoiceForReturn?.id || ""} onValueChange={handleSelectInvoiceForReturn}>
                 <SelectTrigger><SelectValue placeholder="Choose an invoice..." /></SelectTrigger>
                 <SelectContent className="max-h-56">
-                  {invoices.map((i) => (
+                  {allInvoices.map((i) => (
                     <SelectItem key={i._id || i.id} value={(i._id || i.id) as string}>
                       {i.number} · {i.customerName} ({i.customerMobile}) · Total: {inr(i.total)}
                     </SelectItem>

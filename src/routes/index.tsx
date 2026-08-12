@@ -51,6 +51,7 @@ export default function Dashboard() {
   const { data: products = [] } = useQuery({ queryKey: ["inventory"], queryFn: api.inventory.getAll });
   const { data: customers = [] } = useQuery({ queryKey: ["customers"], queryFn: api.customers.getAll });
   const { data: allInvoices = [] } = useQuery({ queryKey: ["invoices"], queryFn: api.invoices.getAll });
+  const { data: salesReturns = [] } = useQuery({ queryKey: ["salesReturns"], queryFn: api.salesReturns.getAll });
   const { data: expenses = [] } = useQuery({ queryKey: ["expenses"], queryFn: api.expenses.getAll });
   const { data: repairs = [] } = useQuery({ queryKey: ["repairs"], queryFn: api.repairs.getAll });
   const { data: purchases = [] } = useQuery({ queryKey: ["purchases"], queryFn: api.purchases.getAll });
@@ -62,6 +63,12 @@ export default function Dashboard() {
   const isOperator = authUser?.role === "operator";
   const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type !== "GST" : i.type === "GST"), [allInvoices, isOperator]);
   const rolePurchases = useMemo(() => purchases.filter(p => isOperator ? !(p.type === "GST" || p.gstPct > 0) : (p.type === "GST" || p.gstPct > 0)), [purchases, isOperator]);
+
+  const returnedInvoiceIds = useMemo(
+    () => new Set(salesReturns.map((r: any) => r.invoiceId)),
+    [salesReturns]
+  );
+
 
   const rates = ratesList[0] || defaultRates;
 
@@ -81,13 +88,23 @@ export default function Dashboard() {
 
   const todayInvoices = invoices.filter((i) => new Date(i.createdAt).toDateString() === today);
   const monthInvoices = invoices.filter((i) => inMonth(i.createdAt));
-  const todaySales = todayInvoices.reduce((s, i) => s + i.total, 0);
-  const totalSell = invoices.reduce((s, i) => s + i.total, 0);
-  const monthRevenue = monthInvoices.reduce((s, i) => s + i.total, 0);
-  
+
+  const todayReturns = salesReturns
+    .filter((r: any) => new Date(r.createdAt || r.date).toDateString() === today)
+    .reduce((s: number, r: any) => s + (r.totalRefund || 0), 0);
+  const monthReturns = salesReturns
+    .filter((r: any) => inMonth(r.createdAt || r.date))
+    .reduce((s: number, r: any) => s + (r.totalRefund || 0), 0);
+  const totalReturns = salesReturns.reduce((s: number, r: any) => s + (r.totalRefund || 0), 0);
+
+  const todaySales = Math.max(0, todayInvoices.reduce((s, i) => s + i.total, 0) - todayReturns);
+  const totalSell = Math.max(0, invoices.reduce((s, i) => s + i.total, 0) - totalReturns);
+  const monthRevenue = Math.max(0, monthInvoices.reduce((s, i) => s + i.total, 0) - monthReturns);
+
+
   const todayExpense = expenses.filter((e) => new Date(e.date).toDateString() === today).reduce((s, e) => s + (e.amount || 0), 0);
   const monthExpense = expenses.filter((e) => inMonth(e.date)).reduce((s, e) => s + (e.amount || 0), 0);
-  
+
   const supplierDuesTotal = suppliers.reduce((s, sup) => s + (sup.outstanding || 0), 0);
   const customerDuesTotal = invoices.reduce((s, i) => s + (i.balanceDue || 0), 0);
   const purchaseAmount = rolePurchases.reduce((s, p) => s + p.total, 0);
@@ -98,10 +115,44 @@ export default function Dashboard() {
   const loyalCustomers = customers.filter((c) => (counts.get(c._id || c.id) || 0) >= LOYAL_THRESHOLD).length;
   const normalCustomers = customers.length - loyalCustomers;
 
-  const stockValue = products.reduce((s, p) => s + ((p.costPrice || p.sellingPrice || 0) * (p.stock || 0)), 0);
-  const goldGrams = products.filter(p => (p.category || "").toUpperCase().includes("GOLD") || !p.category.toUpperCase().includes("SILVER")).reduce((s, p) => s + ((p.netWeight || 0) * (p.stock || 0)), 0);
-  const silverGrams = products.filter(p => (p.category || "").toUpperCase().includes("SILVER")).reduce((s, p) => s + ((p.netWeight || 0) * (p.stock || 0)), 0);
+  const activeProducts = useMemo(() => products.filter((p: any) => Math.max(0, p.stock || 0) > 0), [products]);
+
+  const stockValue = useMemo(() => {
+    return products.reduce((s: number, p: any) => {
+      const q = Math.max(0, p.stock || 0);
+      if (q <= 0) return s;
+      const unitVal = p.costPrice || p.sellingPrice || 0;
+      return s + (unitVal * q);
+    }, 0);
+  }, [products]);
+
+
+  const goldGrams = useMemo(() => {
+    return products
+      .filter((p: any) => {
+        const q = Math.max(0, p.stock || 0);
+        if (q <= 0) return false;
+        const metal = (p.metal || p.metalType || p.category || "").toString().toUpperCase();
+        return metal.includes("GOLD") || metal === "GOLD";
+      })
+      .reduce((s: number, p: any) => s + (Number(p.netWeight) || 0), 0);
+  }, [products]);
+
+  const silverGrams = useMemo(() => {
+    return products
+      .filter((p: any) => {
+        const q = Math.max(0, p.stock || 0);
+        if (q <= 0) return false;
+        const metal = (p.metal || p.metalType || p.category || "").toString().toUpperCase();
+        return metal.includes("SILVER") || metal === "SILVER";
+      })
+      .reduce((s: number, p: any) => s + (Number(p.netWeight) || 0), 0);
+  }, [products]);
+
+
   const girviPrincipalTotal = girviItems.filter((g) => g.status === "ACTIVE" || g.status === "Pledged").reduce((s, g) => s + (g.principal || 0), 0);
+
+
 
   // 7-day sales trend
   const days: { label: string; Sales: number }[] = [];
@@ -135,7 +186,7 @@ export default function Dashboard() {
   const lowStock = products.filter(p => p.stock <= 2).length;
   const pendingRepairs = repairs.filter(r => r.status !== "Delivered").length;
   const pendingOrders = orders.filter(o => o.status !== "Delivered" && o.status !== "Cancelled").length;
-  
+
   const todayIso = new Date().toISOString().slice(0, 10);
   const readyOrders = orders.filter(o => o.status === "Ready").length;
   const readyRepairs = repairs.filter(r => r.status === "Ready").length;
@@ -150,17 +201,18 @@ export default function Dashboard() {
     { label: t("dashboard.stat.monthlyRevenue"), value: inr(monthRevenue), icon: CalendarRange, sub: `${monthInvoices.length} invoices this month`, to: "/sales", color: "emerald" },
     { label: "Today's Net Profit", value: inr(todaySales - todayExpense), icon: CircleDollarSign, sub: `Expense: ${inr(todayExpense)}`, to: "/ledger", color: "emerald" },
     { label: "Monthly Net Profit", value: inr(monthRevenue - monthExpense), icon: TrendingUp, sub: `Expense: ${inr(monthExpense)}`, to: "/ledger", color: "emerald" },
-    
+
     { label: t("dashboard.stat.totalGold"), value: `${goldGrams.toFixed(2)} g`, icon: Award, sub: "Pure Gold stock in hand", to: "/inventory", color: "amber" },
     { label: t("dashboard.stat.totalSilver"), value: `${silverGrams.toFixed(2)} g`, icon: Package, sub: "Silver stock in hand", to: "/inventory", color: "amber" },
     { label: t("dashboard.stat.stockValue"), value: inr(stockValue), icon: Boxes, sub: `${products.length} catalog items`, to: "/inventory", color: "amber" },
-    { label: t("dashboard.stat.inventoryItems"), value: products.length, icon: Package, sub: `${lowStock} low stock items`, to: "/inventory", color: "amber" },
-    
+    { label: t("dashboard.stat.inventoryItems"), value: activeProducts.length, icon: Package, sub: `${lowStock} low stock items`, to: "/inventory", color: "amber" },
+
+
     { label: "Girvi Loan Receivables", value: inr(girviPrincipalTotal), icon: Landmark, sub: `${girviItems.length} pledged items`, to: "/girvi", color: "blue" },
     { label: "Customer Dues Receivable", value: inr(customerDuesTotal), icon: AlertTriangle, sub: `${unpaidInvoices} unpaid invoices`, to: "/dues", color: "rose" },
     { label: t("dashboard.stat.totalDue"), value: inr(supplierDuesTotal), icon: AlertTriangle, sub: `${suppliers.length} suppliers payable`, to: "/suppliers", color: "rose" },
     { label: t("dashboard.stat.purchaseAmount"), value: inr(purchaseAmount), icon: ShoppingBag, sub: `${rolePurchases.length} stock purchases`, to: "/purchases", color: "blue" },
-    
+
     { label: t("dashboard.stat.todaysCustomers"), value: todayCustomers, icon: UserCheck, sub: `${customers.length} total customer base`, to: "/customers", color: "purple" },
     { label: t("dashboard.stat.loyalCustomers"), value: loyalCustomers, icon: Star, sub: `${LOYAL_THRESHOLD}+ previous purchases`, to: "/customers", color: "purple" },
     { label: t("dashboard.stat.normalCustomers"), value: normalCustomers, icon: Users, sub: "Standard retail buyers", to: "/customers", color: "purple" },
@@ -301,8 +353,8 @@ export default function Dashboard() {
               <AreaChart data={days} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -366,23 +418,42 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {recent.map((i) => (
-                      <tr key={i._id || i.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="py-3 px-4 font-mono font-bold text-xs text-foreground">{i.number}</td>
-                        <td className="py-3 text-xs font-medium">{i.customerName || "—"}</td>
-                        <td className="py-3">
-                          <Badge variant="outline" className="text-[10px]">
-                            {translateEnum(invoiceTypeMap, i.type, language)}
-                          </Badge>
-                        </td>
-                        <td className="py-3 text-xs text-muted-foreground">
-                          {translateEnum(paymentMethodMap, i.paymentMode, language)}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
-                          {inr(i.total)}
-                        </td>
-                      </tr>
-                    ))}
+                    {recent.map((i) => {
+                      const isReturned = returnedInvoiceIds.has(i._id || i.id) || (i as any).isReturned;
+                      return (
+                        <tr key={i._id || i.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="py-3 px-4 font-mono font-bold text-xs text-foreground">{i.number}</td>
+                          <td className="py-3 text-xs font-medium">{i.customerName || "—"}</td>
+                          <td className="py-3">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Badge variant="outline" className="text-[10px]">
+                                {translateEnum(invoiceTypeMap, i.type, language)}
+                              </Badge>
+                              {isReturned ? (
+                                <Badge className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 text-[10px]">
+                                  RETURNED
+                                </Badge>
+                              ) : (i.balanceDue || 0) > 0 ? (
+                                <Badge className="bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300 text-[10px]">
+                                  DUE
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 text-[10px]">
+                                  PAID
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 text-xs text-muted-foreground">
+                            {translateEnum(paymentMethodMap, i.paymentMode, language)}
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
+                            {inr(i.total)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+
                   </tbody>
                 </table>
               </div>

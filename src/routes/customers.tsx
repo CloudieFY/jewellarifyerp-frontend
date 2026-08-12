@@ -149,9 +149,16 @@ export default function CustomersPage() {
   const { data: orders = [] } = useQuery<Order[]>({ queryKey: ["orders"], queryFn: api.orders.getAll });
   const { data: repairs = [] } = useQuery<Repair[]>({ queryKey: ["repairs"], queryFn: api.repairs.getAll });
   const { data: girvis = [] } = useQuery<Girvi[]>({ queryKey: ["girvis"], queryFn: api.girvi.getAll });
+  const { data: salesReturns = [] } = useQuery({ queryKey: ["salesReturns"], queryFn: api.salesReturns.getAll });
+
+  const returnedInvoiceIds = useMemo(
+    () => new Set((salesReturns || []).map((r: any) => r.invoiceId)),
+    [salesReturns]
+  );
 
   const isOperator = tenantSession?.user?.role === "operator";
   const invoices = useMemo(() => allInvoices.filter((i) => (isOperator ? i.type !== "GST" : i.type === "GST")), [allInvoices, isOperator]);
+
 
   const createInvoiceMutation = useApiMutation((data: any) => api.invoices.create(data), ["invoices"]);
   const updateInvoiceMutation = useApiMutation((data: { id: string; body: any }) => api.invoices.update(data.id, data.body), ["invoices"]);
@@ -188,11 +195,23 @@ export default function CustomersPage() {
     return girvis.filter((g) => g.customerMobile === selectedCustomer.phone || g.customerName === selectedCustomer.name);
   }, [selectedCustomer, girvis]);
 
-  const totalSales = useMemo(() => custInvoices.reduce((sum, i) => sum + i.total, 0), [custInvoices]);
-  const totalPaid = useMemo(
+  const custReturnsTotal = useMemo(() => {
+    if (!selectedCustomer) return 0;
+    const custInvIds = new Set(custInvoices.map((i) => i._id || i.id));
+    return salesReturns
+      .filter((r: any) => r.customerId === selectedCustomer._id || r.customerId === selectedCustomer.id || custInvIds.has(r.invoiceId))
+      .reduce((s: number, r: any) => s + (r.totalRefund || 0), 0);
+  }, [selectedCustomer, custInvoices, salesReturns]);
+
+  const rawTotalSales = useMemo(() => custInvoices.reduce((sum, i) => sum + i.total, 0), [custInvoices]);
+  const rawTotalPaid = useMemo(
     () => custInvoices.reduce((sum, i) => sum + (i.amountPaid !== undefined ? i.amountPaid : i.total), 0),
     [custInvoices]
   );
+
+  const totalSales = useMemo(() => Math.max(0, rawTotalSales - custReturnsTotal), [rawTotalSales, custReturnsTotal]);
+  const totalPaid = useMemo(() => Math.max(0, rawTotalPaid - custReturnsTotal), [rawTotalPaid, custReturnsTotal]);
+
   const totalDue = useMemo(() => custInvoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0), [custInvoices]);
   const activeLoans = useMemo(() => custGirvis.filter((g) => g.status === "Active" || (g.status as any) === "ACTIVE").length, [custGirvis]);
   const totalLoanAmount = useMemo(
@@ -209,8 +228,14 @@ export default function CustomersPage() {
 
     customers.forEach((c: Customer) => {
       const cInvoices = invoices.filter((i) => i.customerId === c._id || i.customerMobile === c.phone);
-      const ltv = cInvoices.reduce((s, i) => s + (i.total || 0), 0);
+      const cInvIds = new Set(cInvoices.map((i) => i._id || i.id));
+      const cReturns = salesReturns
+        .filter((r: any) => r.customerId === c._id || r.customerId === c.id || cInvIds.has(r.invoiceId))
+        .reduce((s: number, r: any) => s + (r.totalRefund || 0), 0);
+
+      const ltv = Math.max(0, cInvoices.reduce((s, i) => s + (i.total || 0), 0) - cReturns);
       const due = cInvoices.reduce((s, i) => s + (i.balanceDue || 0), 0);
+
 
       totalLtv += ltv;
       totalDues += due;
@@ -368,6 +393,11 @@ export default function CustomersPage() {
       toast.error("Please enter a valid payment amount.");
       return;
     }
+    if (returnedInvoiceIds.has(payModalInvoice._id || payModalInvoice.id) || (payModalInvoice as any).isReturned) {
+      toast.error("Cannot collect payment step for a returned bill!");
+      return;
+    }
+
     const amt = Number(collectAmount);
     const currentPaid = payModalInvoice.amountPaid !== undefined ? payModalInvoice.amountPaid : payModalInvoice.total;
     const currentDue = payModalInvoice.balanceDue || 0;
@@ -428,6 +458,10 @@ export default function CustomersPage() {
   // Delete Payment Step
   const handleDeleteStep = async (stepIndex: number) => {
     if (!historyInvoice) return;
+    if (returnedInvoiceIds.has(historyInvoice._id || historyInvoice.id) || (historyInvoice as any).isReturned) {
+      toast.error("Cannot delete payment step for a returned bill!");
+      return;
+    }
 
     let currentSteps: InvoicePayment[] = historyInvoice.payments ? [...historyInvoice.payments] : [];
     if (currentSteps.length === 0) {
@@ -462,6 +496,10 @@ export default function CustomersPage() {
 
   // Start Edit Step
   const startEditStep = (stepIndex: number, step: InvoicePayment) => {
+    if (historyInvoice && (returnedInvoiceIds.has(historyInvoice._id || historyInvoice.id) || (historyInvoice as any).isReturned)) {
+      toast.error("Cannot edit payment step for a returned bill!");
+      return;
+    }
     setEditingStepIndex(stepIndex);
     setEditingStepDraft({
       date: step.date || new Date().toISOString().slice(0, 10),
@@ -474,6 +512,11 @@ export default function CustomersPage() {
   // Save Edit Step
   const saveEditStep = async () => {
     if (!historyInvoice || editingStepIndex === null) return;
+    if (returnedInvoiceIds.has(historyInvoice._id || historyInvoice.id) || (historyInvoice as any).isReturned) {
+      toast.error("Cannot edit payment step for a returned bill!");
+      return;
+    }
+
     if (!editingStepDraft.amount || Number(editingStepDraft.amount) <= 0) {
       toast.error("Please enter a valid amount.");
       return;
@@ -732,9 +775,14 @@ export default function CustomersPage() {
                     <tbody>
                       {paginated.map((c: Customer) => {
                         const cInvoices = invoices.filter((i) => i.customerId === c._id || i.customerMobile === c.phone);
-                        const custLtv = cInvoices.reduce((sum, i) => sum + (i.total || 0), 0);
+                        const cInvIds = new Set(cInvoices.map((i) => i._id || i.id));
+                        const cReturns = (salesReturns || [])
+                          .filter((r: any) => r.customerId === c._id || r.customerId === c.id || cInvIds.has(r.invoiceId))
+                          .reduce((s: number, r: any) => s + (r.totalRefund || 0), 0);
+                        const custLtv = Math.max(0, cInvoices.reduce((sum, i) => sum + (i.total || 0), 0) - cReturns);
                         const custDue = cInvoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0);
                         const isVip = custLtv >= 100000 || (c as any).tier === "VIP";
+
 
                         return (
                           <tr key={c._id || c.id || c.phone} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
@@ -803,8 +851,13 @@ export default function CustomersPage() {
                 <div className="md:hidden grid grid-cols-1 gap-3 p-3">
                   {paginated.map((c: Customer) => {
                     const cInvoices = invoices.filter((i) => i.customerId === c._id || i.customerMobile === c.phone);
-                    const custLtv = cInvoices.reduce((sum, i) => sum + (i.total || 0), 0);
+                    const cInvIds = new Set(cInvoices.map((i) => i._id || i.id));
+                    const cReturns = (salesReturns || [])
+                      .filter((r: any) => r.customerId === c._id || r.customerId === c.id || cInvIds.has(r.invoiceId))
+                      .reduce((s: number, r: any) => s + (r.totalRefund || 0), 0);
+                    const custLtv = Math.max(0, cInvoices.reduce((sum, i) => sum + (i.total || 0), 0) - cReturns);
                     const custDue = cInvoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0);
+
 
                     return (
                       <div key={c._id || c.id || c.phone} className="p-4 rounded-xl border border-border bg-card shadow-xs space-y-3">
@@ -906,13 +959,14 @@ export default function CustomersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 360° CUSTOMER CRM PROFILE WORKSPACE MODAL */}
       <Dialog open={!!profileId} onOpenChange={(val) => !val && setProfileId(null)}>
-        <DialogContent className="w-[95vw] sm:max-w-6xl max-h-[92vh] overflow-y-auto p-0 rounded-2xl border border-border shadow-2xl bg-card [&>button.absolute]:hidden" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogContent className="!fixed !left-0 !top-0 !right-0 !bottom-0 !translate-x-0 !translate-y-0 !transform-none !z-50 !w-screen !h-screen !max-w-none !max-h-none !sm:rounded-none !m-0 !p-0 !rounded-none !border-0 bg-background overflow-y-auto [&>button.absolute]:hidden flex flex-col" onInteractOutside={(e) => e.preventDefault()}>
+
           {selectedCustomer && (
-            <div className="space-y-6">
-              {/* Modal Executive Top Header Bar */}
-              <div className="bg-slate-900 border-b border-slate-800 p-5 rounded-t-2xl text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-6 flex flex-col min-h-screen">
+              {/* Full Page Executive Top Header Bar */}
+              <div className="bg-slate-900 border-b border-slate-800 p-5 rounded-none text-white flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 z-20 shadow-md">
+
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-xl bg-amber-600 text-white flex items-center justify-center font-bold text-xl shadow-md border border-amber-500/30">
                     {selectedCustomer.name.charAt(0).toUpperCase()}
@@ -975,7 +1029,8 @@ export default function CustomersPage() {
                 </div>
               </div>
 
-              <div className="px-6 space-y-6 pb-6">
+              <div className="px-4 sm:px-8 max-w-7xl mx-auto w-full space-y-6 py-6 flex-1">
+
                 {/* 360° Financial Summary Grid */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
                   {/* Card 1: Lifetime Sales */}
@@ -1102,6 +1157,8 @@ export default function CustomersPage() {
                             const isFullyPaid = due <= 0;
                             const isPartial = !isFullyPaid && paid > 0;
                             const stepCount = inv.payments?.length || (paid > 0 ? 1 : 0);
+                            const isReturned = returnedInvoiceIds.has(inv._id || inv.id) || (inv as any).isReturned;
+
 
                             return (
                               <tr key={inv._id || inv.id || inv.number} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
@@ -1116,20 +1173,28 @@ export default function CustomersPage() {
                                   {due > 0 ? <span className="text-rose-600">{inr(due)}</span> : <span className="text-slate-400">₹0.00</span>}
                                 </td>
                                 <td className="py-3 px-3.5 text-center">
-                                  {isFullyPaid ? (
-                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                      Paid
-                                    </span>
-                                  ) : isPartial ? (
-                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                      Partial
-                                    </span>
-                                  ) : (
-                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                                      Due
-                                    </span>
-                                  )}
+                                  <div className="flex flex-col items-center gap-1">
+                                    {isFullyPaid ? (
+                                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                        Paid
+                                      </span>
+                                    ) : isPartial ? (
+                                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                        Partial
+                                      </span>
+                                    ) : (
+                                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                        Due
+                                      </span>
+                                    )}
+                                    {isReturned && (
+                                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950 dark:text-amber-300">
+                                        ↩ Returned
+                                      </span>
+                                    )}
+                                  </div>
                                 </td>
+
                                 <td className="py-3 px-3.5 text-center">
                                   <Button
                                     size="sm"
@@ -1311,8 +1376,9 @@ export default function CustomersPage() {
 
       {/* STEP-BY-STEP PAYMENT HISTORY TIMELINE MODAL */}
       <Dialog open={!!historyInvoice} onOpenChange={(val) => !val && setHistoryInvoice(null)}>
-        <DialogContent className="w-[95vw] sm:max-w-lg p-0 rounded-2xl border border-border shadow-2xl bg-card overflow-hidden [&>button.absolute]:hidden">
+        <DialogContent className="sm:max-w-xl p-0 overflow-hidden bg-card border-border">
           {historyInvoice && (() => {
+            const isHistoryReturned = returnedInvoiceIds.has(historyInvoice._id || historyInvoice.id) || (historyInvoice as any).isReturned;
             const total = historyInvoice.total || 0;
             const paid = historyInvoice.amountPaid !== undefined ? historyInvoice.amountPaid : total;
             const due = historyInvoice.balanceDue || 0;
@@ -1352,6 +1418,12 @@ export default function CustomersPage() {
                     </div>
                   </div>
                   
+                  {isHistoryReturned && (
+                    <div className="mt-3 bg-amber-500/20 border border-amber-500/40 text-amber-300 font-semibold text-xs py-2 px-3 rounded-lg flex items-center gap-2">
+                      <span>⚠️ This bill has been returned. Payment steps are locked and cannot be modified.</span>
+                    </div>
+                  )}
+
                   {/* Quick Metrics Bar */}
                   <div className="grid grid-cols-3 gap-2 mt-4 text-xs bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
                     <div>
@@ -1401,51 +1473,53 @@ export default function CustomersPage() {
                                   <Calendar className="w-3.5 h-3.5 text-amber-600" /> {formatDate(step.date)}
                                 </span>
                                 <div className="flex items-center gap-2">
-                                  <span className="font-mono font-bold text-sm text-emerald-600">
+                                  <span className="font-mono font-extrabold text-sm text-emerald-600">
                                     + {inr(step.amount)}
                                   </span>
 
                                   {/* Step Actions: Print, Edit, Delete */}
-                                  <div className="flex items-center gap-0.5 border-l border-border/60 pl-1.5 ml-1">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-md"
-                                      title="Print Step Receipt"
-                                      onClick={() => {
-                                        setPrintingStepData({
-                                          invoice: historyInvoice,
-                                          step,
-                                          stepIndex: idx + 1,
-                                          remainingDueAfterStep: stepDue,
-                                        });
-                                      }}
-                                    >
-                                      <Printer className="w-3 h-3" />
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-md"
-                                      title="Edit Step"
-                                      onClick={() => startEditStep(idx, step)}
-                                    >
-                                      <Pencil className="w-3 h-3" />
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md"
-                                      title="Delete Step"
-                                      onClick={() => {
-                                        if (confirm(`Are you sure you want to delete Step ${idx + 1} (${inr(step.amount)})?`)) {
-                                          handleDeleteStep(idx);
-                                        }
-                                      }}
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </Button>
-                                  </div>
+                                  {!isHistoryReturned && (
+                                    <div className="flex items-center gap-0.5 border-l border-border/60 pl-1.5 ml-1">
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-md"
+                                        title="Print Step Receipt"
+                                        onClick={() => {
+                                          setPrintingStepData({
+                                            invoice: historyInvoice,
+                                            step,
+                                            stepIndex: idx + 1,
+                                            remainingDueAfterStep: stepDue,
+                                          });
+                                        }}
+                                      >
+                                        <Printer className="w-3 h-3" />
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-md"
+                                        title="Edit Step"
+                                        onClick={() => startEditStep(idx, step)}
+                                      >
+                                        <Pencil className="w-3 h-3" />
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md"
+                                        title="Delete Step"
+                                        onClick={() => {
+                                          if (confirm(`Are you sure you want to delete Step ${idx + 1} (${inr(step.amount)})?`)) {
+                                            handleDeleteStep(idx);
+                                          }
+                                        }}
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
@@ -1472,7 +1546,7 @@ export default function CustomersPage() {
                   <Button variant="outline" size="sm" onClick={() => setHistoryInvoice(null)} className="text-xs">
                     Close
                   </Button>
-                  {due > 0 && (
+                  {due > 0 && !isHistoryReturned ? (
                     <Button
                       size="sm"
                       className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
@@ -1484,7 +1558,11 @@ export default function CustomersPage() {
                     >
                       <CreditCard className="w-3.5 h-3.5 mr-1" /> Add Payment Step
                     </Button>
-                  )}
+                  ) : isHistoryReturned ? (
+                    <span className="text-xs font-semibold text-amber-700 bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 rounded-lg border border-amber-200/60">
+                      ⚠️ Returned Bill (Payment Steps Locked)
+                    </span>
+                  ) : null}
                 </DialogFooter>
               </div>
             );
@@ -1647,6 +1725,7 @@ export default function CustomersPage() {
       {/* PRINT STEP RECEIPT VOUCHER & TAX INVOICE MODAL */}
       {printingStepData && (() => {
         const inv = printingStepData.invoice;
+        const isReturned = returnedInvoiceIds.has(inv._id || inv.id) || (inv as any).isReturned;
         const total = inv.total || 0;
         const paid = inv.amountPaid !== undefined ? inv.amountPaid : total;
         const due = inv.balanceDue || 0;
@@ -1688,7 +1767,20 @@ export default function CustomersPage() {
               </div>
 
               {/* PRINTABLE BILLING INVOICE CONTAINER */}
-              <div className="p-6 sm:p-10 print:p-2 bg-white text-slate-900 space-y-6 overflow-y-auto flex-1 print:overflow-visible">
+              <div className="p-6 sm:p-10 print:p-2 bg-white text-slate-900 space-y-6 overflow-y-auto flex-1 print:overflow-visible relative">
+                {isReturned && (
+                  <div className="mb-4 bg-amber-500 text-white font-bold text-center py-2 px-4 rounded-lg flex items-center justify-center gap-2 print:border-2 print:border-amber-600 print:text-amber-900 print:bg-amber-100">
+                    <span>⚠️ THIS INVOICE HAS BEEN RETURNED (CREDIT NOTE ISSUED)</span>
+                  </div>
+                )}
+                {isReturned && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden">
+                    <div className="rotate-[-25deg] border-4 border-amber-600/40 text-amber-600/30 dark:text-amber-400/30 text-4xl sm:text-5xl font-black px-8 py-3 rounded-2xl tracking-widest uppercase select-none text-center">
+                      RETURNED / CREDIT NOTE ISSUED
+                    </div>
+                  </div>
+                )}
+
                 {/* 1. Official Shop Header */}
                 <ShopHeader documentLabel={inv.type === "GST" ? "Invoice" : "Billing Receipt"} />
 

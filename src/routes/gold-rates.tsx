@@ -107,7 +107,7 @@ export default function GoldRatesPage() {
     return sorted.map(r => {
       const d = new Date(r.updatedAt);
       return {
-        date: `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth()+1).toString().padStart(2, "0")}`,
+        date: `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")}`,
         "24K Gold": r.gold24,
         "22K Gold": r.gold22,
         "20K Gold": r.gold20,
@@ -175,34 +175,34 @@ export default function GoldRatesPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle className="font-display flex items-center gap-2"><TrendingUp className="w-5 h-5"/> Gold Price Trend</CardTitle>
+            <CardTitle className="font-display flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Gold Price Trend</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="color24k" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="color22k" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#d97706" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#d97706" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#d97706" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#d97706" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="color20k" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#c2410c" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#c2410c" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#c2410c" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#c2410c" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="color18k" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#b45309" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#b45309" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#b45309" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#b45309" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} tickMargin={10} />
                 <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={formatYAxis} domain={['auto', 'auto']} tickMargin={10} />
-                <RechartsTooltip 
-                  formatter={(value: number) => [inr(value), undefined]} 
+                <RechartsTooltip
+                  formatter={(value: number) => [inr(value), undefined]}
                   contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: 'rgba(255, 255, 255, 0.95)' }}
                   labelStyle={{ fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}
                   cursor={{ stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' }}
@@ -219,22 +219,22 @@ export default function GoldRatesPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="font-display flex items-center gap-2"><TrendingUp className="w-5 h-5"/> Silver Price Trend</CardTitle>
+            <CardTitle className="font-display flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Silver Price Trend</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorSilver" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#64748b" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#64748b" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#64748b" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#64748b" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} tickMargin={10} />
                 <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={formatYAxis} domain={['auto', 'auto']} tickMargin={10} />
-                <RechartsTooltip 
-                  formatter={(value: number) => [inr(value), undefined]} 
+                <RechartsTooltip
+                  formatter={(value: number) => [inr(value), undefined]}
                   contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: 'rgba(255, 255, 255, 0.95)' }}
                   labelStyle={{ fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}
                   cursor={{ stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' }}
