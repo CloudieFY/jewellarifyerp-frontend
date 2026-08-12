@@ -34,6 +34,8 @@ export default function SalesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      // Linked sales returns are also deleted server-side; refresh the list
+      queryClient.invalidateQueries({ queryKey: ["salesReturns"] });
     }
   });
 
@@ -46,6 +48,14 @@ export default function SalesPage() {
     }
   });
 
+  const deleteReturnMutation = useMutation({
+    mutationFn: (id: string) => api.salesReturns.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["salesReturns"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    }
+  });
 
 
   const isOperator = authUser?.role === "operator";
@@ -740,6 +750,25 @@ export default function SalesPage() {
                                 onClick={() => setSelectedReturn(r)}
                               >
                                 <Eye className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0 text-rose-500 hover:text-rose-700"
+                                title="Delete Sales Return"
+                                disabled={deleteReturnMutation.isPending}
+                                onClick={async () => {
+                                  if (window.confirm(`Delete Sales Return ${r.returnNo}? This will remove the record only — inventory already restored when it was created.`)) {
+                                    try {
+                                      await deleteReturnMutation.mutateAsync(r._id || r.id);
+                                      toast.success(`${r.returnNo} deleted successfully.`);
+                                    } catch {
+                                      toast.error("Failed to delete sales return.");
+                                    }
+                                  }
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4" />
                               </Button>
                             </div>
                           </td>

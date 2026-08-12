@@ -112,8 +112,8 @@ export default function BillingPage() {
   };
 
   const createMutation = useApiMutation((data: any) => api.invoices.create(data), ["invoices", "inventory"]);
-  const deleteMutation = useApiMutation((id: string) => api.invoices.remove(id), ["invoices", "inventory"]);
-  const updateMutation = useApiMutation((data: { id: string; body: any }) => api.invoices.update(data.id, data.body), ["invoices"]);
+  const deleteMutation = useApiMutation((id: string) => api.invoices.remove(id), ["invoices", "inventory", "salesReturns"]);
+  const updateMutation = useApiMutation((data: { id: string; body: any }) => api.invoices.update(data.id, data.body), ["invoices", "inventory"]);
   const updateOrderMutation = useApiMutation((data: { id: string; body: any }) => api.orders.update(data.id, data.body), ["orders"]);
   const updateRepairMutation = useApiMutation((data: { id: string; body: any }) => api.repairs.update(data.id, data.body), ["repairs"]);
   const createCustomerMutation = useApiMutation((data: any) => api.customers.create(data), ["customers"]);
@@ -764,12 +764,22 @@ export default function BillingPage() {
   };
 
   const removeInvoice = async (invoice: Invoice) => {
-    if (window.confirm(`Are you sure you want to delete Invoice ${invoice.number}? This will also add the sold items back to your inventory.`)) {
+    const isReturned = salesReturns.some(
+      (r: any) => r.invoiceId === ((invoice as any)._id || invoice.id)
+    );
+
+    const confirmMsg = isReturned
+      ? `Delete Invoice ${invoice.number}?\n\nThis invoice has already been returned. Only the invoice record will be deleted — inventory will NOT be changed (stock was already restored when the return was processed).`
+      : `Delete Invoice ${invoice.number}?\n\nThis will also add the sold items back to your inventory.`;
+
+    if (window.confirm(confirmMsg)) {
       try {
-        // Stock restoration is handled atomically by the backend DELETE /invoices/:id transaction.
-        // deleteMutation already invalidates ["invoices", "inventory"] so the UI will refresh.
         await deleteMutation.mutateAsync(invoice._id || invoice.id || "");
-        toast.success("Invoice deleted and stock restored.");
+        toast.success(
+          isReturned
+            ? `Invoice ${invoice.number} deleted. Inventory unchanged.`
+            : `Invoice ${invoice.number} deleted and stock restored.`
+        );
       } catch (e) { toast.error("Failed to delete invoice."); }
     }
   };
