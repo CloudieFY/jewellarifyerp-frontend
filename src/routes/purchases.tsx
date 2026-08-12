@@ -17,7 +17,7 @@ import { useDebounce } from "@/lib/utils";
 import { useTenantAPI } from "@/lib/api";
 import {
   Plus, Trash2, ShoppingBag, Eye, Pencil, ClipboardList, RotateCcw, Coins,
-  CheckCircle2, XCircle, Send, PackageCheck, BarChart3,
+  CheckCircle2, XCircle, Send, PackageCheck, BarChart3, Truck, Receipt,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -453,24 +453,33 @@ export default function PurchasesPage() {
 
   return (
     <Layout>
-      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
+      {/* Header Banner */}
+      <header className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 p-6 rounded-2xl text-white shadow-lg mb-6">
         <div>
-          <h1 className="text-3xl sm:text-4xl font-display font-bold">Purchases</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Entries, orders, returns &amp; supplier purchase management.</p>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              <ShoppingBag className="w-3.5 h-3.5" /> Bullion &amp; Vendor Procurement
+            </span>
+            <span className="text-xs text-slate-300">{filteredEntries.length} Purchases Recorded</span>
+          </div>
+          <h1 className="text-3xl font-display font-bold">Purchases &amp; Vendor Bills</h1>
+          <p className="text-xs text-slate-300 mt-1 max-w-xl">
+            Entries, purchase orders, vendor returns, old gold buyback &amp; supplier invoice management.
+          </p>
         </div>
       </header>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 w-full h-auto bg-muted/60 p-1 rounded-xl gap-1">
-          <TabsTrigger value="entry" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5"><ShoppingBag className="w-3.5 h-3.5" />Entry</TabsTrigger>
-          <TabsTrigger value="orders" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5"><ClipboardList className="w-3.5 h-3.5" />Orders</TabsTrigger>
-          <TabsTrigger value="returns" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5"><RotateCcw className="w-3.5 h-3.5" />Returns</TabsTrigger>
-          <TabsTrigger value="oldgold" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5"><Coins className="w-3.5 h-3.5" />Old Gold</TabsTrigger>
-          <TabsTrigger value="approvals" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 w-full h-auto bg-muted/80 p-1 rounded-xl gap-1 border">
+          <TabsTrigger value="entry" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-amber-900 data-[state=active]:shadow-xs"><ShoppingBag className="w-3.5 h-3.5" />Entry</TabsTrigger>
+          <TabsTrigger value="orders" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-amber-900 data-[state=active]:shadow-xs"><ClipboardList className="w-3.5 h-3.5" />Orders</TabsTrigger>
+          <TabsTrigger value="returns" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-amber-900 data-[state=active]:shadow-xs"><RotateCcw className="w-3.5 h-3.5" />Returns</TabsTrigger>
+          <TabsTrigger value="oldgold" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-amber-900 data-[state=active]:shadow-xs"><Coins className="w-3.5 h-3.5" />Old Gold</TabsTrigger>
+          <TabsTrigger value="approvals" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-amber-900 data-[state=active]:shadow-xs">
             <CheckCircle2 className="w-3.5 h-3.5" />Approvals
-            {pendingApprovals.length > 0 && <Badge className="ml-0.5 h-4 min-w-4 px-1 text-[10px]">{pendingApprovals.length}</Badge>}
+            {pendingApprovals.length > 0 && <Badge className="ml-0.5 h-4 min-w-4 px-1 text-[10px] bg-amber-600 text-white">{pendingApprovals.length}</Badge>}
           </TabsTrigger>
-          <TabsTrigger value="reports" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5"><BarChart3 className="w-3.5 h-3.5" />Reports</TabsTrigger>
+          <TabsTrigger value="reports" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-amber-900 data-[state=active]:shadow-xs"><BarChart3 className="w-3.5 h-3.5" />Reports</TabsTrigger>
         </TabsList>
 
         {/* ==================================================================== */}
@@ -482,34 +491,58 @@ export default function PurchasesPage() {
               <h2 className="text-lg font-display font-semibold">Purchase Entry</h2>
               <p className="text-xs text-muted-foreground">Metal, diamond &amp; stone stock bought from suppliers — a GST bill here doubles as the supplier invoice.</p>
             </div>
-            <Button size="lg" onClick={openNewEntry}><Plus className="w-4 h-4 mr-2" />New Purchase</Button>
+            <Button size="lg" className="bg-amber-800 hover:bg-amber-900 text-white font-medium shadow-sm" onClick={openNewEntry}><Plus className="w-4 h-4 mr-2" />New Purchase</Button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border-indigo-100 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="text-xs font-semibold text-indigo-600/80 uppercase tracking-wider mb-1">Total Purchases</div>
-                <div className="text-2xl font-bold text-indigo-900">{filteredEntries.length}</div>
+            <Card className="border shadow-sm bg-card hover:shadow-md transition-all">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total Purchases</div>
+                  <div className="text-2xl font-bold font-display text-indigo-600 mt-1">{filteredEntries.length}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Recorded Invoices</div>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 grid place-items-center">
+                  <ShoppingBag className="w-5 h-5" />
+                </div>
               </CardContent>
             </Card>
-            <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-100 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="text-xs font-semibold text-emerald-600/80 uppercase tracking-wider mb-1">This Month</div>
-                <div className="text-2xl font-bold text-emerald-900">{inr(monthTotal)}</div>
+
+            <Card className="border shadow-sm bg-card hover:shadow-md transition-all">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">This Month</div>
+                  <div className="text-2xl font-bold font-display text-emerald-600 mt-1">{inr(monthTotal)}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Monthly Purchase Value</div>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600 grid place-items-center">
+                  <Receipt className="w-5 h-5" />
+                </div>
               </CardContent>
             </Card>
-            <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-100 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="text-xs font-semibold text-amber-600/80 uppercase tracking-wider mb-1">Suppliers Used</div>
-                <div className="text-2xl font-bold text-amber-900">{new Set(filteredEntries.map((p: any) => p.supplierName)).size}</div>
+
+            <Card className="border shadow-sm bg-card hover:shadow-md transition-all">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Suppliers Used</div>
+                  <div className="text-2xl font-bold font-display text-amber-600 mt-1">
+                    {new Set(filteredEntries.map((p: any) => p.supplierName)).size}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Active Vendors</div>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 grid place-items-center">
+                  <Truck className="w-5 h-5" />
+                </div>
               </CardContent>
             </Card>
           </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="font-display flex items-center gap-2"><ShoppingBag className="w-5 h-5" />Purchase Bills</CardTitle>
-              <Button size="sm" variant={gstOnly ? "default" : "outline"} onClick={() => setGstOnly(v => !v)}>
+          <Card className="border shadow-sm overflow-hidden bg-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-5 bg-card border-b">
+              <CardTitle className="font-display text-lg flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-amber-600" /> Purchase Bills &amp; Invoices
+              </CardTitle>
+              <Button size="sm" variant={gstOnly ? "default" : "outline"} className={gstOnly ? "bg-amber-800 hover:bg-amber-900 text-white" : ""} onClick={() => setGstOnly(v => !v)}>
                 {gstOnly ? "Showing GST Invoices" : "GST Invoices Only"}
               </Button>
             </CardHeader>
@@ -517,39 +550,59 @@ export default function PurchasesPage() {
               {isLoading ? <p className="text-center text-muted-foreground py-12">Loading purchases...</p> : filteredEntries.length === 0 ? <p className="text-center text-muted-foreground py-12">No purchases yet.</p> :
                 <>
                   {/* Desktop Table */}
-                  <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-sm min-w-225">
-                      <thead className="text-left text-muted-foreground border-b bg-muted/20 text-xs uppercase">
+                  <div className="hidden md:block overflow-x-auto max-h-[600px] relative">
+                    <table className="w-full text-sm min-w-[950px] border-collapse">
+                      <thead className="text-left text-xs font-bold uppercase tracking-wider sticky top-0 bg-slate-900 text-slate-200 z-10 shadow-sm">
                         <tr>
-                          <th className="py-2.5 px-4">Bill</th>
-                          <th>Type</th>
-                          <th>Category</th>
-                          <th>Date</th>
-                          <th>Supplier</th>
-                          <th>Metal</th>
-                          <th className="text-right">Wt (g)</th>
-                          <th className="text-right">Total</th>
-                          <th>Status</th>
-                          <th className="text-right pr-4">Action</th>
+                          <th className="p-3.5 pl-5 whitespace-nowrap">Bill No</th>
+                          <th className="p-3.5 whitespace-nowrap">Type</th>
+                          <th className="p-3.5 whitespace-nowrap">Category</th>
+                          <th className="p-3.5 whitespace-nowrap">Date</th>
+                          <th className="p-3.5 whitespace-nowrap">Supplier</th>
+                          <th className="p-3.5 whitespace-nowrap">Metal / Purity</th>
+                          <th className="p-3.5 text-right whitespace-nowrap">Wt (g)</th>
+                          <th className="p-3.5 text-right whitespace-nowrap">Total Amount</th>
+                          <th className="p-3.5 whitespace-nowrap">Status</th>
+                          <th className="p-3.5 text-right pr-5 whitespace-nowrap w-36">Actions</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="divide-y divide-border/60 bg-card">
                         {paginated.map((p: any) => (
-                          <tr key={p._id || p.id} className="border-b last:border-0 hover:bg-muted/20">
-                            <td className="py-2 px-4 font-semibold">{p.billNo}</td>
-                            <td><span className="text-[10px] font-semibold uppercase tracking-wider border rounded-sm px-1.5 py-0.5 text-muted-foreground">{p.type === "NON-GST" ? "Non-GST" : "GST"}</span></td>
-                            <td className="text-xs text-muted-foreground">{p.category || "Metal"}</td>
-                            <td className="whitespace-nowrap">{formatDate(p.date)}</td>
-                            <td>{p.supplierName}</td>
-                            <td>{p.metal} {p.purity}</td>
-                            <td className="text-right">{p.weight}g</td>
-                            <td className="text-right font-bold text-emerald-600">{inr(p.total)}</td>
-                            <td><StatusBadge status={p.status} /></td>
-                            <td className="text-right px-4">
+                          <tr key={p._id || p.id} className="group hover:bg-amber-50/50 dark:hover:bg-amber-950/30 transition-all">
+                            <td className="p-3.5 pl-5">
+                              <span className="font-mono font-bold text-foreground text-xs bg-muted/60 px-2 py-1 rounded border border-border">
+                                {p.billNo}
+                              </span>
+                            </td>
+                            <td className="p-3.5">
+                              <span className={`text-[10px] font-bold uppercase tracking-wider border rounded-full px-2.5 py-0.5 ${
+                                p.type === "NON-GST"
+                                  ? "bg-slate-100 text-slate-700 border-slate-300"
+                                  : "bg-emerald-50 text-emerald-800 border-emerald-300"
+                              }`}>
+                                {p.type === "NON-GST" ? "Non-GST" : "GST"}
+                              </span>
+                            </td>
+                            <td className="p-3.5 text-xs font-medium text-muted-foreground">{p.category || "Metal"}</td>
+                            <td className="p-3.5 font-mono text-xs text-slate-700 dark:text-slate-300 whitespace-nowrap">{formatDate(p.date)}</td>
+                            <td className="p-3.5 font-semibold text-foreground">{p.supplierName}</td>
+                            <td className="p-3.5">
+                              <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300 text-xs font-semibold px-2.5 py-0.5 rounded-full">
+                                {p.metal} {p.purity}
+                              </Badge>
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-2.5 py-0.5 font-mono font-bold text-xs rounded-full">
+                                {p.weight} g
+                              </span>
+                            </td>
+                            <td className="p-3.5 text-right font-mono font-bold text-emerald-600 text-sm">{inr(p.total)}</td>
+                            <td className="p-3.5"><StatusBadge status={p.status} /></td>
+                            <td className="p-3.5 text-right pr-5">
                               <div className="flex justify-end gap-1">
-                                <Button size="sm" variant="ghost" onClick={() => setViewPurchase(p)} title="View"><Eye className="w-4 h-4" /></Button>
-                                <Button size="sm" variant="ghost" onClick={() => openEdit(p)} title="Edit"><Pencil className="w-4 h-4" /></Button>
-                                <Button size="sm" variant="ghost" onClick={() => removeEntry(p._id || p.id)} title="Delete"><Trash2 className="w-4 h-4" /></Button>
+                                <Button size="icon" variant="outline" className="h-8 w-8 text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => setViewPurchase(p)} title="View Bill"><Eye className="w-3.5 h-3.5" /></Button>
+                                <Button size="icon" variant="outline" className="h-8 w-8 text-slate-700 hover:bg-slate-100" onClick={() => openEdit(p)} title="Edit Bill"><Pencil className="w-3.5 h-3.5" /></Button>
+                                <Button size="icon" variant="outline" className="h-8 w-8 border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => removeEntry(p._id || p.id)} title="Delete Bill"><Trash2 className="w-3.5 h-3.5" /></Button>
                               </div>
                             </td>
                           </tr>

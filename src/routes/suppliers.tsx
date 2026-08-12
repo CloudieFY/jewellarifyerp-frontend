@@ -13,7 +13,7 @@ import { useLocalState, inr, type Purchase, type Supplier, type SupplierTransact
 import { useDebounce } from "@/lib/utils";
 import { useApiMutation } from "@/hooks/useApi";
 import { useTenantAPI } from "@/lib/api";
-import { Plus, Trash2, Pencil, Search, Loader2, BookOpen, Eye, Wallet, ShoppingBag, ClipboardList, AlertCircle, BarChart3 } from "lucide-react";
+import { Plus, Trash2, Pencil, Search, Loader2, BookOpen, Eye, Wallet, ShoppingBag, ClipboardList, AlertCircle, BarChart3, Truck, Building2, Coins, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
@@ -399,47 +399,83 @@ export default function SuppliersPage() {
 
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-6">
+      {/* Header Banner */}
+      <header className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 p-6 rounded-2xl text-white shadow-lg mb-6">
         <div>
-          <h1 className="text-4xl">Suppliers</h1>
-          <p className="text-muted-foreground mt-1">{list.length} on file.</p>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              <Truck className="w-3.5 h-3.5" /> Bullion Vendor Directory
+            </span>
+            <span className="text-xs text-slate-300">{list.length} Suppliers Registered</span>
+          </div>
+          <h1 className="text-3xl font-display font-bold">Suppliers &amp; Bullion Ledgers</h1>
+          <p className="text-xs text-slate-300 mt-1 max-w-xl">
+            Track bullion vendor accounts, gold &amp; silver metal weight balances, and cash payment history.
+          </p>
         </div>
       </header>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid grid-cols-3 w-full max-w-md h-auto bg-muted/60 p-1 rounded-xl gap-1">
-          <TabsTrigger value="master" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5"><ShoppingBag className="w-3.5 h-3.5" />Master</TabsTrigger>
-          <TabsTrigger value="outstanding" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" />Outstanding</TabsTrigger>
-          <TabsTrigger value="reports" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5"><BarChart3 className="w-3.5 h-3.5" />Reports</TabsTrigger>
+        <TabsList className="grid grid-cols-3 w-full max-w-md h-auto bg-muted/80 p-1 rounded-xl gap-1 border">
+          <TabsTrigger value="master" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-amber-900 data-[state=active]:shadow-xs"><ShoppingBag className="w-3.5 h-3.5" />Master</TabsTrigger>
+          <TabsTrigger value="outstanding" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-amber-900 data-[state=active]:shadow-xs"><AlertCircle className="w-3.5 h-3.5" />Outstanding</TabsTrigger>
+          <TabsTrigger value="reports" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5 data-[state=active]:bg-background data-[state=active]:text-amber-900 data-[state=active]:shadow-xs"><BarChart3 className="w-3.5 h-3.5" />Reports</TabsTrigger>
         </TabsList>
 
         {/* ==================================================================== */}
         {/* TAB: SUPPLIER MASTER */}
         {/* ==================================================================== */}
         <TabsContent value="master" className="space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-2">
-            <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 border-indigo-100 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="text-xs font-semibold text-indigo-600/80 uppercase tracking-wider mb-1">Total Suppliers</div>
-                <div className="text-2xl font-bold text-indigo-900">{list.length}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-2">
+            <Card className="border shadow-sm bg-card hover:shadow-md transition-all">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total Suppliers</div>
+                  <div className="text-2xl font-bold font-display text-indigo-600 mt-1">{list.length}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Active Vendors</div>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 grid place-items-center">
+                  <Building2 className="w-5 h-5" />
+                </div>
               </CardContent>
             </Card>
-            <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-100 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="text-xs font-semibold text-amber-600/80 uppercase tracking-wider mb-1">Total Gold Due</div>
-                <div className="text-2xl font-bold text-amber-900">{totalGoldDue.toFixed(3)}g</div>
+
+            <Card className="border shadow-sm bg-card hover:shadow-md transition-all">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total Gold Due</div>
+                  <div className="text-2xl font-bold font-display text-amber-600 mt-1">{totalGoldDue.toFixed(3)} g</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Fine Gold Balance</div>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 grid place-items-center">
+                  <Coins className="w-5 h-5" />
+                </div>
               </CardContent>
             </Card>
-            <Card className="bg-gradient-to-br from-slate-50 to-slate-100/50 border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="text-xs font-semibold text-slate-600/80 uppercase tracking-wider mb-1">Total Silver Due</div>
-                <div className="text-2xl font-bold text-slate-800">{totalSilverDue.toFixed(3)}g</div>
+
+            <Card className="border shadow-sm bg-card hover:shadow-md transition-all">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total Silver Due</div>
+                  <div className="text-2xl font-bold font-display text-slate-700 dark:text-slate-300 mt-1">{totalSilverDue.toFixed(3)} g</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Fine Silver Balance</div>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 grid place-items-center">
+                  <Sparkles className="w-5 h-5" />
+                </div>
               </CardContent>
             </Card>
-            <Card className="bg-gradient-to-br from-rose-50 to-rose-100/50 border-rose-100 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="text-xs font-semibold text-rose-600/80 uppercase tracking-wider mb-1">Total Outstanding</div>
-                <div className="text-2xl font-bold text-rose-900">{inr(totalOutstanding)}</div>
+
+            <Card className="border shadow-sm bg-card hover:shadow-md transition-all">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total Cash Outstanding</div>
+                  <div className="text-2xl font-bold font-display text-rose-600 mt-1">{inr(totalOutstanding)}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Unpaid Cash Dues</div>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600 grid place-items-center">
+                  <Wallet className="w-5 h-5" />
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -447,19 +483,19 @@ export default function SuppliersPage() {
           <div className="flex flex-col-reverse md:flex-row items-center justify-between gap-4">
             <div className="relative w-full md:max-w-md">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pl-9 bg-background/50 focus:bg-background transition-colors shadow-sm" placeholder="Search by name, mobile or company no" value={q} onChange={(e) => setQ(e.target.value)} />
+              <Input className="pl-9 bg-background focus:bg-background transition-colors shadow-2xs rounded-lg border-slate-300 dark:border-slate-700" placeholder="Search by name, mobile or company no..." value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
             <div className="flex justify-end w-full md:w-auto">
               <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
-                  <Button size="lg" onClick={() => { setForm(empty); setEditingId(null); }} disabled={isLoading_UI}>
+                  <Button size="lg" className="bg-amber-800 hover:bg-amber-900 text-white font-medium shadow-sm" onClick={() => { setForm(empty); setEditingId(null); }} disabled={isLoading_UI}>
                     <Plus className="w-4 h-4 mr-2" /> Add Supplier
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
                   <DialogHeader>
-                    <DialogTitle className="font-display text-2xl">{editingId ? "Edit" : "New"} supplier</DialogTitle>
-                    <DialogDescription>Add or update supplier information</DialogDescription>
+                    <DialogTitle className="font-display text-2xl">{editingId ? "Edit Supplier Account" : "New Supplier Account"}</DialogTitle>
+                    <DialogDescription>Add or update bullion supplier information and opening balances.</DialogDescription>
                   </DialogHeader>
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Supplier Name *" v={form.name} on={v => setForm({ ...form, name: v })} />
@@ -521,49 +557,95 @@ export default function SuppliersPage() {
             </div>
           </div>
 
-          <Card className="border-border/60 shadow-sm overflow-hidden">
+          <Card className="border shadow-sm overflow-hidden bg-card">
             <CardContent className="p-0">
               {isLoading ? <p className="text-center text-muted-foreground py-12">Loading suppliers...</p> : error ? <p className="text-center text-red-500 py-12">Failed to load suppliers</p> : filtered.length === 0 ? <p className="text-center text-muted-foreground py-12">No suppliers yet.</p> : (
                 <div>
                   {/* Desktop Table View */}
-                  <div className="hidden md:block overflow-y-auto max-h-[600px] relative">
-                    <table className="w-full text-sm min-w-[900px] border-collapse">
-                      <thead className="text-left text-muted-foreground text-xs font-semibold sticky top-0 bg-muted/95 backdrop-blur-sm z-10 shadow-sm">
+                  <div className="hidden md:block overflow-x-auto max-h-[600px] relative">
+                    <table className="w-full text-sm min-w-[950px] border-collapse">
+                      <thead className="text-left text-xs font-bold uppercase tracking-wider sticky top-0 bg-slate-900 text-slate-200 z-10 shadow-sm">
                         <tr>
-                          <th className="p-3 pl-4 whitespace-nowrap">Supplier Name</th>
-                          <th className="whitespace-nowrap">Mobile</th>
-                          <th className="whitespace-nowrap">Company No</th>
-                          <th className="whitespace-nowrap">Category</th>
-                          <th className="text-right whitespace-nowrap">Gold Due (g)</th>
-                          <th className="text-right whitespace-nowrap">Silver Due (g)</th>
-                          <th className="text-right whitespace-nowrap">Outstanding</th>
-                          <th className="text-right pr-4 whitespace-nowrap w-32">Action</th>
+                          <th className="p-3.5 pl-5 whitespace-nowrap">Supplier Name</th>
+                          <th className="p-3.5 whitespace-nowrap">Mobile</th>
+                          <th className="p-3.5 whitespace-nowrap">Company No</th>
+                          <th className="p-3.5 whitespace-nowrap">Category</th>
+                          <th className="p-3.5 text-right whitespace-nowrap">Gold Due (g)</th>
+                          <th className="p-3.5 text-right whitespace-nowrap">Silver Due (g)</th>
+                          <th className="p-3.5 text-right whitespace-nowrap">Outstanding</th>
+                          <th className="p-3.5 text-right pr-5 whitespace-nowrap w-40">Actions</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-border/50">
-                        {paginated.map(s => (
-                          <tr key={s._id} className="group hover:bg-muted/40 transition-colors">
-                            <td className="p-3 pl-4 font-medium text-foreground">{s.name}</td>
-                            <td>{s.mobile}</td>
-                            <td>{(s as any).companyNo}</td>
-                            <td><span className="inline-flex items-center rounded-full border border-sidebar-border bg-sidebar px-2.5 py-0.5 text-xs font-semibold">{s.category}</span></td>
-                            <td className="text-right font-medium text-amber-600">{(s.balanceGold || 0).toFixed(3)}g</td>
-                            <td className="text-right font-medium text-slate-500">{(s.balanceSilver || 0).toFixed(3)}g</td>
-                            <td className="text-right font-medium text-rose-600">{inr(s.outstanding || 0)}</td>
-                            <td>
-                              <div className="flex gap-1 justify-end pr-3">
-                                <Button size="icon" variant="ghost" onClick={() => openDetail(s)} title="View Details">
-                                  <Eye className="w-4 h-4 text-blue-600 hover:text-blue-700" />
-                                </Button>
-                                <Button size="icon" variant="ghost" onClick={() => { setForm(s); setEditingId(s._id || null); setOpen(true); }} disabled={isLoading_UI}><Pencil className="w-4 h-4 text-muted-foreground" /></Button>
-                                <Button size="icon" variant="ghost" onClick={() => remove(s._id || "")} disabled={isLoading_UI}><Trash2 className="w-4 h-4 text-rose-500" /></Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                      <tbody className="divide-y divide-border/60 bg-card">
+                        {paginated.map((s, idx) => {
+                          const initials = (s.name || "S").split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+                          const colors = ["bg-amber-600", "bg-indigo-600", "bg-emerald-600", "bg-purple-600", "bg-blue-600"];
+                          const avatarBg = colors[idx % colors.length];
+
+                          return (
+                            <tr key={s._id || s.id} className="group hover:bg-amber-50/50 dark:hover:bg-amber-950/30 transition-all">
+                              <td className="p-3.5 pl-5">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-8 h-8 rounded-full ${avatarBg} text-white font-bold text-xs flex items-center justify-center shadow-2xs shrink-0`}>
+                                    {initials}
+                                  </div>
+                                  <div>
+                                    <div className="font-bold text-foreground text-sm group-hover:text-amber-900 dark:group-hover:text-amber-300 transition-colors">{s.name}</div>
+                                    {(s as any).address && <div className="text-[11px] text-muted-foreground line-clamp-1 max-w-[180px]">{(s as any).address}</div>}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-3.5 font-mono text-xs font-medium text-slate-700 dark:text-slate-300">{s.mobile}</td>
+                              <td className="p-3.5">
+                                <div className="font-mono text-xs font-semibold text-foreground">{(s as any).companyNo || "—"}</div>
+                                {s.gstNumber && <div className="text-[10px] text-muted-foreground font-mono">GST: {s.gstNumber}</div>}
+                              </td>
+                              <td className="p-3.5">
+                                <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300 dark:border-amber-800 text-xs font-semibold px-2.5 py-0.5 rounded-full shadow-2xs">
+                                  {s.category}
+                                </Badge>
+                              </td>
+                              <td className="p-3.5 text-right">
+                                <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-3 py-1 font-mono font-bold text-xs rounded-full shadow-2xs">
+                                  {(s.balanceGold || 0).toFixed(3)} g
+                                </span>
+                              </td>
+                              <td className="p-3.5 text-right">
+                                <span className="inline-flex items-center gap-1 bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-400/30 px-3 py-1 font-mono font-bold text-xs rounded-full shadow-2xs">
+                                  {(s.balanceSilver || 0).toFixed(3)} g
+                                </span>
+                              </td>
+                              <td className="p-3.5 text-right">
+                                <span className={`inline-flex items-center gap-1 px-3 py-1 font-mono font-bold text-xs rounded-full shadow-2xs ${
+                                  (s.outstanding || 0) > 0 
+                                    ? "bg-rose-500/10 text-rose-700 border border-rose-500/30" 
+                                    : (s.outstanding || 0) < 0 
+                                    ? "bg-emerald-500/10 text-emerald-700 border border-emerald-500/30" 
+                                    : "bg-muted text-muted-foreground border border-border"
+                                }`}>
+                                  {inr(s.outstanding || 0)}
+                                </span>
+                              </td>
+                              <td className="p-3.5 text-right pr-5">
+                                <div className="flex gap-1.5 justify-end">
+                                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 border-amber-400 text-amber-900 bg-amber-50/50 hover:bg-amber-100 font-semibold shadow-2xs" onClick={() => openDetail(s)}>
+                                    <BookOpen className="w-3.5 h-3.5 text-amber-700" /> Ledger
+                                  </Button>
+                                  <Button size="icon" variant="outline" className="h-8 w-8 text-slate-700 hover:bg-slate-100" onClick={() => { setForm(s); setEditingId(s._id || null); setOpen(true); }} disabled={isLoading_UI} title="Edit Supplier">
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Button>
+                                  <Button size="icon" variant="outline" className="h-8 w-8 border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => remove(s._id || "")} disabled={isLoading_UI} title="Delete Supplier">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
+
 
                   {/* Mobile Cards View */}
                   <div className="md:hidden grid grid-cols-1 sm:grid-cols-2 gap-3 p-3">
@@ -625,28 +707,87 @@ export default function SuppliersPage() {
         {/* TAB: OUTSTANDING */}
         {/* ==================================================================== */}
         <TabsContent value="outstanding" className="space-y-6">
-          <Card>
-            <CardHeader><CardTitle className="font-display flex items-center gap-2"><AlertCircle className="w-5 h-5" />Outstanding Balances</CardTitle></CardHeader>
+          <Card className="border shadow-sm overflow-hidden bg-card">
+            <CardHeader className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white p-5">
+              <CardTitle className="font-display text-xl flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-amber-400" /> Outstanding Balances &amp; Dues Ledger
+              </CardTitle>
+              <p className="text-xs text-slate-300 mt-1">
+                Vendors with active gold metal, silver metal, or cash dues requiring settlement.
+              </p>
+            </CardHeader>
             <CardContent className="p-0">
-              {suppliersWithDues.length === 0 ? <p className="text-center text-muted-foreground py-12">No outstanding balances — all clear.</p> : (
+              {suppliersWithDues.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="font-semibold text-foreground">No outstanding balances</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">All supplier accounts and bullion ledgers are fully cleared!</p>
+                </div>
+              ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-175">
-                    <thead className="text-left text-muted-foreground border-b bg-muted/20 text-xs uppercase">
-                      <tr><th className="py-2.5 px-4">Supplier</th><th>Category</th><th className="text-right">Gold Due</th><th className="text-right">Silver Due</th><th className="text-right">Outstanding</th><th className="text-right pr-4">Action</th></tr>
+                  <table className="w-full text-sm min-w-[850px] border-collapse">
+                    <thead className="text-left text-xs font-bold uppercase tracking-wider bg-slate-900 text-slate-200 z-10 border-b">
+                      <tr>
+                        <th className="p-3.5 pl-5 whitespace-nowrap">Supplier</th>
+                        <th className="p-3.5 whitespace-nowrap">Category</th>
+                        <th className="p-3.5 text-right whitespace-nowrap">Gold Due (g)</th>
+                        <th className="p-3.5 text-right whitespace-nowrap">Silver Due (g)</th>
+                        <th className="p-3.5 text-right whitespace-nowrap">Cash Outstanding</th>
+                        <th className="p-3.5 text-right pr-5 whitespace-nowrap w-44">Action</th>
+                      </tr>
                     </thead>
-                    <tbody>
-                      {suppliersWithDues.map((s: any) => (
-                        <tr key={s._id || s.id} className="border-b last:border-0 hover:bg-muted/20">
-                          <td className="py-2 px-4 font-semibold">{s.name}</td>
-                          <td className="text-xs text-muted-foreground">{s.category || "—"}</td>
-                          <td className="text-right text-amber-600 font-medium">{(s.balanceGold || 0).toFixed(3)}g</td>
-                          <td className="text-right text-slate-500 font-medium">{(s.balanceSilver || 0).toFixed(3)}g</td>
-                          <td className="text-right font-bold text-rose-600">{inr(s.outstanding || 0)}</td>
-                          <td className="text-right px-4">
-                            <Button size="sm" variant="outline" onClick={() => openDetail(s, "payments")}><Wallet className="w-3.5 h-3.5 mr-1" />Record Payment</Button>
-                          </td>
-                        </tr>
-                      ))}
+                    <tbody className="divide-y divide-border/60 bg-card">
+                      {suppliersWithDues.map((s: any, idx: number) => {
+                        const initials = (s.name || "S").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
+                        const colors = ["bg-amber-600", "bg-indigo-600", "bg-emerald-600", "bg-purple-600", "bg-blue-600"];
+                        const avatarBg = colors[idx % colors.length];
+
+                        return (
+                          <tr key={s._id || s.id} className="group hover:bg-amber-50/50 dark:hover:bg-amber-950/30 transition-all">
+                            <td className="p-3.5 pl-5">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-full ${avatarBg} text-white font-bold text-xs flex items-center justify-center shadow-2xs shrink-0`}>
+                                  {initials}
+                                </div>
+                                <div>
+                                  <div className="font-bold text-foreground text-sm group-hover:text-amber-900 dark:group-hover:text-amber-300 transition-colors">{s.name}</div>
+                                  <div className="text-[11px] text-muted-foreground font-mono">{s.mobile}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-3.5">
+                              <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300 dark:border-amber-800 text-xs font-semibold px-2.5 py-0.5 rounded-full shadow-2xs">
+                                {s.category || "—"}
+                              </Badge>
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-3 py-1 font-mono font-bold text-xs rounded-full shadow-2xs">
+                                {(s.balanceGold || 0).toFixed(3)} g
+                              </span>
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <span className="inline-flex items-center gap-1 bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-400/30 px-3 py-1 font-mono font-bold text-xs rounded-full shadow-2xs">
+                                {(s.balanceSilver || 0).toFixed(3)} g
+                              </span>
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <span className={`inline-flex items-center gap-1 px-3 py-1 font-mono font-bold text-xs rounded-full shadow-2xs ${
+                                (s.outstanding || 0) > 0 
+                                  ? "bg-rose-500/10 text-rose-700 border border-rose-500/30" 
+                                  : (s.outstanding || 0) < 0 
+                                  ? "bg-emerald-500/10 text-emerald-700 border border-emerald-500/30" 
+                                  : "bg-muted text-muted-foreground border border-border"
+                              }`}>
+                                {inr(s.outstanding || 0)}
+                              </span>
+                            </td>
+                            <td className="p-3.5 text-right pr-5">
+                              <Button size="sm" className="h-8 text-xs gap-1.5 bg-amber-800 hover:bg-amber-900 text-white font-medium shadow-2xs" onClick={() => openDetail(s, "payments")}>
+                                <Wallet className="w-3.5 h-3.5" /> Record Payment
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

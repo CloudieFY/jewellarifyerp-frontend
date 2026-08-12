@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useState, useMemo } from "react";
 import { useFormKeyboardNav } from "@/lib/useFormKeyboardNav";
-import { Search, Package, Filter, Gem, Hash, Weight, Sparkles, Plus, Image as ImageIcon, Loader2, Trash2, ZoomIn } from "lucide-react";
+import { Search, Package, Filter, Gem, Hash, Weight, Sparkles, Plus, Image as ImageIcon, Loader2, Trash2, ZoomIn, Pencil } from "lucide-react";
 import { useTenantAPI } from "@/lib/api";
 import { type Product, inr } from "@/lib/storage";
 import { useDebounce } from "@/lib/utils";
@@ -26,6 +26,7 @@ export default function CatalogPage() {
   };
   const { data: allItems = [], isLoading } = useQuery({ queryKey: ["inventory"], queryFn: api.inventory.getAll });
   const createMutation = useApiMutation((data: Product) => api.inventory.create(data), ["inventory"]);
+  const updateMutation = useApiMutation((data: { id: string; body: any }) => api.inventory.update(data.id, data.body), ["inventory"]);
   const deleteMutation = useApiMutation((id: string) => api.inventory.remove(id), ["inventory"]);
   
   const products = useMemo(() => (Array.isArray(allItems) ? allItems : []), [allItems]);
@@ -35,8 +36,10 @@ export default function CatalogPage() {
   const [page, setPage] = useState(1);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+
   
   const [draft, setDraft] = useState<Partial<Product>>({
     name: "",
@@ -117,34 +120,77 @@ export default function CatalogPage() {
     });
   };
 
+  const handleOpenEdit = (product: Product) => {
+    const targetId = (product as any)._id || product.id;
+    setEditingId(targetId);
+    setDraft({
+      name: product.name || "",
+      category: product.category || "Gold",
+      subcategory: product.subcategory || "",
+      purity: product.purity || "22K",
+      netWeight: product.netWeight || 0,
+      ratePerGram: product.ratePerGram || 7200,
+      makingCharge: product.makingCharge || 0,
+      stock: product.stock || 0,
+      imageUrl: product.imageUrl || "",
+      imageUrls: product.imageUrls?.length ? product.imageUrls : (product.imageUrl ? [product.imageUrl] : []),
+      note: product.note || "Catalog Item",
+    });
+    setAddOpen(true);
+  };
+
   const handleSave = async () => {
     if (!draft.name) {
       toast.error("Item name is required.");
       return;
     }
     try {
-      await createMutation.mutateAsync({ 
-        id: Date.now().toString(), 
-        barcode: `CAT-${Date.now()}`,
-        name: draft.name,
-        category: draft.category || "Gold",
-        subcategory: draft.subcategory || "",
-        note: "Catalog Item",
-        purity: draft.purity || "22K",
-        netWeight: draft.netWeight || 0,
-        grossWeight: draft.netWeight || 0,
-        stoneWeight: 0,
-        makingCharge: draft.makingCharge || 0,
-        makingChargePct: 0,
-        ratePerGram: draft.ratePerGram || 0,
-        gstPct: 3,
-        stock: 0,
-        huid: "",
-        imageUrl: draft.imageUrls?.[0] || "",
-        imageUrls: draft.imageUrls || [],
-      } as Product);
-      toast.success("Catalog item saved to database!");
+      if (editingId) {
+        await updateMutation.mutateAsync({
+          id: editingId,
+          body: {
+            name: draft.name,
+            category: draft.category || "Gold",
+            subcategory: draft.subcategory || "",
+            purity: draft.purity || "22K",
+            netWeight: draft.netWeight || 0,
+            grossWeight: draft.netWeight || 0,
+            makingCharge: draft.makingCharge || 0,
+            ratePerGram: draft.ratePerGram || 0,
+            imageUrl: draft.imageUrls?.[0] || draft.imageUrl || "",
+            imageUrls: draft.imageUrls || [],
+            note: draft.note || "Catalog Item",
+          }
+        });
+        toast.success("Catalog item updated successfully!");
+        if (selectedProduct && ((selectedProduct as any)._id === editingId || selectedProduct.id === editingId)) {
+          setSelectedProduct(prev => prev ? ({ ...prev, ...draft } as Product) : null);
+        }
+      } else {
+        await createMutation.mutateAsync({ 
+          id: Date.now().toString(), 
+          barcode: `CAT-${Date.now()}`,
+          name: draft.name,
+          category: draft.category || "Gold",
+          subcategory: draft.subcategory || "",
+          note: "Catalog Item",
+          purity: draft.purity || "22K",
+          netWeight: draft.netWeight || 0,
+          grossWeight: draft.netWeight || 0,
+          stoneWeight: 0,
+          makingCharge: draft.makingCharge || 0,
+          makingChargePct: 0,
+          ratePerGram: draft.ratePerGram || 0,
+          gstPct: 3,
+          stock: 0,
+          huid: "",
+          imageUrl: draft.imageUrls?.[0] || "",
+          imageUrls: draft.imageUrls || [],
+        } as Product);
+        toast.success("Catalog item saved to database!");
+      }
       setAddOpen(false);
+      setEditingId(null);
       setDraft({ name: "", category: "Gold", purity: "22K", netWeight: 0, ratePerGram: 7200, makingCharge: 0, stock: 0, imageUrl: "", imageUrls: [], note: "Catalog Item" });
     } catch (error) {
       console.error("Save error:", error);
@@ -163,16 +209,22 @@ export default function CatalogPage() {
             Browse and showcase your inventory items.
           </p>
         </div>
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <Dialog open={addOpen} onOpenChange={(v) => {
+          setAddOpen(v);
+          if (!v) setEditingId(null);
+        }}>
           <DialogTrigger asChild>
-            <Button size="lg" className="w-full sm:w-auto">
+            <Button size="lg" className="w-full sm:w-auto" onClick={() => {
+              setEditingId(null);
+              setDraft({ name: "", category: "Gold", purity: "22K", netWeight: 0, ratePerGram: 7200, makingCharge: 0, stock: 0, imageUrl: "", imageUrls: [], note: "Catalog Item" });
+            }}>
               <Plus className="w-4 h-4 mr-2" /> Add Item
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
             <DialogHeader>
-              <DialogTitle>Add Catalog Item</DialogTitle>
-              <DialogDescription>Add a new item directly to the catalog.</DialogDescription>
+              <DialogTitle>{editingId ? "Edit Catalog Item" : "Add Catalog Item"}</DialogTitle>
+              <DialogDescription>{editingId ? "Update existing catalog item details." : "Add a new item directly to the catalog."}</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
               <div className="space-y-1.5">
@@ -211,9 +263,9 @@ export default function CatalogPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button onClick={handleSave} disabled={!draft.name || createMutation.isPending}>
-                {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Save Item
+              <Button variant="outline" onClick={() => { setAddOpen(false); setEditingId(null); }}>Cancel</Button>
+              <Button onClick={handleSave} disabled={!draft.name || createMutation.isPending || updateMutation.isPending}>
+                {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} {editingId ? "Update Item" : "Save Item"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -290,7 +342,18 @@ export default function CatalogPage() {
                     <Badge variant="destructive" className="text-xs uppercase tracking-widest px-3 py-1">Out of Stock</Badge>
                   </div>
                 )}
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                  <Button 
+                    variant="secondary" 
+                    size="icon" 
+                    className="w-8 h-8 rounded-full shadow-md bg-white hover:bg-slate-100 text-slate-700"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenEdit(p);
+                    }}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </Button>
                   <Button 
                     variant="destructive" 
                     size="icon" 
@@ -307,7 +370,7 @@ export default function CatalogPage() {
                       }
                     }}
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                   </Button>
                 </div>
                       </div>
@@ -419,8 +482,11 @@ export default function CatalogPage() {
                     {selectedProduct.note || "No additional description available for this item."}
                   </DialogDescription>
                 </DialogHeader>
-                <div className="absolute top-4 right-12 bg-background rounded-md shadow-sm border border-border z-10">
-                  <Button variant="ghost" size="icon" className="text-rose-500 hover:text-rose-600 hover:bg-rose-50" onClick={async () => {
+                <div className="absolute top-4 right-12 bg-background rounded-md shadow-sm border border-border z-10 flex items-center divide-x border-border">
+                  <Button variant="ghost" size="icon" className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-r-none" onClick={() => handleOpenEdit(selectedProduct)}>
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 rounded-l-none" onClick={async () => {
                     if (window.confirm("Are you sure you want to delete this catalog item?")) {
                       try {
                         await deleteMutation.mutateAsync((selectedProduct as any)._id || selectedProduct.id);

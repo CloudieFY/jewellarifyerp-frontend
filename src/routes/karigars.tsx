@@ -21,7 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Pencil, Search, Loader2, User, KeyRound, Eye, EyeOff, Wrench, ShoppingBag, Hammer } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Trash2, Pencil, Search, Loader2, User, KeyRound, Eye, EyeOff, Wrench, ShoppingBag, Hammer, Sparkles } from "lucide-react";
 import { useLocalState, type Karigar, type Repair, type Order } from "@/lib/storage";
 import { useDebounce, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
@@ -221,13 +222,17 @@ export default function KarigarsPage() {
     <Layout>
       <div className="space-y-6">
         {/* Header & Primary Action */}
-        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
+        <header className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 p-6 rounded-2xl text-white shadow-lg mb-6">
           <div>
-            <h1 className="text-3xl sm:text-4xl font-display flex items-center gap-3">
-              <Hammer className="w-7 h-7 sm:w-8 sm:h-8 text-amber-600" /> Karigars Directory
-            </h1>
-            <p className="text-muted-foreground text-xs sm:text-sm mt-1">
-              Manage craftsman profiles, specialty categories, metal ledgers & portal credentials.
+            <div className="flex items-center gap-2 mb-1">
+              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                <Hammer className="w-3.5 h-3.5" /> Craftsman &amp; Artisan Directory
+              </span>
+              <span className="text-xs text-slate-300">{totalKarigars} Craftsmen Registered</span>
+            </div>
+            <h1 className="text-3xl font-display font-bold">Karigars Directory</h1>
+            <p className="text-xs text-slate-300 mt-1 max-w-xl">
+              Manage craftsman profiles, specialty categories, metal ledgers &amp; portal login credentials.
             </p>
           </div>
 
@@ -235,7 +240,7 @@ export default function KarigarsPage() {
             <DialogTrigger asChild>
               <Button
                 size="lg"
-                className="bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-sm w-full sm:w-auto"
+                className="bg-amber-800 hover:bg-amber-900 text-white font-medium shadow-sm w-full md:w-auto"
                 onClick={() => {
                   setForm(empty);
                   setEditingId(null);
@@ -455,25 +460,47 @@ export default function KarigarsPage() {
         </header>
 
         {/* Summary KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-          <div className="bg-background border rounded-lg p-3.5 shadow-sm">
-            <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Total Karigars</div>
-            <div className="text-2xl font-bold font-display text-foreground mt-1 flex items-baseline gap-2">
-              {totalKarigars} <span className="text-xs font-normal text-muted-foreground">craftsmen</span>
-            </div>
-          </div>
-          <div className="bg-background border rounded-lg p-3.5 shadow-sm">
-            <div className="text-xs text-amber-800 font-semibold uppercase tracking-wider">Portal Logins</div>
-            <div className="text-2xl font-bold font-display text-amber-900 mt-1 flex items-baseline gap-2">
-              {activeLogins} <span className="text-xs font-normal text-muted-foreground">({Math.round((activeLogins / (totalKarigars || 1)) * 100)}% active)</span>
-            </div>
-          </div>
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3.5 shadow-sm">
-            <div className="text-xs text-amber-800 font-bold uppercase tracking-wider">Total Pending Weight</div>
-            <div className="text-2xl font-bold font-display text-amber-950 mt-1">
-              {totalPendingWeight.toFixed(2)} <span className="text-sm font-medium text-amber-900">g</span>
-            </div>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Card className="border shadow-sm bg-card hover:shadow-md transition-all">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total Karigars</div>
+                <div className="text-2xl font-bold font-display text-indigo-600 mt-1">{totalKarigars}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">Active Craftsmen</div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 grid place-items-center">
+                <Hammer className="w-5 h-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border shadow-sm bg-card hover:shadow-md transition-all">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Portal Logins</div>
+                <div className="text-2xl font-bold font-display text-amber-600 mt-1">
+                  {activeLogins} <span className="text-xs font-normal text-muted-foreground">({Math.round((activeLogins / (totalKarigars || 1)) * 100)}% active)</span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">Assigned Credentials</div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 grid place-items-center">
+                <KeyRound className="w-5 h-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border shadow-sm bg-card hover:shadow-md transition-all">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total Pending Weight</div>
+                <div className="text-2xl font-bold font-display text-amber-700 dark:text-amber-300 mt-1">{totalPendingWeight.toFixed(2)} g</div>
+                <div className="text-xs text-muted-foreground mt-0.5">Unsettled Job Work</div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-700 grid place-items-center">
+                <Sparkles className="w-5 h-5" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Search & Counter Controls */}
@@ -615,113 +642,140 @@ export default function KarigarsPage() {
             </div>
 
             {/* Desktop Table View */}
-            <Card className="hidden md:block border-border shadow-sm">
+            <Card className="hidden md:block border shadow-sm overflow-hidden bg-card">
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="text-left text-muted-foreground border-b bg-muted/20">
+                <div className="overflow-x-auto max-h-[600px] relative">
+                  <table className="w-full text-sm min-w-[950px] border-collapse">
+                    <thead className="text-left text-xs font-bold uppercase tracking-wider sticky top-0 bg-slate-900 text-slate-200 z-10 shadow-sm">
                       <tr>
-                        <th className="p-3.5">Name</th>
-                        <th>Login ID</th>
-                        <th>Mobile</th>
-                        <th>Specialty</th>
-                        <th>Category</th>
-                        <th>Address</th>
-                        <th className="text-right">Pending Wt</th>
-                        <th></th>
+                        <th className="p-3.5 pl-5 whitespace-nowrap">Name</th>
+                        <th className="p-3.5 whitespace-nowrap">Login ID</th>
+                        <th className="p-3.5 whitespace-nowrap">Mobile</th>
+                        <th className="p-3.5 whitespace-nowrap">Specialty</th>
+                        <th className="p-3.5 whitespace-nowrap">Category</th>
+                        <th className="p-3.5 whitespace-nowrap">Address</th>
+                        <th className="p-3.5 text-right whitespace-nowrap">Pending Wt</th>
+                        <th className="p-3.5 text-right pr-5 whitespace-nowrap w-36">Actions</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {paginated.map((s) => (
-                        <tr key={s._id || s.id} className="border-b last:border-0 hover:bg-muted/40 transition-colors">
-                          <td className="p-3.5 font-medium">{s.name}</td>
-                          <td>
-                            {s.username ? (
-                              <div className="space-y-0.5">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-amber-500/10 text-amber-800 border border-amber-500/20">
-                                  <User className="w-3.5 h-3.5 text-amber-600" /> ID: {s.username}
-                                </span>
-                                {s.password && (
-                                  <div className="text-[11px] font-mono text-muted-foreground flex items-center gap-1 pl-1">
-                                    <KeyRound className="w-3 h-3 text-amber-600" /> Pass:{" "}
-                                    <span className="font-semibold text-foreground font-mono">
-                                      {tablePassVisible[s._id || s.id] ? s.password : "••••••••"}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      className="text-muted-foreground hover:text-amber-700 ml-1 transition-colors"
-                                      onClick={() =>
-                                        setTablePassVisible((prev) => ({
-                                          ...prev,
-                                          [s._id || s.id]: !prev[s._id || s.id],
-                                        }))
-                                      }
-                                      title={tablePassVisible[s._id || s.id] ? "Hide password" : "Show password"}
-                                    >
-                                      {tablePassVisible[s._id || s.id] ? (
-                                        <EyeOff className="w-3 h-3 text-muted-foreground" />
-                                      ) : (
-                                        <Eye className="w-3 h-3 text-amber-600" />
-                                      )}
-                                    </button>
-                                  </div>
-                                )}
+                    <tbody className="divide-y divide-border/60 bg-card">
+                      {paginated.map((s, idx) => {
+                        const initials = (s.name || "K").split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+                        const colors = ["bg-amber-600", "bg-indigo-600", "bg-emerald-600", "bg-purple-600", "bg-blue-600"];
+                        const avatarBg = colors[idx % colors.length];
+
+                        return (
+                          <tr key={s._id || s.id} className="group hover:bg-amber-50/50 dark:hover:bg-amber-950/30 transition-all">
+                            <td className="p-3.5 pl-5">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-full ${avatarBg} text-white font-bold text-xs flex items-center justify-center shadow-2xs shrink-0`}>
+                                  {initials}
+                                </div>
+                                <div className="font-bold text-foreground text-sm group-hover:text-amber-900 dark:group-hover:text-amber-300 transition-colors">
+                                  {s.name}
+                                </div>
                               </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground italic">No Login</span>
-                            )}
-                          </td>
-                          <td>
-                            <div>{s.mobile}</div>
-                          </td>
-                          <td>
-                            <div>{s.specialty || "—"}</div>
-                          </td>
-                          <td>
-                            <span className="inline-flex items-center rounded-full border border-sidebar-border bg-sidebar px-2.5 py-0.5 text-xs font-semibold">
-                              {s.category || "—"}
-                            </span>
-                          </td>
-                          <td className="text-muted-foreground max-w-50 truncate" title={s.address}>
-                            {s.address || "—"}
-                          </td>
-                          <td className="text-right font-medium">{(s.pendingWeight || 0).toFixed(2)} g</td>
-                          <td>
-                            <div className="flex gap-1 justify-end pr-3">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                title="View All Details & Workload"
-                                onClick={() => setViewingKarigar(s)}
-                              >
-                                <Eye className="w-4 h-4 text-blue-600" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                title="Edit Karigar"
-                                onClick={() => {
-                                  setForm({ ...s, password: s.password || "" });
-                                  setEditingId(s._id || null);
-                                  setOpen(true);
-                                }}
-                                disabled={isLoading_UI}
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                title="Delete Karigar"
-                                onClick={() => remove((s._id || ""))}
-                                disabled={isLoading_UI}
-                              >
-                                <Trash2 className="w-4 h-4 text-rose-500" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td className="p-3.5">
+                              {s.username ? (
+                                <div className="inline-flex flex-col gap-1 p-2 rounded-lg bg-amber-500/10 dark:bg-amber-950/40 border border-amber-500/25 max-w-[200px]">
+                                  <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-amber-900 dark:text-amber-300">
+                                    <User className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                    <span>ID: {s.username}</span>
+                                  </div>
+                                  {s.password && (
+                                    <div className="flex items-center justify-between gap-2 text-[11px] font-mono text-slate-600 dark:text-slate-400 border-t border-amber-500/20 pt-1">
+                                      <div className="flex items-center gap-1">
+                                        <KeyRound className="w-3 h-3 text-amber-600 shrink-0" />
+                                        <span className="font-semibold text-foreground font-mono">{tablePassVisible[s._id || s.id] ? s.password : "••••••••"}</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="text-muted-foreground hover:text-amber-800 dark:hover:text-amber-300 transition-colors p-0.5"
+                                        onClick={() =>
+                                          setTablePassVisible((prev) => ({
+                                            ...prev,
+                                            [s._id || s.id]: !prev[s._id || s.id],
+                                          }))
+                                        }
+                                        title={tablePassVisible[s._id || s.id] ? "Hide password" : "Show password"}
+                                      >
+                                        {tablePassVisible[s._id || s.id] ? (
+                                          <EyeOff className="w-3.5 h-3.5" />
+                                        ) : (
+                                          <Eye className="w-3.5 h-3.5 text-amber-600" />
+                                        )}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground italic">No Login Credentials</span>
+                              )}
+                            </td>
+                            <td className="p-3.5 font-mono text-xs font-medium text-slate-700 dark:text-slate-300">{s.mobile}</td>
+                            <td className="p-3.5">
+                              {s.specialty ? (
+                                <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300 dark:border-amber-800 text-xs font-semibold px-2.5 py-0.5 rounded-full shadow-2xs">
+                                  {s.specialty}
+                                </Badge>
+                              ) : "—"}
+                            </td>
+                            <td className="p-3.5">
+                              {s.category ? (
+                                <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 text-slate-800 px-2.5 py-0.5 text-xs font-semibold">
+                                  {s.category}
+                                </span>
+                              ) : "—"}
+                            </td>
+                            <td className="p-3.5 text-muted-foreground max-w-[180px] truncate" title={s.address}>
+                              {s.address || "—"}
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-3 py-1 font-mono font-bold text-xs rounded-full shadow-2xs">
+                                {(s.pendingWeight || 0).toFixed(2)} g
+                              </span>
+                            </td>
+                            <td className="p-3.5 text-right pr-5">
+                              <div className="flex gap-1.5 justify-end">
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-8 w-8 text-blue-600 border-blue-200 hover:bg-blue-50"
+                                  title="View All Details & Workload"
+                                  onClick={() => setViewingKarigar(s)}
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-8 w-8 text-slate-700 hover:bg-slate-100"
+                                  title="Edit Karigar"
+                                  onClick={() => {
+                                    setForm({ ...s, password: s.password || "" });
+                                    setEditingId(s._id || null);
+                                    setOpen(true);
+                                  }}
+                                  disabled={isLoading_UI}
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-8 w-8 border-rose-200 text-rose-600 hover:bg-rose-50"
+                                  title="Delete Karigar"
+                                  onClick={() => remove((s._id || ""))}
+                                  disabled={isLoading_UI}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
