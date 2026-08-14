@@ -62,6 +62,7 @@ export default function DuesPage() {
   const [payNote, setPayNote] = useState("");
 
   const [viewDetailInv, setViewDetailInv] = useState<Invoice | null>(null);
+  const [showPrintSummaryModal, setShowPrintSummaryModal] = useState(false);
 
   const isOperator = tenantSession?.user?.role === "operator";
   const invoices = useMemo(
@@ -134,6 +135,162 @@ export default function DuesPage() {
     () => allDueInvoices.reduce((sum, i) => sum + (i.amountPaid || 0), 0),
     [allDueInvoices]
   );
+
+  const filteredTotalBilled = useMemo(
+    () => filteredDueInvoices.reduce((sum, i) => sum + (i.total || 0), 0),
+    [filteredDueInvoices]
+  );
+  const filteredTotalPaid = useMemo(
+    () => filteredDueInvoices.reduce((sum, i) => sum + (i.amountPaid || 0), 0),
+    [filteredDueInvoices]
+  );
+  const filteredTotalDue = useMemo(
+    () => filteredDueInvoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0),
+    [filteredDueInvoices]
+  );
+
+  const filterDescription = useMemo(() => {
+    const parts: string[] = [];
+    if (activeTab === "overdue") parts.push("Overdue > 30 Days");
+    else if (activeTab === "high") parts.push("High Value (>₹50k)");
+    else if (activeTab === "partial") parts.push("Partially Paid");
+    else parts.push("All Pending Dues");
+
+    if (dateFrom && dateTo) parts.push(`Date: ${dateFrom} to ${dateTo}`);
+    else if (dateFrom) parts.push(`From: ${dateFrom}`);
+    else if (dateTo) parts.push(`To: ${dateTo}`);
+
+    if (debouncedQ) parts.push(`Search: "${debouncedQ}"`);
+
+    return parts.join(" | ");
+  }, [activeTab, dateFrom, dateTo, debouncedQ]);
+
+  const renderDuesReportContent = (printMode = false) => {
+    const shop = tenantSession?.shop;
+    return (
+      <div className={`bg-white text-slate-900 font-sans text-xs ${printMode ? "p-2" : "p-4"}`}>
+        {/* Shop Header */}
+        <div className="flex justify-between items-start border-b-2 border-slate-800 pb-3 mb-4">
+          <div className="flex items-start gap-3">
+            {shop?.logoUrl && (
+              <img src={shop.logoUrl} alt="Logo" className="h-10 w-10 object-contain shrink-0" />
+            )}
+            <div>
+              <h1 className="text-lg font-bold text-slate-900 uppercase tracking-wide">
+                {shop?.shopName || "Jewellery Showroom"}
+              </h1>
+              {shop?.address && <p className="text-xs text-slate-600 mt-0.5">{shop.address}</p>}
+              {shop?.phone && <p className="text-xs text-slate-700 font-mono"><span className="font-semibold">Mob:</span> {shop.phone}</p>}
+            </div>
+          </div>
+          <div className="text-right">
+            <h2 className="text-base font-bold text-slate-900 uppercase tracking-wide">Customer Dues Report</h2>
+            <p className="text-xs text-slate-600 font-mono">Date: {formatDate(new Date().toISOString())}</p>
+            <p className="text-[11px] text-amber-900 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-block mt-1">
+              {filterDescription} ({filteredDueInvoices.length} Bills)
+            </p>
+          </div>
+        </div>
+
+        {/* Summary Metrics Bar */}
+        <div className="grid grid-cols-4 gap-2.5 border border-slate-300 bg-slate-50 p-2.5 rounded-lg mb-4 text-center">
+          <div className="p-1">
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pending Bills</div>
+            <div className="text-base font-bold text-slate-900 mt-0.5 font-mono">{filteredDueInvoices.length}</div>
+          </div>
+          <div className="p-1 border-l border-slate-200">
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Bill Amount</div>
+            <div className="text-base font-bold text-slate-900 mt-0.5 font-mono">{inr(filteredTotalBilled)}</div>
+          </div>
+          <div className="p-1 border-l border-slate-200">
+            <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Recovered Paid</div>
+            <div className="text-base font-bold text-emerald-700 mt-0.5 font-mono">{inr(filteredTotalPaid)}</div>
+          </div>
+          <div className="p-1 border-l border-slate-200 bg-rose-50/50 rounded">
+            <div className="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Total Balance Due</div>
+            <div className="text-base font-bold text-rose-700 mt-0.5 font-mono">{inr(filteredTotalDue)}</div>
+          </div>
+        </div>
+
+        {/* Dues Table */}
+        <table className="w-full border-collapse border border-slate-300 text-xs mb-4">
+          <thead>
+            <tr className="bg-slate-800 text-white font-bold uppercase text-[10px] tracking-wider">
+              <th className="border border-slate-700 py-2 px-2 text-center w-10">S.No.</th>
+              <th className="border border-slate-700 py-2 px-2 text-left w-24">Date</th>
+              <th className="border border-slate-700 py-2 px-2 text-left w-24">Invoice #</th>
+              <th className="border border-slate-700 py-2 px-2 text-left">Customer Details</th>
+              <th className="border border-slate-700 py-2 px-2 text-right">Total Bill</th>
+              <th className="border border-slate-700 py-2 px-2 text-right text-emerald-300">Paid</th>
+              <th className="border border-slate-700 py-2 px-2 text-right text-rose-300">Balance Due</th>
+              <th className="border border-slate-700 py-2 px-2 text-center w-20">Age</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {filteredDueInvoices.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="py-6 text-center text-slate-500 font-medium">
+                  No pending dues found matching current filters.
+                </td>
+              </tr>
+            ) : (
+              filteredDueInvoices.map((inv, idx) => {
+                const days = getDaysOverdue(inv.createdAt);
+                const isHighOverdue = days >= 30;
+                return (
+                  <tr key={inv._id || inv.id || idx} className="even:bg-slate-50/50">
+                    <td className="border border-slate-200 py-1.5 px-2 text-center font-mono text-slate-500">{idx + 1}</td>
+                    <td className="border border-slate-200 py-1.5 px-2 font-mono whitespace-nowrap">{formatDate(inv.createdAt)}</td>
+                    <td className="border border-slate-200 py-1.5 px-2 font-mono font-bold text-slate-900 whitespace-nowrap">{inv.number}</td>
+                    <td className="border border-slate-200 py-1.5 px-2">
+                      <div className="font-bold text-slate-900">{inv.customerName}</div>
+                      <div className="text-[10px] text-slate-600 font-mono">
+                        {inv.customerMobile}
+                        {inv.customerAddress ? ` • ${inv.customerAddress}` : ""}
+                      </div>
+                    </td>
+                    <td className="border border-slate-200 py-1.5 px-2 text-right font-mono text-slate-800">{inr(inv.total)}</td>
+                    <td className="border border-slate-200 py-1.5 px-2 text-right font-mono text-emerald-700 font-semibold">{inr(inv.amountPaid || 0)}</td>
+                    <td className="border border-slate-200 py-1.5 px-2 text-right font-mono font-bold text-rose-700">{inr(inv.balanceDue || 0)}</td>
+                    <td className="border border-slate-200 py-1.5 px-2 text-center font-mono text-[10px]">
+                      {isHighOverdue ? (
+                        <span className="text-rose-700 font-bold">{days}d Overdue</span>
+                      ) : (
+                        <span className="text-slate-600">{days}d</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+          {filteredDueInvoices.length > 0 && (
+            <tfoot>
+              <tr className="bg-slate-100 font-bold text-xs border-t-2 border-slate-400">
+                <td colSpan={4} className="border border-slate-300 py-2 px-2 text-right uppercase tracking-wider text-slate-700">Total Summary:</td>
+                <td className="border border-slate-300 py-2 px-2 text-right font-mono text-slate-900">{inr(filteredTotalBilled)}</td>
+                <td className="border border-slate-300 py-2 px-2 text-right font-mono text-emerald-800">{inr(filteredTotalPaid)}</td>
+                <td className="border border-slate-300 py-2 px-2 text-right font-mono text-rose-800 font-bold text-sm">{inr(filteredTotalDue)}</td>
+                <td className="border border-slate-300 py-2 px-2"></td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+
+        {/* Footer */}
+        <div className="mt-8 flex justify-between items-end text-[10px] text-slate-500 border-t border-slate-200 pt-3">
+          <div>
+            <div>Report generated automatically via Jewellarify ERP</div>
+            <div className="font-mono mt-0.5">Printed at: {new Date().toLocaleString()}</div>
+          </div>
+          <div className="text-center">
+            <div className="border-t border-slate-400 w-36 mb-1"></div>
+            <div className="font-semibold text-slate-700 uppercase tracking-wider text-[9px]">Authorized Signatory</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Pagination
   const pageSize = 10;
@@ -237,7 +394,7 @@ export default function DuesPage() {
 
   return (
     <Layout>
-      <div className="print-section">
+      <div className="print:hidden space-y-6">
         {/* HEADER BAR */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-6">
         <div>
@@ -254,18 +411,18 @@ export default function DuesPage() {
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
+        <div className="flex flex-row items-center gap-2 w-full md:w-auto">
           <Button
             variant="outline"
             onClick={exportToExcel}
-            className="h-9 text-xs gap-2 border-slate-300 hover:bg-slate-100 w-full sm:w-auto"
+            className="h-9 text-xs gap-2 border-slate-300 hover:bg-slate-100 flex-1 sm:flex-initial"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Export Excel
           </Button>
           <Button
             variant="outline"
-            onClick={() => window.print()}
-            className="h-9 text-xs gap-2 border-slate-300 hover:bg-slate-100 hidden sm:inline-flex"
+            onClick={() => setShowPrintSummaryModal(true)}
+            className="h-9 text-xs gap-2 border-slate-300 hover:bg-slate-100 flex-1 sm:flex-initial"
           >
             <Printer className="w-4 h-4 text-slate-600" /> Print Summary
           </Button>
@@ -909,6 +1066,43 @@ export default function DuesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
+
+      {/* PRINT SUMMARY PREVIEW MODAL */}
+      <Dialog open={showPrintSummaryModal} onOpenChange={setShowPrintSummaryModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-4 sm:p-6 print:hidden">
+          <DialogHeader className="border-b pb-3">
+            <DialogTitle className="flex items-center justify-between">
+              <span className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Printer className="w-5 h-5 text-slate-600" /> Customer Dues Summary Report
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="border border-slate-200 rounded-lg p-2 sm:p-4 bg-slate-50 shadow-inner">
+            {renderDuesReportContent(false)}
+          </div>
+
+          <DialogFooter className="mt-4 gap-2 flex-col sm:flex-row">
+            <Button variant="outline" size="sm" onClick={() => setShowPrintSummaryModal(false)}>
+              Close
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                window.print();
+              }}
+              className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs gap-2"
+            >
+              <Printer className="w-4 h-4" /> Print Report Now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* PRINT-ONLY CLEAN DUES SUMMARY REPORT (Used by browser print) */}
+      <div className="hidden print:block print-section">
+        {renderDuesReportContent(true)}
       </div>
     </Layout>
   );

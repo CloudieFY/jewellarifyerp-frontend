@@ -88,6 +88,41 @@ function dedupeInvoices(arr: any[]) {
   return Array.from(m.values());
 }
 
+function isProductMatchingBillMetal(p: any, billMetal: "Gold" | "Silver"): boolean {
+  const mType = (p.metalType || "").toLowerCase();
+  const cat = (p.category || "").toLowerCase();
+  const name = (p.name || "").toLowerCase();
+  const purity = (p.purity || "").toLowerCase();
+
+  const isSilver =
+    mType.includes("silver") ||
+    mType.includes("chandi") ||
+    cat.includes("silver") ||
+    cat.includes("chandi") ||
+    name.includes("silver") ||
+    name.includes("chandi") ||
+    purity.includes("925") ||
+    purity.includes("999") ||
+    purity.includes("800");
+
+  const isGold =
+    mType.includes("gold") ||
+    cat.includes("gold") ||
+    name.includes("gold") ||
+    purity.includes("22k") ||
+    purity.includes("18k") ||
+    purity.includes("24k") ||
+    purity.includes("14k");
+
+  if (billMetal === "Silver") {
+    if (isGold && !isSilver) return false;
+    return isSilver || !isGold;
+  } else {
+    if (isSilver && !isGold) return false;
+    return true;
+  }
+}
+
 export default function BillingPage() {
   const api = useTenantAPI();
   const queryClient = useQueryClient();
@@ -130,6 +165,7 @@ export default function BillingPage() {
   const debouncedSearchProd = useDebounce(searchProd, 300);
   const [items, setItems] = useState<EditableInvoiceItem[]>([]);
   const [discount, setDiscount] = useState<number | "">("");
+  const [billMetal, setBillMetal] = useState<"Gold" | "Silver">("Gold");
   const [oldMetalType, setOldMetalType] = useState<"Gold" | "Silver" | "Mixed">("Mixed");
   const [oldGoldAmount, setOldGoldAmount] = useState<number | "">("");
   const [oldSilverAmount, setOldSilverAmount] = useState<number | "">("");
@@ -512,6 +548,7 @@ export default function BillingPage() {
     setOldGoldAmount("");
     setOldSilverAmount("");
     setOldMetalType("Mixed");
+    setBillMetal("Gold");
     setCustomerId("");
     setCashAmount("");
     setOnlineAmount("");
@@ -559,6 +596,7 @@ export default function BillingPage() {
     setOldGoldAmount(inv.oldGoldAmount || "");
     setOldSilverAmount(inv.oldSilverAmount || "");
     setOldMetalType(inv.oldMetalType || (inv.oldSilverAmount && inv.oldGoldAmount ? "Mixed" : inv.oldSilverAmount ? "Silver" : "Gold"));
+    setBillMetal(inv.billMetal || "Gold");
     
     let cAmt = 0;
     let oAmt = 0;
@@ -720,6 +758,7 @@ export default function BillingPage() {
       oldGoldAmount: Number(oldGoldAmount) || 0,
       oldSilverAmount: Number(oldSilverAmount) || 0,
       oldMetalType: oldMetalType,
+      billMetal: billMetal,
       paymentMode: finalPaymentMode,
       subtotal: totals.subtotal,
       gstAmount: totals.gst,
@@ -1165,10 +1204,35 @@ export default function BillingPage() {
 
               {/* 2. Items */}
               <div className="p-4 border rounded-lg bg-muted/10 space-y-3">
-                <h3 className="font-semibold text-primary flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">2</span>
-                  Items
-                </h3>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="font-semibold text-primary flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">2</span>
+                    Items
+                  </h3>
+                  <div className="flex items-center gap-2 bg-background px-3 py-1 rounded-lg border border-border/80 shadow-2xs">
+                    <span className="text-xs font-semibold text-muted-foreground">Bill Type:</span>
+                    <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-md">
+                      <button
+                        type="button"
+                        onClick={() => setBillMetal("Gold")}
+                        className={`px-3 py-0.5 rounded text-xs font-bold transition-all cursor-pointer ${
+                          billMetal === "Gold" ? "bg-amber-600 text-white shadow-2xs" : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Gold / General Bill
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBillMetal("Silver")}
+                        className={`px-3 py-0.5 rounded text-xs font-bold transition-all cursor-pointer ${
+                          billMetal === "Silver" ? "bg-slate-800 text-white shadow-2xs" : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Silver Bill
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <div className="flex flex-col sm:flex-row gap-3 w-full items-start sm:items-center">
                     <Input
                       ref={productSearchRef}
@@ -1184,6 +1248,7 @@ export default function BillingPage() {
                           const matches = products.filter(
                             (p) => {
                               if (!isGst && (p.gstPct || 0) > 0) return false;
+                              if (!isProductMatchingBillMetal(p, billMetal)) return false;
                               return (
                                 p.name.toLowerCase().includes(query) ||
                                 (p.barcode || "").toLowerCase() === query ||
@@ -1229,6 +1294,7 @@ export default function BillingPage() {
                             .filter(
                               (p) => {
                                 if (!isGst && (p.gstPct || 0) > 0) return false;
+                                if (!isProductMatchingBillMetal(p, billMetal)) return false;
                                 return (
                                   p.name.toLowerCase().includes(debouncedSearchProd.toLowerCase()) ||
                                   (p.barcode || "")
@@ -1277,6 +1343,7 @@ export default function BillingPage() {
                                 .filter(
                                   (p) => {
                                     if (!isGst && (p.gstPct || 0) > 0) return false;
+                                    if (!isProductMatchingBillMetal(p, billMetal)) return false;
                                     return (
                                       p.name.toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
                                       (p.barcode || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
@@ -1305,6 +1372,7 @@ export default function BillingPage() {
                               {products.filter(
                                 (p) => {
                                   if (!isGst && (p.gstPct || 0) > 0) return false;
+                                  if (!isProductMatchingBillMetal(p, billMetal)) return false;
                                   return (
                                     p.name.toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
                                     (p.barcode || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
@@ -1378,26 +1446,28 @@ export default function BillingPage() {
                                     placeholder="Item Name"
                                   />
                                 </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <Label className="text-[11px] font-semibold text-muted-foreground block mb-1">Purity</Label>
-                                    <Input
-                                      value={it.purity}
-                                      onChange={(e) => updateItem(i, { purity: e.target.value })}
-                                      className="h-8 text-xs bg-background"
-                                      placeholder="Purity (e.g. 22K)"
-                                    />
+                                {billMetal !== "Silver" && (
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <Label className="text-[11px] font-semibold text-muted-foreground block mb-1">Purity</Label>
+                                      <Input
+                                        value={it.purity}
+                                        onChange={(e) => updateItem(i, { purity: e.target.value })}
+                                        className="h-8 text-xs bg-background"
+                                        placeholder="Purity (e.g. 22K)"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-[11px] font-semibold text-muted-foreground block mb-1">HUID</Label>
+                                      <Input
+                                        value={it.huid || ""}
+                                        onChange={(e) => updateItem(i, { huid: e.target.value })}
+                                        className="h-8 text-xs bg-background font-mono"
+                                        placeholder="HUID Code"
+                                      />
+                                    </div>
                                   </div>
-                                  <div>
-                                    <Label className="text-[11px] font-semibold text-muted-foreground block mb-1">HUID</Label>
-                                    <Input
-                                      value={it.huid || ""}
-                                      onChange={(e) => updateItem(i, { huid: e.target.value })}
-                                      className="h-8 text-xs bg-background font-mono"
-                                      placeholder="HUID Code"
-                                    />
-                                  </div>
-                                </div>
+                                )}
                               </div>
 
                               <div className="grid grid-cols-4 gap-1.5 text-center bg-muted/20 p-2 rounded-md border border-border/60">
@@ -1448,10 +1518,12 @@ export default function BillingPage() {
                                     className="w-full h-8 text-xs bg-background font-mono"
                                   />
                                 </div>
-                                <div>
-                                  <Label className="text-[11px] font-semibold text-muted-foreground block mb-1">HMC Charge (₹)</Label>
-                                  <NumI v={it.hmc || 0} on={(v) => updateItem(i, { hmc: v })} className="w-full h-8 text-xs bg-background font-mono" />
-                                </div>
+                                {billMetal !== "Silver" && (
+                                  <div>
+                                    <Label className="text-[11px] font-semibold text-muted-foreground block mb-1">HMC Charge (₹)</Label>
+                                    <NumI v={it.hmc || 0} on={(v) => updateItem(i, { hmc: v })} className="w-full h-8 text-xs bg-background font-mono" />
+                                  </div>
+                                )}
                               </div>
 
                               <div className="grid grid-cols-2 gap-2 items-center bg-muted/20 p-2 rounded.md border border-border/60">
@@ -1505,12 +1577,12 @@ export default function BillingPage() {
                           <thead className="text-left text-muted-foreground border-b bg-muted/20 text-xs uppercase tracking-wider">
                             <tr>
                               <th className="p-2 font-semibold whitespace-nowrap">Product</th>
-                              <th className="p-2 font-semibold whitespace-nowrap w-28">HUID</th>
+                              {billMetal !== "Silver" && <th className="p-2 font-semibold whitespace-nowrap w-28">HUID</th>}
                               <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-16">Pcs</th>
                               <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-24">Gross Wt</th>
                               <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-24">Less Wt</th>
                               <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-24">Net Wt</th>
-                              <th className="p-2 font-semibold whitespace-nowrap text-right w-24">HMC (₹)</th>
+                              {billMetal !== "Silver" && <th className="p-2 font-semibold whitespace-nowrap text-right w-24">HMC (₹)</th>}
                               <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-28">Rate(₹/g)</th>
                               <th className="py-2 px-1.5 font-semibold whitespace-nowrap text-right w-36">Making Charge</th>
                               <th className="py-2 px-2 font-semibold whitespace-nowrap text-right w-28">Total (₹)</th>
@@ -1524,11 +1596,15 @@ export default function BillingPage() {
                                 <tr key={i} className="border-b last:border-0 hover:bg-muted/10 transition-colors">
                                   <td className="p-2 min-w-36 space-y-1.5 align-top">
                                     <Input value={it.name} onChange={(e) => updateItem(i, { name: e.target.value })} className="h-8 text-sm font-medium" placeholder="Item Name" />
-                                    <Input value={it.purity} onChange={(e) => updateItem(i, { purity: e.target.value })} className="h-7 text-xs" placeholder="Purity (e.g. 22K)" />
+                                    {billMetal !== "Silver" && (
+                                      <Input value={it.purity} onChange={(e) => updateItem(i, { purity: e.target.value })} className="h-7 text-xs" placeholder="Purity (e.g. 22K)" />
+                                    )}
                                   </td>
-                                  <td className="p-2">
-                                    <Input value={it.huid || ""} onChange={(e) => updateItem(i, { huid: e.target.value })} className="h-8 text-sm" placeholder="HUID" />
-                                  </td>
+                                  {billMetal !== "Silver" && (
+                                    <td className="p-2">
+                                      <Input value={it.huid || ""} onChange={(e) => updateItem(i, { huid: e.target.value })} className="h-8 text-sm" placeholder="HUID" />
+                                    </td>
+                                  )}
                                   <td className="py-1.5 px-1.5">
                                     <NumI v={it.qty} on={(v) => updateItem(i, recalcMaking(it, { qty: v }))} className="w-16 h-8 bg-background text-right" />
                                   </td>
@@ -1563,9 +1639,11 @@ export default function BillingPage() {
                                       className="w-20 h-8 bg-background text-right"
                                     />
                                   </td>
-                                  <td className="p-2">
-                                    <NumI v={it.hmc || 0} on={(v) => updateItem(i, { hmc: v })} className="w-24 h-8 bg-background text-right" />
-                                  </td>
+                                  {billMetal !== "Silver" && (
+                                    <td className="p-2">
+                                      <NumI v={it.hmc || 0} on={(v) => updateItem(i, { hmc: v })} className="w-24 h-8 bg-background text-right" />
+                                    </td>
+                                  )}
                                   <td className="py-1.5 px-1.5">
                                     <NumI
                                       v={it.ratePerGram}
@@ -2600,68 +2678,77 @@ function InvoiceModal({ inv, onClose, isReturned }: { inv: any; onClose: () => v
           </div>
 
           {/* Items Table */}
-          <div className="overflow-x-auto w-full mb-3">
-            <table className="w-full text-xs border-collapse border border-slate-300 min-w-150 print:min-w-full">
-              <thead>
-              <tr className={`${themeAccent.th} border-b-2 font-bold uppercase text-[10px] tracking-wide`}>
-                <th className="border border-slate-300 py-1.5 px-1.5 text-center w-8">#</th>
-                <th className="border border-slate-300 py-1.5 px-1.5 text-left">Description of Goods</th>
-                {invSettings.showHuid && <th className="border border-slate-300 py-1.5 px-1.5 text-left">{invSettings.huidHeaderLabel}</th>}
-                <th className="border border-slate-300 py-1.5 px-1.5 text-right">Qty</th>
-                {invSettings.showGrossWeight && <th className="border border-slate-300 py-1.5 px-1.5 text-right">Gross Wt</th>}
-                {invSettings.showWastage && <th className="border border-slate-300 py-1.5 px-1.5 text-right">Less Wt</th>}
-                {invSettings.showNetWeight && <th className="border border-slate-300 py-1.5 px-1.5 text-right">Net Wt</th>}
-                <th className="border border-slate-300 py-1.5 px-1.5 text-right">HMC</th>
-                {invSettings.showRatePerGram && <th className="border border-slate-300 py-1.5 px-1.5 text-right">Rate/g</th>}
-                {invSettings.showMakingCharges && <th className="border border-slate-300 py-1.5 px-1.5 text-right">{invSettings.makingChargeHeaderLabel}</th>}
-                <th className="border border-slate-300 py-1.5 px-1.5 text-right">Total (₹)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {inv.items.map((it: any, i: number) => {
-                let gw = it.grossWeight !== undefined ? it.grossWeight : it.netWeight;
-                let sw = it.stoneWeight || 0;
-                if (it.productId && typeof it.productId === 'string' && it.productId.includes("__GW_")) {
-                  const parts = it.productId.split("__GW_");
-                  const subParts = parts[1].split("__SW_");
-                  gw = Number(subParts[0]);
-                  sw = Number(subParts[1]);
-                }
-                const c = calcItem(it, inv.type === "GST");
-                return (
-                  <tr key={i} className="border-b border-slate-200 last:border-0 hover:bg-slate-50">
-                    <td className="border border-slate-200 py-1 px-1.5 text-center text-slate-500">{i + 1}</td>
-                    <td className="border border-slate-200 py-1 px-1.5">
-                      <div className="font-semibold leading-tight">{it.name}</div>
-                      {invSettings.showPurity && <div className="text-[10px] text-slate-500">Purity: {it.purity || '—'}</div>}
-                    </td>
-                    {invSettings.showHuid && <td className="border border-slate-200 py-1 px-1.5 text-left font-mono text-[10px] text-slate-600">{(it as any).huid || '—'}</td>}
-                    <td className="border border-slate-200 py-1 px-1.5 text-right">{it.qty}</td>
-                    {invSettings.showGrossWeight && <td className="border border-slate-200 py-1 px-1.5 text-right">{gw} g</td>}
-                    {invSettings.showWastage && <td className="border border-slate-200 py-1 px-1.5 text-right">{sw} g</td>}
-                    {invSettings.showNetWeight && <td className="border border-slate-200 py-1 px-1.5 text-right font-semibold">{it.netWeight} g</td>}
-                    <td className="border border-slate-200 py-1 px-1.5 text-right text-slate-600">{inr((it as any).hmc || 0)}</td>
-                    {invSettings.showRatePerGram && <td className="border border-slate-200 py-1 px-1.5 text-right">{inr(it.ratePerGram)}</td>}
-                    {invSettings.showMakingCharges && <td className="border border-slate-200 py-1 px-1.5 text-right">
-                      {(() => {
-                        const mcType: MakingChargeType = it.makingChargeType || "PERCENTAGE";
-                        if (mcType === "PERCENTAGE") {
-                          const pct = it.makingChargeValue ?? it.makingChargePct ?? (it.makingCharge > 0 && it.netWeight > 0 && it.ratePerGram > 0 ? (it.makingCharge / (it.netWeight * it.ratePerGram)) * 100 : 0);
-                          return pct > 0 ? `${Number.isInteger(pct) ? pct : pct.toFixed(2)}%` : '0%';
-                        }
-                        const value = it.makingChargeValue ?? 0;
-                        if (mcType === "PER_GRAM") return `${inr(value)}/g`;
-                        if (mcType === "PER_PIECE") return `${inr(value)}/pc`;
-                        return `${inr(value)} Fixed`;
-                      })()}
-                    </td>}
-                    <td className="border border-slate-200 py-1 px-1.5 text-right font-bold">{inr(c.line)}</td>
+          {(() => {
+            const isSilverBill = inv.billMetal === "Silver";
+            const hasHuid = invSettings.showHuid && !isSilverBill && (inv.items || []).some((it: any) => it.huid && it.huid !== "-" && it.huid !== "—");
+            const hasHmc = !isSilverBill && (inv.items || []).some((it: any) => Number((it as any).hmc || 0) > 0);
+            return (
+              <div className="overflow-x-auto w-full mb-3">
+                <table className="w-full text-xs border-collapse border border-slate-300 min-w-150 print:min-w-full">
+                  <thead>
+                  <tr className={`${themeAccent.th} border-b-2 font-bold uppercase text-[10px] tracking-wide`}>
+                    <th className="border border-slate-300 py-1.5 px-1.5 text-center w-12">S.No.</th>
+                    <th className="border border-slate-300 py-1.5 px-1.5 text-left">Description of Goods</th>
+                    {hasHuid && <th className="border border-slate-300 py-1.5 px-1.5 text-left">{invSettings.huidHeaderLabel}</th>}
+                    <th className="border border-slate-300 py-1.5 px-1.5 text-right">Qty</th>
+                    {invSettings.showGrossWeight && <th className="border border-slate-300 py-1.5 px-1.5 text-right">Gross Wt</th>}
+                    {invSettings.showWastage && <th className="border border-slate-300 py-1.5 px-1.5 text-right">Less Wt</th>}
+                    {invSettings.showNetWeight && <th className="border border-slate-300 py-1.5 px-1.5 text-right">Net Wt</th>}
+                    {hasHmc && <th className="border border-slate-300 py-1.5 px-1.5 text-right">HMC</th>}
+                    {invSettings.showRatePerGram && <th className="border border-slate-300 py-1.5 px-1.5 text-right">Rate/g</th>}
+                    {invSettings.showMakingCharges && <th className="border border-slate-300 py-1.5 px-1.5 text-right">{invSettings.makingChargeHeaderLabel}</th>}
+                    <th className="border border-slate-300 py-1.5 px-1.5 text-right">Total (₹)</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          </div>
+                </thead>
+                <tbody>
+                  {inv.items.map((it: any, i: number) => {
+                    let gw = it.grossWeight !== undefined ? it.grossWeight : it.netWeight;
+                    let sw = it.stoneWeight || 0;
+                    if (it.productId && typeof it.productId === 'string' && it.productId.includes("__GW_")) {
+                      const parts = it.productId.split("__GW_");
+                      const subParts = parts[1].split("__SW_");
+                      gw = Number(subParts[0]);
+                      sw = Number(subParts[1]);
+                    }
+                    const c = calcItem(it, inv.type === "GST");
+                    return (
+                      <tr key={i} className="border-b border-slate-200 last:border-0 hover:bg-slate-50">
+                        <td className="border border-slate-200 py-1 px-1.5 text-center text-slate-500">{i + 1}</td>
+                        <td className="border border-slate-200 py-1 px-1.5">
+                          <div className="font-semibold leading-tight">{it.name}</div>
+                          {invSettings.showPurity && !isSilverBill && it.purity && it.purity !== "-" && it.purity !== "—" && (
+                            <div className="text-[10px] text-slate-500">Purity: {it.purity}</div>
+                          )}
+                        </td>
+                        {hasHuid && <td className="border border-slate-200 py-1 px-1.5 text-left font-mono text-[10px] text-slate-600">{(it as any).huid || '—'}</td>}
+                        <td className="border border-slate-200 py-1 px-1.5 text-right">{it.qty}</td>
+                        {invSettings.showGrossWeight && <td className="border border-slate-200 py-1 px-1.5 text-right">{gw} g</td>}
+                        {invSettings.showWastage && <td className="border border-slate-200 py-1 px-1.5 text-right">{sw} g</td>}
+                        {invSettings.showNetWeight && <td className="border border-slate-200 py-1 px-1.5 text-right font-semibold">{it.netWeight} g</td>}
+                        {hasHmc && <td className="border border-slate-200 py-1 px-1.5 text-right text-slate-600">{inr((it as any).hmc || 0)}</td>}
+                        {invSettings.showRatePerGram && <td className="border border-slate-200 py-1 px-1.5 text-right">{inr(it.ratePerGram)}</td>}
+                        {invSettings.showMakingCharges && <td className="border border-slate-200 py-1 px-1.5 text-right">
+                          {(() => {
+                            const mcType: MakingChargeType = it.makingChargeType || "PERCENTAGE";
+                            if (mcType === "PERCENTAGE") {
+                              const pct = it.makingChargeValue ?? it.makingChargePct ?? (it.makingCharge > 0 && it.netWeight > 0 && it.ratePerGram > 0 ? (it.makingCharge / (it.netWeight * it.ratePerGram)) * 100 : 0);
+                              return pct > 0 ? `${Number.isInteger(pct) ? pct : pct.toFixed(2)}%` : '0%';
+                            }
+                            const value = it.makingChargeValue ?? 0;
+                            if (mcType === "PER_GRAM") return `${inr(value)}/g`;
+                            if (mcType === "PER_PIECE") return `${inr(value)}/pc`;
+                            return `${inr(value)} Fixed`;
+                          })()}
+                        </td>}
+                        <td className="border border-slate-200 py-1 px-1.5 text-right font-bold">{inr(c.line)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </div>
+            );
+          })()}
 
           {/* Calculations & Totals */}
           <div className="flex flex-col sm:flex-row justify-between items-start text-xs gap-4 border-t border-slate-200 pt-3">

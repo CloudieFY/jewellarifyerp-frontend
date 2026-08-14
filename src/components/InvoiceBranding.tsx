@@ -238,42 +238,50 @@ export function CompactA5Invoice({ inv }: { inv: any }) {
       </div>
 
       {/* Items Table */}
-      <table className="w-full text-left text-[11px] border-collapse mb-3 border border-slate-200">
-        <thead>
-          <tr className={`border-b border-slate-300 ${accent.th} font-bold uppercase text-[10px]`}>
-            <th className="py-1 px-1.5">#</th>
-            <th className="py-1 px-1.5">Item Description</th>
-            {invSettings.showHuid && <th className="py-1 px-1.5">{invSettings.huidHeaderLabel}</th>}
-            <th className="py-1 px-1.5 text-right">Pcs</th>
-            {invSettings.showGrossWeight && <th className="py-1 px-1.5 text-right">Gross Wt</th>}
-            {invSettings.showNetWeight && <th className="py-1 px-1.5 text-right">Net Wt</th>}
-            {invSettings.showRatePerGram && <th className="py-1 px-1.5 text-right">Rate</th>}
-            {invSettings.showMakingCharges && <th className="py-1 px-1.5 text-right">{invSettings.makingChargeHeaderLabel}</th>}
-            <th className="py-1 px-1.5 text-right">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {inv.items.map((it: any, idx: number) => {
-            const c = calcItem(it, inv.type === "GST");
-            return (
-              <tr key={idx} className="border-b border-slate-200 last:border-0">
-                <td className="py-1 px-1.5 text-slate-500">{idx + 1}</td>
-                <td className="py-1 px-1.5">
-                  <div className="font-semibold">{it.name}</div>
-                  {invSettings.showPurity && <div className="text-[9px] text-slate-500">{it.purity || ""}</div>}
-                </td>
-                {invSettings.showHuid && <td className="py-1 px-1.5 text-slate-600 font-mono text-[10px]">{it.huid || "-"}</td>}
-                <td className="py-1 px-1.5 text-right">{it.qty || 1}</td>
-                {invSettings.showGrossWeight && <td className="py-1 px-1.5 text-right">{(it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight}g</td>}
-                {invSettings.showNetWeight && <td className="py-1 px-1.5 text-right font-semibold">{it.netWeight}g</td>}
-                {invSettings.showRatePerGram && <td className="py-1 px-1.5 text-right">{inr(it.ratePerGram)}</td>}
-                {invSettings.showMakingCharges && <td className="py-1 px-1.5 text-right">{makingChargeLabel(it)}</td>}
-                <td className="py-1 px-1.5 text-right font-bold">{inr(c.line)}</td>
+      {(() => {
+        const isSilverBill = inv.billMetal === "Silver";
+        const hasHuid = invSettings.showHuid && !isSilverBill && (inv.items || []).some((it: any) => it.huid && it.huid !== "-" && it.huid !== "—");
+        return (
+          <table className="w-full text-left text-[11px] border-collapse mb-3 border border-slate-200">
+            <thead>
+              <tr className={`border-b border-slate-300 ${accent.th} font-bold uppercase text-[10px]`}>
+                <th className="py-1 px-1.5">S.No.</th>
+                <th className="py-1 px-1.5">Item Description</th>
+                {hasHuid && <th className="py-1 px-1.5">{invSettings.huidHeaderLabel}</th>}
+                <th className="py-1 px-1.5 text-right">Pcs</th>
+                {invSettings.showGrossWeight && <th className="py-1 px-1.5 text-right">Gross Wt</th>}
+                {invSettings.showNetWeight && <th className="py-1 px-1.5 text-right">Net Wt</th>}
+                {invSettings.showRatePerGram && <th className="py-1 px-1.5 text-right">Rate</th>}
+                {invSettings.showMakingCharges && <th className="py-1 px-1.5 text-right">{invSettings.makingChargeHeaderLabel}</th>}
+                <th className="py-1 px-1.5 text-right">Total</th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {inv.items.map((it: any, idx: number) => {
+                const c = calcItem(it, inv.type === "GST");
+                return (
+                  <tr key={idx} className="border-b border-slate-200 last:border-0">
+                    <td className="py-1 px-1.5 text-slate-500">{idx + 1}</td>
+                    <td className="py-1 px-1.5">
+                      <div className="font-semibold">{it.name}</div>
+                      {invSettings.showPurity && !isSilverBill && it.purity && it.purity !== "-" && it.purity !== "—" && (
+                        <div className="text-[9px] text-slate-500">{it.purity}</div>
+                      )}
+                    </td>
+                    {hasHuid && <td className="py-1 px-1.5 text-slate-600 font-mono text-[10px]">{it.huid}</td>}
+                    <td className="py-1 px-1.5 text-right">{it.qty || 1}</td>
+                    {invSettings.showGrossWeight && <td className="py-1 px-1.5 text-right">{(it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight}g</td>}
+                    {invSettings.showNetWeight && <td className="py-1 px-1.5 text-right font-semibold">{it.netWeight}g</td>}
+                    {invSettings.showRatePerGram && <td className="py-1 px-1.5 text-right">{inr(it.ratePerGram)}</td>}
+                    {invSettings.showMakingCharges && <td className="py-1 px-1.5 text-right">{makingChargeLabel(it)}</td>}
+                    <td className="py-1 px-1.5 text-right font-bold">{inr(c.line)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        );
+      })()}
 
       {/* Totals & Payment */}
       <div className={`flex justify-between items-end border-t-2 ${accent.border} pt-2 text-[11px]`}>
@@ -395,37 +403,43 @@ export function BillOfSupplyEstimate({ inv }: { inv: any }) {
       </div>
 
       {/* Table */}
-      <table className="w-full text-left text-xs border-collapse mb-4 border border-slate-200">
-        <thead>
-          <tr className="border-b-2 border-slate-300 bg-slate-100 text-slate-700">
-            <th className="py-2 px-2 font-bold">#</th>
-            <th className="py-2 px-2 font-bold">Item Description</th>
-            <th className="py-2 px-2 font-bold">Purity</th>
-            <th className="py-2 px-2 font-bold text-right">Gross Wt</th>
-            <th className="py-2 px-2 font-bold text-right">Net Wt</th>
-            <th className="py-2 px-2 font-bold text-right">Rate / g</th>
-            <th className="py-2 px-2 font-bold text-right">Making</th>
-            <th className="py-2 px-2 font-bold text-right">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {inv.items.map((it: any, idx: number) => {
-            const c = calcItem(it, false);
-            return (
-              <tr key={idx} className="border-b border-slate-200 last:border-0">
-                <td className="py-2 px-2 text-slate-500">{idx + 1}</td>
-                <td className="py-2 px-2 font-semibold">{it.name}</td>
-                <td className="py-2 px-2 text-slate-600">{it.purity || "-"}</td>
-                <td className="py-2 px-2 text-right">{(it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight}g</td>
-                <td className="py-2 px-2 text-right">{it.netWeight}g</td>
-                <td className="py-2 px-2 text-right">{inr(it.ratePerGram)}</td>
-                <td className="py-2 px-2 text-right">{inr(it.makingCharge || 0)}</td>
-                <td className="py-2 px-2 text-right font-bold">{inr(c.line)}</td>
+      {(() => {
+        const isSilverBill = inv.billMetal === "Silver";
+        const hasPurity = !isSilverBill && (inv.items || []).some((it: any) => it.purity && it.purity !== "-" && it.purity !== "—");
+        return (
+          <table className="w-full text-left text-xs border-collapse mb-4 border border-slate-200">
+            <thead>
+              <tr className="border-b-2 border-slate-300 bg-slate-100 text-slate-700">
+                <th className="py-2 px-2 font-bold">S.No.</th>
+                <th className="py-2 px-2 font-bold">Item Description</th>
+                {hasPurity && <th className="py-2 px-2 font-bold">Purity</th>}
+                <th className="py-2 px-2 font-bold text-right">Gross Wt</th>
+                <th className="py-2 px-2 font-bold text-right">Net Wt</th>
+                <th className="py-2 px-2 font-bold text-right">Rate / g</th>
+                <th className="py-2 px-2 font-bold text-right">Making</th>
+                <th className="py-2 px-2 font-bold text-right">Amount</th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {inv.items.map((it: any, idx: number) => {
+                const c = calcItem(it, false);
+                return (
+                  <tr key={idx} className="border-b border-slate-200 last:border-0">
+                    <td className="py-2 px-2 text-slate-500">{idx + 1}</td>
+                    <td className="py-2 px-2 font-semibold">{it.name}</td>
+                    {hasPurity && <td className="py-2 px-2 text-slate-600">{it.purity}</td>}
+                    <td className="py-2 px-2 text-right">{(it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight}g</td>
+                    <td className="py-2 px-2 text-right">{it.netWeight}g</td>
+                    <td className="py-2 px-2 text-right">{inr(it.ratePerGram)}</td>
+                    <td className="py-2 px-2 text-right">{inr(it.makingCharge || 0)}</td>
+                    <td className="py-2 px-2 text-right font-bold">{inr(c.line)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        );
+      })()}
 
       {/* Total Block */}
       <div className="flex justify-between items-end border-t-2 border-slate-300 pt-3 text-xs">
@@ -531,43 +545,51 @@ export function PremiumA4Invoice({ inv }: { inv: any }) {
         )}
       </div>
 
-      <table className="w-full text-xs border-collapse border border-amber-300 mb-4">
-        <thead>
-          <tr className="bg-amber-800 text-white font-bold uppercase text-[10px] tracking-wider">
-            <th className="border border-amber-700 py-2 px-2 text-center w-8">#</th>
-            <th className="border border-amber-700 py-2 px-2 text-left">Description of Jewellery Goods</th>
-            {invSettings.showHuid && <th className="border border-amber-700 py-2 px-2 text-left">{invSettings.huidHeaderLabel}</th>}
-            <th className="border border-amber-700 py-2 px-2 text-right">Qty</th>
-            {invSettings.showGrossWeight && <th className="border border-amber-700 py-2 px-2 text-right">Gross Wt</th>}
-            {invSettings.showNetWeight && <th className="border border-amber-700 py-2 px-2 text-right">Net Wt</th>}
-            {invSettings.showRatePerGram && <th className="border border-amber-700 py-2 px-2 text-right">Rate/g</th>}
-            {invSettings.showMakingCharges && <th className="border border-amber-700 py-2 px-2 text-right">{invSettings.makingChargeHeaderLabel}</th>}
-            <th className="border border-amber-700 py-2 px-2 text-right">Total (₹)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {inv.items.map((it: any, i: number) => {
-            const gw = it.grossWeight !== undefined ? it.grossWeight : it.netWeight;
-            const c = calcItem(it, inv.type === "GST");
-            return (
-              <tr key={i} className="border-b border-amber-200 even:bg-amber-50/30 hover:bg-amber-50/60">
-                <td className="border border-amber-200 py-2 px-2 text-center text-slate-500">{i + 1}</td>
-                <td className="border border-amber-200 py-2 px-2">
-                  <div className="font-bold text-slate-900">{it.name}</div>
-                  {invSettings.showPurity && <div className="text-[10px] text-amber-900 font-medium">Purity: {it.purity || '—'}</div>}
-                </td>
-                {invSettings.showHuid && <td className="border border-amber-200 py-2 px-2 font-mono text-[10px] text-slate-700">{(it as any).huid || '—'}</td>}
-                <td className="border border-amber-200 py-2 px-2 text-right">{it.qty}</td>
-                {invSettings.showGrossWeight && <td className="border border-amber-200 py-2 px-2 text-right font-mono">{gw} g</td>}
-                {invSettings.showNetWeight && <td className="border border-amber-200 py-2 px-2 text-right font-bold font-mono">{it.netWeight} g</td>}
-                {invSettings.showRatePerGram && <td className="border border-amber-200 py-2 px-2 text-right font-mono">{inr(it.ratePerGram)}</td>}
-                {invSettings.showMakingCharges && <td className="border border-amber-200 py-2 px-2 text-right font-mono">{makingChargeLabel(it)}</td>}
-                <td className="border border-amber-200 py-2 px-2 text-right font-bold font-mono text-slate-900">{inr(c.line)}</td>
+      {(() => {
+        const isSilverBill = inv.billMetal === "Silver";
+        const hasHuid = invSettings.showHuid && !isSilverBill && (inv.items || []).some((it: any) => it.huid && it.huid !== "-" && it.huid !== "—");
+        return (
+          <table className="w-full text-xs border-collapse border border-amber-300 mb-4">
+            <thead>
+              <tr className="bg-amber-800 text-white font-bold uppercase text-[10px] tracking-wider">
+                <th className="border border-amber-700 py-2 px-2 text-center w-12">S.No.</th>
+                <th className="border border-amber-700 py-2 px-2 text-left">Description of Jewellery Goods</th>
+                {hasHuid && <th className="border border-amber-700 py-2 px-2 text-left">{invSettings.huidHeaderLabel}</th>}
+                <th className="border border-amber-700 py-2 px-2 text-right">Qty</th>
+                {invSettings.showGrossWeight && <th className="border border-amber-700 py-2 px-2 text-right">Gross Wt</th>}
+                {invSettings.showNetWeight && <th className="border border-amber-700 py-2 px-2 text-right">Net Wt</th>}
+                {invSettings.showRatePerGram && <th className="border border-amber-700 py-2 px-2 text-right">Rate/g</th>}
+                {invSettings.showMakingCharges && <th className="border border-amber-700 py-2 px-2 text-right">{invSettings.makingChargeHeaderLabel}</th>}
+                <th className="border border-amber-700 py-2 px-2 text-right">Total (₹)</th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {inv.items.map((it: any, i: number) => {
+                const gw = it.grossWeight !== undefined ? it.grossWeight : it.netWeight;
+                const c = calcItem(it, inv.type === "GST");
+                return (
+                  <tr key={i} className="border-b border-amber-200 even:bg-amber-50/30 hover:bg-amber-50/60">
+                    <td className="border border-amber-200 py-2 px-2 text-center text-slate-500">{i + 1}</td>
+                    <td className="border border-amber-200 py-2 px-2">
+                      <div className="font-bold text-slate-900">{it.name}</div>
+                      {invSettings.showPurity && !isSilverBill && it.purity && it.purity !== "-" && it.purity !== "—" && (
+                        <div className="text-[10px] text-amber-900 font-medium">Purity: {it.purity}</div>
+                      )}
+                    </td>
+                    {hasHuid && <td className="border border-amber-200 py-2 px-2 font-mono text-[10px] text-slate-700">{it.huid}</td>}
+                    <td className="border border-amber-200 py-2 px-2 text-right">{it.qty}</td>
+                    {invSettings.showGrossWeight && <td className="border border-amber-200 py-2 px-2 text-right font-mono">{gw} g</td>}
+                    {invSettings.showNetWeight && <td className="border border-amber-200 py-2 px-2 text-right font-bold font-mono">{it.netWeight} g</td>}
+                    {invSettings.showRatePerGram && <td className="border border-amber-200 py-2 px-2 text-right font-mono">{inr(it.ratePerGram)}</td>}
+                    {invSettings.showMakingCharges && <td className="border border-amber-200 py-2 px-2 text-right font-mono">{makingChargeLabel(it)}</td>}
+                    <td className="border border-amber-200 py-2 px-2 text-right font-bold font-mono text-slate-900">{inr(c.line)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        );
+      })()}
 
       <div className="flex flex-col sm:flex-row justify-between items-start text-xs gap-5 border-t-2 border-amber-500 pt-4 mb-4">
         <div className="w-full sm:w-1/2 space-y-2">
@@ -708,43 +730,51 @@ export function LuxuryJewelleryInvoice({ inv }: { inv: any }) {
         </div>
       </div>
 
-      <table className="w-full text-xs border-collapse border border-amber-400 mb-4 font-sans">
-        <thead>
-          <tr className="bg-amber-900 text-amber-100 font-serif font-bold uppercase text-[10px] tracking-widest">
-            <th className="border border-amber-700 py-2.5 px-2 text-center w-8">#</th>
-            <th className="border border-amber-700 py-2.5 px-2 text-left">Fine Jewellery Description</th>
-            {invSettings.showHuid && <th className="border border-amber-700 py-2.5 px-2 text-left">{invSettings.huidHeaderLabel}</th>}
-            <th className="border border-amber-700 py-2.5 px-2 text-right">Qty</th>
-            {invSettings.showGrossWeight && <th className="border border-amber-700 py-2.5 px-2 text-right">Gross Wt</th>}
-            {invSettings.showNetWeight && <th className="border border-amber-700 py-2.5 px-2 text-right">Net Wt</th>}
-            {invSettings.showRatePerGram && <th className="border border-amber-700 py-2.5 px-2 text-right">Rate/g</th>}
-            {invSettings.showMakingCharges && <th className="border border-amber-700 py-2.5 px-2 text-right">{invSettings.makingChargeHeaderLabel}</th>}
-            <th className="border border-amber-700 py-2.5 px-2 text-right">Amount (₹)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {inv.items.map((it: any, i: number) => {
-            const gw = it.grossWeight !== undefined ? it.grossWeight : it.netWeight;
-            const c = calcItem(it, inv.type === "GST");
-            return (
-              <tr key={i} className="border-b border-amber-200 last:border-0 hover:bg-amber-50">
-                <td className="border border-amber-200 py-2 px-2 text-center text-slate-500">{i + 1}</td>
-                <td className="border border-amber-200 py-2 px-2">
-                  <div className="font-serif font-bold text-slate-900 text-sm">{it.name}</div>
-                  {invSettings.showPurity && <div className="text-[10px] text-amber-800 font-serif">Karat/Purity: {it.purity || '—'}</div>}
-                </td>
-                {invSettings.showHuid && <td className="border border-amber-200 py-2 px-2 font-mono text-[10px] text-slate-700">{(it as any).huid || '—'}</td>}
-                <td className="border border-amber-200 py-2 px-2 text-right">{it.qty}</td>
-                {invSettings.showGrossWeight && <td className="border border-amber-200 py-2 px-2 text-right font-mono">{gw} g</td>}
-                {invSettings.showNetWeight && <td className="border border-amber-200 py-2 px-2 text-right font-bold font-mono">{it.netWeight} g</td>}
-                {invSettings.showRatePerGram && <td className="border border-amber-200 py-2 px-2 text-right font-mono">{inr(it.ratePerGram)}</td>}
-                {invSettings.showMakingCharges && <td className="border border-amber-200 py-2 px-2 text-right font-mono">{makingChargeLabel(it)}</td>}
-                <td className="border border-amber-200 py-2 px-2 text-right font-bold font-mono text-amber-950">{inr(c.line)}</td>
+      {(() => {
+        const isSilverBill = inv.billMetal === "Silver";
+        const hasHuid = invSettings.showHuid && !isSilverBill && (inv.items || []).some((it: any) => it.huid && it.huid !== "-" && it.huid !== "—");
+        return (
+          <table className="w-full text-xs border-collapse border border-amber-400 mb-4 font-sans">
+            <thead>
+              <tr className="bg-amber-900 text-amber-100 font-serif font-bold uppercase text-[10px] tracking-widest">
+                <th className="border border-amber-700 py-2.5 px-2 text-center w-12">S.No.</th>
+                <th className="border border-amber-700 py-2.5 px-2 text-left">Fine Jewellery Description</th>
+                {hasHuid && <th className="border border-amber-700 py-2.5 px-2 text-left">{invSettings.huidHeaderLabel}</th>}
+                <th className="border border-amber-700 py-2.5 px-2 text-right">Qty</th>
+                {invSettings.showGrossWeight && <th className="border border-amber-700 py-2.5 px-2 text-right">Gross Wt</th>}
+                {invSettings.showNetWeight && <th className="border border-amber-700 py-2.5 px-2 text-right">Net Wt</th>}
+                {invSettings.showRatePerGram && <th className="border border-amber-700 py-2.5 px-2 text-right">Rate/g</th>}
+                {invSettings.showMakingCharges && <th className="border border-amber-700 py-2.5 px-2 text-right">{invSettings.makingChargeHeaderLabel}</th>}
+                <th className="border border-amber-700 py-2.5 px-2 text-right">Amount (₹)</th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {inv.items.map((it: any, i: number) => {
+                const gw = it.grossWeight !== undefined ? it.grossWeight : it.netWeight;
+                const c = calcItem(it, inv.type === "GST");
+                return (
+                  <tr key={i} className="border-b border-amber-200 last:border-0 hover:bg-amber-50">
+                    <td className="border border-amber-200 py-2 px-2 text-center text-slate-500">{i + 1}</td>
+                    <td className="border border-amber-200 py-2 px-2">
+                      <div className="font-serif font-bold text-slate-900 text-sm">{it.name}</div>
+                      {invSettings.showPurity && !isSilverBill && it.purity && it.purity !== "-" && it.purity !== "—" && (
+                        <div className="text-[10px] text-amber-800 font-serif">Karat/Purity: {it.purity}</div>
+                      )}
+                    </td>
+                    {hasHuid && <td className="border border-amber-200 py-2 px-2 font-mono text-[10px] text-slate-700">{it.huid}</td>}
+                    <td className="border border-amber-200 py-2 px-2 text-right">{it.qty}</td>
+                    {invSettings.showGrossWeight && <td className="border border-amber-200 py-2 px-2 text-right font-mono">{gw} g</td>}
+                    {invSettings.showNetWeight && <td className="border border-amber-200 py-2 px-2 text-right font-bold font-mono">{it.netWeight} g</td>}
+                    {invSettings.showRatePerGram && <td className="border border-amber-200 py-2 px-2 text-right font-mono">{inr(it.ratePerGram)}</td>}
+                    {invSettings.showMakingCharges && <td className="border border-amber-200 py-2 px-2 text-right font-mono">{makingChargeLabel(it)}</td>}
+                    <td className="border border-amber-200 py-2 px-2 text-right font-bold font-mono text-slate-900">{inr(c.line)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        );
+      })()}
 
       <div className="flex flex-col sm:flex-row justify-between items-start gap-5 border-t-2 border-amber-600 pt-4 mb-4 font-sans">
         <div className="w-full sm:w-1/2 space-y-2">
@@ -892,43 +922,51 @@ export function ModernInvoice({ inv }: { inv: any }) {
         )}
       </div>
 
-      <table className="w-full text-xs border-collapse mb-5">
-        <thead>
-          <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b-2 border-slate-300">
-            <th className="py-2.5 px-3 text-left">#</th>
-            <th className="py-2.5 px-3 text-left">Description</th>
-            {invSettings.showHuid && <th className="py-2.5 px-3 text-left">{invSettings.huidHeaderLabel}</th>}
-            <th className="py-2.5 px-3 text-right">Qty</th>
-            {invSettings.showGrossWeight && <th className="py-2.5 px-3 text-right">Gross Wt</th>}
-            {invSettings.showNetWeight && <th className="py-2.5 px-3 text-right">Net Wt</th>}
-            {invSettings.showRatePerGram && <th className="py-2.5 px-3 text-right">Rate/g</th>}
-            {invSettings.showMakingCharges && <th className="py-2.5 px-3 text-right">{invSettings.makingChargeHeaderLabel}</th>}
-            <th className="py-2.5 px-3 text-right">Line Total</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-200">
-          {inv.items.map((it: any, i: number) => {
-            const gw = it.grossWeight !== undefined ? it.grossWeight : it.netWeight;
-            const c = calcItem(it, inv.type === "GST");
-            return (
-              <tr key={i} className="hover:bg-slate-50">
-                <td className="py-2.5 px-3 text-slate-400 font-mono">{i + 1}</td>
-                <td className="py-2.5 px-3">
-                  <div className="font-semibold text-slate-900">{it.name}</div>
-                  {invSettings.showPurity && <span className="inline-block bg-slate-100 text-slate-700 text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5">{it.purity || '—'}</span>}
-                </td>
-                {invSettings.showHuid && <td className="py-2.5 px-3 font-mono text-[10px] text-slate-600">{(it as any).huid || '—'}</td>}
-                <td className="py-2.5 px-3 text-right">{it.qty}</td>
-                {invSettings.showGrossWeight && <td className="py-2.5 px-3 text-right font-mono">{gw} g</td>}
-                {invSettings.showNetWeight && <td className="py-2.5 px-3 text-right font-semibold font-mono">{it.netWeight} g</td>}
-                {invSettings.showRatePerGram && <td className="py-2.5 px-3 text-right font-mono">{inr(it.ratePerGram)}</td>}
-                {invSettings.showMakingCharges && <td className="py-2.5 px-3 text-right font-mono">{makingChargeLabel(it)}</td>}
-                <td className="py-2.5 px-3 text-right font-bold font-mono text-slate-900">{inr(c.line)}</td>
+      {(() => {
+        const isSilverBill = inv.billMetal === "Silver";
+        const hasHuid = invSettings.showHuid && !isSilverBill && (inv.items || []).some((it: any) => it.huid && it.huid !== "-" && it.huid !== "—");
+        return (
+          <table className="w-full text-xs border-collapse mb-5">
+            <thead>
+              <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b-2 border-slate-300">
+                <th className="py-2.5 px-3 text-left">S.No.</th>
+                <th className="py-2.5 px-3 text-left">Description</th>
+                {hasHuid && <th className="py-2.5 px-3 text-left">{invSettings.huidHeaderLabel}</th>}
+                <th className="py-2.5 px-3 text-right">Qty</th>
+                {invSettings.showGrossWeight && <th className="py-2.5 px-3 text-right">Gross Wt</th>}
+                {invSettings.showNetWeight && <th className="py-2.5 px-3 text-right">Net Wt</th>}
+                {invSettings.showRatePerGram && <th className="py-2.5 px-3 text-right">Rate/g</th>}
+                {invSettings.showMakingCharges && <th className="py-2.5 px-3 text-right">{invSettings.makingChargeHeaderLabel}</th>}
+                <th className="py-2.5 px-3 text-right">Line Total</th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {inv.items.map((it: any, i: number) => {
+                const gw = it.grossWeight !== undefined ? it.grossWeight : it.netWeight;
+                const c = calcItem(it, inv.type === "GST");
+                return (
+                  <tr key={i} className="hover:bg-slate-50">
+                    <td className="py-2.5 px-3 text-slate-400 font-mono">{i + 1}</td>
+                    <td className="py-2.5 px-3">
+                      <div className="font-semibold text-slate-900">{it.name}</div>
+                      {invSettings.showPurity && !isSilverBill && it.purity && it.purity !== "-" && it.purity !== "—" && (
+                        <span className="inline-block bg-slate-100 text-slate-700 text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5">{it.purity}</span>
+                      )}
+                    </td>
+                    {hasHuid && <td className="py-2.5 px-3 font-mono text-[10px] text-slate-600">{it.huid}</td>}
+                    <td className="py-2.5 px-3 text-right">{it.qty}</td>
+                    {invSettings.showGrossWeight && <td className="py-2.5 px-3 text-right font-mono">{gw} g</td>}
+                    {invSettings.showNetWeight && <td className="py-2.5 px-3 text-right font-semibold font-mono">{it.netWeight} g</td>}
+                    {invSettings.showRatePerGram && <td className="py-2.5 px-3 text-right font-mono">{inr(it.ratePerGram)}</td>}
+                    {invSettings.showMakingCharges && <td className="py-2.5 px-3 text-right font-mono">{makingChargeLabel(it)}</td>}
+                    <td className="py-2.5 px-3 text-right font-bold font-mono text-slate-900">{inr(c.line)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        );
+      })()}
 
       <div className="flex flex-col sm:flex-row justify-between items-start gap-5 border-t border-slate-200 pt-4 mb-5">
         <div className="w-full sm:w-1/2 space-y-2">
