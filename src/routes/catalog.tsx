@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useState, useMemo } from "react";
 import { useFormKeyboardNav } from "@/lib/useFormKeyboardNav";
-import { Search, Package, Filter, Gem, Hash, Weight, Sparkles, Plus, Image as ImageIcon, Loader2, Trash2, ZoomIn, Pencil } from "lucide-react";
+import { Search, Package, Filter, Layers, Gem, Hash, Weight, Sparkles, Plus, Image as ImageIcon, Loader2, Trash2, ZoomIn, Pencil, MessageSquare, Send, Download, Copy } from "lucide-react";
 import { useTenantAPI } from "@/lib/api";
 import { type Product, inr } from "@/lib/storage";
 import { useDebounce } from "@/lib/utils";
@@ -25,6 +25,7 @@ export default function CatalogPage() {
     });
   };
   const { data: allItems = [], isLoading } = useQuery({ queryKey: ["inventory"], queryFn: api.inventory.getAll });
+  const { data: customersList = [] } = useQuery<any[]>({ queryKey: ["customers"], queryFn: api.customers.getAll });
   const createMutation = useApiMutation((data: Product) => api.inventory.create(data), ["inventory"]);
   const updateMutation = useApiMutation((data: { id: string; body: any }) => api.inventory.update(data.id, data.body), ["inventory"]);
   const deleteMutation = useApiMutation((id: string) => api.inventory.remove(id), ["inventory"]);
@@ -33,6 +34,7 @@ export default function CatalogPage() {
   const [q, setQ] = useState("");
   const debouncedQ = useDebounce(q, 300);
   const [category, setCategory] = useState<string>("All");
+  const [subcategory, setSubcategory] = useState<string>("All");
   const [page, setPage] = useState(1);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -40,10 +42,26 @@ export default function CatalogPage() {
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
+  const [waModalOpen, setWaModalOpen] = useState(false);
+  const [waSelectedCustomer, setWaSelectedCustomer] = useState<string>("custom");
+  const [waPhone, setWaPhone] = useState<string>("");
+  const [waCustomMessage, setWaCustomMessage] = useState<string>("");
+  const [waProductItem, setWaProductItem] = useState<Product | null>(null);
+
+  const tenantSession = useMemo(() => {
+    try {
+      const stored = localStorage.getItem("jewelshop.tenantSession");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+  const shopName = tenantSession?.shop?.shopName || "Our Jewellery Shop";
   
   const [draft, setDraft] = useState<Partial<Product>>({
     name: "",
     category: "Gold",
+    subcategory: "",
     purity: "22K",
     netWeight: 0,
     ratePerGram: 7200,
@@ -59,6 +77,12 @@ export default function CatalogPage() {
     return ["All", ...Array.from(cats).filter(Boolean)];
   }, [products]);
 
+  const subcategories = useMemo(() => {
+    const relevantProducts = category === "All" ? products : products.filter(p => p.category === category);
+    const subCats = new Set(relevantProducts.map(p => p.subcategory).filter(Boolean));
+    return ["All", ...Array.from(subCats)];
+  }, [products, category]);
+
   const filtered = products.filter(p => {
     const searchLower = debouncedQ.toLowerCase().trim();
     const matchesSearch = !searchLower ||
@@ -70,8 +94,9 @@ export default function CatalogPage() {
                           (p.subcategory || "").toLowerCase().includes(searchLower) ||
                           (p.purity || "").toLowerCase().includes(searchLower);
     const matchesCategory = category === "All" || p.category === category;
+    const matchesSubcategory = subcategory === "All" || p.subcategory === subcategory;
     
-    return matchesSearch && matchesCategory;
+    return matchesSearch && matchesCategory && matchesSubcategory;
   }).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   
   const totalPages = Math.ceil(filtered.length / 10) || 1;
@@ -79,11 +104,13 @@ export default function CatalogPage() {
   const paginatedFiltered = filtered.slice((currentPage - 1) * 10, currentPage * 10);
 
   const groupedProducts = useMemo(() => {
-    const groups: Record<string, Product[]> = {};
+    const groups: Record<string, Record<string, Product[]>> = {};
     paginatedFiltered.forEach(p => {
-      const cat = p.category || "Other";
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(p);
+      const cat = p.category || "General";
+      const subcat = p.subcategory || "General / Uncategorized";
+      if (!groups[cat]) groups[cat] = {};
+      if (!groups[cat][subcat]) groups[cat][subcat] = [];
+      groups[cat][subcat].push(p);
     });
     return groups;
   }, [paginatedFiltered]);
@@ -96,7 +123,7 @@ export default function CatalogPage() {
         const img = new window.Image();
         img.onload = () => {
           const canvas = document.createElement("canvas");
-          const MAX_SIZE = 400; // Drastically reduce size for much shorter Base64 strings
+          const MAX_SIZE = 400; 
           let { width, height } = img;
           
           if (width > height && width > MAX_SIZE) {
@@ -111,7 +138,7 @@ export default function CatalogPage() {
           canvas.height = height;
           const ctx = canvas.getContext("2d");
           ctx?.drawImage(img, 0, 0, width, height);
-          const compressedBase64 = canvas.toDataURL("image/webp", 0.5); // Use WebP for massive size reduction
+          const compressedBase64 = canvas.toDataURL("image/webp", 0.5); 
           setDraft((prev) => ({ ...prev, imageUrls: [...(prev.imageUrls || []), compressedBase64] }));
         };
         img.src = e.target?.result as string;
@@ -148,128 +175,263 @@ export default function CatalogPage() {
       if (editingId) {
         await updateMutation.mutateAsync({
           id: editingId,
-          body: {
-            name: draft.name,
-            category: draft.category || "Gold",
-            subcategory: draft.subcategory || "",
-            purity: draft.purity || "22K",
-            netWeight: draft.netWeight || 0,
-            grossWeight: draft.netWeight || 0,
-            makingCharge: draft.makingCharge || 0,
-            ratePerGram: draft.ratePerGram || 0,
-            imageUrl: draft.imageUrls?.[0] || draft.imageUrl || "",
-            imageUrls: draft.imageUrls || [],
-            note: draft.note || "Catalog Item",
-          }
+          body: draft
         });
         toast.success("Catalog item updated successfully!");
         if (selectedProduct && ((selectedProduct as any)._id === editingId || selectedProduct.id === editingId)) {
-          setSelectedProduct(prev => prev ? ({ ...prev, ...draft } as Product) : null);
+          setSelectedProduct({ ...selectedProduct, ...draft } as Product);
         }
       } else {
         await createMutation.mutateAsync({ 
+          ...draft,
           id: Date.now().toString(), 
           barcode: `CAT-${Date.now()}`,
-          name: draft.name,
-          category: draft.category || "Gold",
-          subcategory: draft.subcategory || "",
-          note: "Catalog Item",
-          purity: draft.purity || "22K",
-          netWeight: draft.netWeight || 0,
           grossWeight: draft.netWeight || 0,
           stoneWeight: 0,
-          makingCharge: draft.makingCharge || 0,
           makingChargePct: 0,
-          ratePerGram: draft.ratePerGram || 0,
           gstPct: 3,
-          stock: 0,
           huid: "",
           imageUrl: draft.imageUrls?.[0] || "",
-          imageUrls: draft.imageUrls || [],
         } as Product);
-        toast.success("Catalog item saved to database!");
+        toast.success("New item added to catalog!");
       }
       setAddOpen(false);
       setEditingId(null);
-      setDraft({ name: "", category: "Gold", purity: "22K", netWeight: 0, ratePerGram: 7200, makingCharge: 0, stock: 0, imageUrl: "", imageUrls: [], note: "Catalog Item" });
+      setDraft({
+        name: "",
+        category: "Gold",
+        subcategory: "",
+        purity: "22K",
+        netWeight: 0,
+        ratePerGram: 7200,
+        makingCharge: 0,
+        stock: 0,
+        imageUrl: "",
+        imageUrls: [],
+        note: "Catalog Item"
+      });
     } catch (error) {
       console.error("Save error:", error);
-      toast.error("Failed to save to database. Check backend connection.");
+      toast.error(editingId ? "Failed to update catalog item." : "Failed to add item to catalog.");
     }
+  };
+
+  const handleOpenWhatsAppModal = (prod?: Product | null) => {
+    setWaProductItem(prod || null);
+    setWaSelectedCustomer("custom");
+    setWaPhone("");
+
+    let defaultMsg = "";
+    if (prod) {
+      const metalValue = prod.netWeight * prod.ratePerGram;
+      const making = prod.makingChargePct ? (metalValue * prod.makingChargePct) / 100 : prod.makingCharge;
+      const totalEst = metalValue + making + (prod.stoneWeight || 0);
+
+      const itemId = prod._id || prod.id;
+
+      let viewLink = "";
+      if (itemId) {
+        viewLink = `${window.location.protocol}//${window.location.host}/v/${itemId}`;
+      } else if (prod.imageUrl && (prod.imageUrl.startsWith("http://") || prod.imageUrl.startsWith("https://"))) {
+        viewLink = prod.imageUrl;
+      }
+
+      defaultMsg = `✨ *${shopName}* ✨\n\nDear Customer,\nCheck out this design from our catalog:\n\n📌 *Item:* ${prod.name}\n🏷️ *Category:* ${prod.category}${prod.subcategory ? ` (${prod.subcategory})` : ''}\n✨ *Purity:* ${prod.purity}\n⚖️ *Net Weight:* ${prod.netWeight} g\n💰 *Est. Price:* ${inr(totalEst)}${viewLink ? `\n\n🖼️ *Click to View Photo & Details:*\n${viewLink}` : ''}\n\nInterested? Contact us or visit our store today! 💍✨`;
+    } else {
+      defaultMsg = `✨ *${shopName}* ✨\n\nDear Customer,\nExplore our latest Jewellery Catalog collection with exclusive designs in Gold, Silver, and Diamonds!\n\nContact us or visit our store today to place your order! 💍✨`;
+    }
+
+    setWaCustomMessage(defaultMsg);
+    setWaModalOpen(true);
+  };
+
+  const handleSelectWaCustomer = (custId: string) => {
+    setWaSelectedCustomer(custId);
+    if (custId === "custom") {
+      setWaPhone("");
+      return;
+    }
+    const found = customersList.find((c) => (c._id || c.id) === custId);
+    if (found) {
+      setWaPhone(found.phone || found.mobile || "");
+    }
+  };
+
+  const imageToPngBlob = (imageUrl: string): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas context error"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("PNG Blob conversion failed"));
+        }, "image/png");
+      };
+      img.onerror = (e) => reject(e);
+      img.src = imageUrl;
+    });
+  };
+
+  const handleDownloadWaImage = () => {
+    if (!waProductItem?.imageUrl) return;
+    const a = document.createElement("a");
+    a.href = waProductItem.imageUrl;
+    a.download = `${waProductItem.name.replace(/\s+/g, "_")}_design.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast.success("Design image downloaded to your device!");
+  };
+
+  const handleCopyWaImage = async () => {
+    if (!waProductItem?.imageUrl) return;
+    try {
+      const pngBlob = await imageToPngBlob(waProductItem.imageUrl);
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": pngBlob })
+      ]);
+      toast.success("Image copied to clipboard! Press Ctrl+V (Paste) in WhatsApp chat box.");
+    } catch (err) {
+      console.error("Clipboard copy error:", err);
+      toast.info("Image copy not supported by browser. Click 'Save Photo' instead.");
+    }
+  };
+
+  const handleSendWhatsApp = async () => {
+    if (!waPhone.trim()) {
+      toast.error("Please enter customer's mobile number.");
+      return;
+    }
+    let cleanPhone = waPhone.replace(/\D/g, "");
+    if (cleanPhone.length === 10) cleanPhone = "91" + cleanPhone;
+    if (cleanPhone.length < 10) {
+      toast.error("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+
+    // Auto-copy PNG image to clipboard so user can press Ctrl+V in WhatsApp chat window
+    if (waProductItem?.imageUrl) {
+      try {
+        const pngBlob = await imageToPngBlob(waProductItem.imageUrl);
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
+        toast.success(`Opening chat for +${cleanPhone}! Image copied to clipboard — press Ctrl+V to paste photo in WhatsApp.`, { duration: 7000 });
+      } catch (err) {
+        console.error("Auto copy error:", err);
+        toast.info(`Opening chat for +${cleanPhone}! Click 'Save Photo' to attach photo.`, { duration: 5000 });
+      }
+    } else {
+      toast.success(`Opening direct WhatsApp chat for +${cleanPhone}!`);
+    }
+
+    const encoded = encodeURIComponent(waCustomMessage);
+    window.open(`https://wa.me/${cleanPhone}?text=${encoded}`, "_blank");
+    setWaModalOpen(false);
   };
 
   const handleKeyNav = useFormKeyboardNav(handleSave);
 
   return (
     <Layout>
-      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-4xl">Product Catalog</h1>
-          <p className="text-muted-foreground mt-1">
-            Browse and showcase your inventory items.
-          </p>
+          <h1 className="text-3xl font-bold font-display text-foreground">Catalog</h1>
+          <p className="text-sm text-muted-foreground">Manage showcase items and client-facing designs</p>
         </div>
-        <Dialog open={addOpen} onOpenChange={(v) => {
-          setAddOpen(v);
-          if (!v) setEditingId(null);
-        }}>
-          <DialogTrigger asChild>
-            <Button size="lg" className="w-full sm:w-auto" onClick={() => {
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="outline"
+            className="border-emerald-500/40 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+            onClick={() => handleOpenWhatsAppModal(null)}
+          >
+            <MessageSquare className="w-4 h-4 mr-2 text-emerald-600 dark:text-emerald-400" /> Share Catalog on WhatsApp
+          </Button>
+
+          <Dialog open={addOpen} onOpenChange={(open) => {
+            setAddOpen(open);
+            if (!open) {
               setEditingId(null);
-              setDraft({ name: "", category: "Gold", purity: "22K", netWeight: 0, ratePerGram: 7200, makingCharge: 0, stock: 0, imageUrl: "", imageUrls: [], note: "Catalog Item" });
-            }}>
-              <Plus className="w-4 h-4 mr-2" /> Add Item
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
-            <DialogHeader>
-              <DialogTitle>{editingId ? "Edit Catalog Item" : "Add Catalog Item"}</DialogTitle>
-              <DialogDescription>{editingId ? "Update existing catalog item details." : "Add a new item directly to the catalog."}</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="space-y-1.5">
-                <Label>Item Image</Label>
-                <div className="flex flex-col gap-4 mt-1">
-                    <div className="relative border-2 border-dashed border-border rounded-lg p-4 hover:bg-muted/50 transition-colors text-center cursor-pointer">
-                      <Input type="file" accept="image/*" multiple onChange={(e) => handleImageChange(e.target.files)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                      <ImageIcon className="w-6 h-6 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm font-medium text-muted-foreground">Click to upload images</p>
+              setDraft({
+                name: "",
+                category: "Gold",
+                subcategory: "",
+                purity: "22K",
+                netWeight: 0,
+                ratePerGram: 7200,
+                makingCharge: 0,
+                stock: 0,
+                imageUrl: "",
+                imageUrls: [],
+                note: "Catalog Item"
+              });
+            }
+          }}>
+            <DialogTrigger asChild>
+              <Button className="bg-primary hover:bg-primary/90">
+                <Plus className="w-4 h-4 mr-2" /> Add Catalog Item
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-xl" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
+              <DialogHeader>
+                <DialogTitle>{editingId ? "Edit Catalog Item" : "Add New Catalog Item"}</DialogTitle>
+                <DialogDescription>
+                  {editingId ? "Update details and showcase images for this catalog item." : "Create a new product listing to showcase in your store catalog."}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label>Product Images</Label>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="w-20 h-20 rounded-lg border-2 border-dashed border-border hover:border-primary/50 flex flex-col items-center justify-center cursor-pointer transition-colors bg-muted/20">
+                      <ImageIcon className="w-5 h-5 text-muted-foreground mb-1" />
+                      <span className="text-[10px] text-muted-foreground font-medium">Upload</span>
+                      <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleImageChange(e.target.files)} />
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {draft.imageUrls?.map((img, idx) => (
+                        <div key={idx} className="w-20 h-20 shrink-0 rounded-lg border border-border overflow-hidden relative group">
+                          <img src={img} alt="Preview" className="w-full h-full object-cover" />
+                          <button 
+                            type="button" 
+                            onClick={() => setDraft(prev => ({ ...prev, imageUrls: prev.imageUrls?.filter((_, i) => i !== idx) }))}
+                            className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(draft.imageUrls || []).map((img, idx) => (
-                      <div key={idx} className="w-20 h-20 shrink-0 rounded-lg border border-border overflow-hidden relative group">
-                        <img src={img} alt="Preview" className="w-full h-full object-cover" />
-                        <button 
-                          type="button" 
-                          onClick={() => setDraft(prev => ({ ...prev, imageUrls: prev.imageUrls?.filter((_, i) => i !== idx) }))}
-                          className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
                   </div>
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Item Name *</Label>
+                  <Input value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. Diamond Necklace" />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5"><Label>Category</Label><Input value={draft.category} onChange={e => setDraft({ ...draft, category: e.target.value })} placeholder="Gold, Silver..." /></div>
+                  <div className="space-y-1.5"><Label>Subcategory</Label><Input value={draft.subcategory || ""} onChange={e => setDraft({ ...draft, subcategory: e.target.value })} placeholder="Necklace, Ring..." /></div>
+                  <div className="space-y-1.5"><Label>Purity</Label><Input value={draft.purity} onChange={e => setDraft({ ...draft, purity: e.target.value })} placeholder="22K, 18K..." /></div>
+                  <div className="space-y-1.5"><Label>Weight (g)</Label><Input type="number" value={draft.netWeight || ""} onChange={e => setDraft({ ...draft, netWeight: Number(e.target.value) })} /></div>
+                  <div className="space-y-1.5"><Label>Rate (₹/g)</Label><Input type="number" value={draft.ratePerGram || ""} onChange={e => setDraft({ ...draft, ratePerGram: Number(e.target.value) })} /></div>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>Item Name *</Label>
-                <Input value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. Diamond Necklace" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5"><Label>Category</Label><Input value={draft.category} onChange={e => setDraft({ ...draft, category: e.target.value })} placeholder="Gold, Silver..." /></div>
-                <div className="space-y-1.5"><Label>Purity</Label><Input value={draft.purity} onChange={e => setDraft({ ...draft, purity: e.target.value })} placeholder="22K, 18K..." /></div>
-                <div className="space-y-1.5"><Label>Weight (g)</Label><Input type="number" value={draft.netWeight || ""} onChange={e => setDraft({ ...draft, netWeight: Number(e.target.value) })} /></div>
-                <div className="space-y-1.5"><Label>Rate (₹/g)</Label><Input type="number" value={draft.ratePerGram || ""} onChange={e => setDraft({ ...draft, ratePerGram: Number(e.target.value) })} /></div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => { setAddOpen(false); setEditingId(null); }}>Cancel</Button>
-              <Button onClick={handleSave} disabled={!draft.name || createMutation.isPending || updateMutation.isPending}>
-                {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} {editingId ? "Update Item" : "Save Item"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setAddOpen(false); setEditingId(null); }}>Cancel</Button>
+                <Button onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
+                  {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} {editingId ? "Update Item" : "Save Item"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </header>
 
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -282,20 +444,37 @@ export default function CatalogPage() {
             onChange={(e) => setQ(e.target.value)} 
           />
         </div>
-        <div className="w-full sm:w-48">
-          <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className="bg-background">
-              <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4" />
-                <SelectValue placeholder="Category" />
-              </div>
-            </SelectTrigger>
-            <SelectContent>
-              {categories.map(c => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap sm:flex-nowrap gap-3 w-full sm:w-auto">
+          <div className="w-full sm:w-48">
+            <Select value={category} onValueChange={(val) => { setCategory(val); setSubcategory("All"); setPage(1); }}>
+              <SelectTrigger className="bg-background">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-primary" />
+                  <SelectValue placeholder="Category" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map(c => (
+                  <SelectItem key={c} value={c}>{c === "All" ? "All Categories" : c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-full sm:w-48">
+            <Select value={subcategory} onValueChange={(val) => { setSubcategory(val); setPage(1); }}>
+              <SelectTrigger className="bg-background">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-primary" />
+                  <SelectValue placeholder="Subcategory" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {subcategories.map(sc => (
+                  <SelectItem key={sc} value={sc}>{sc === "All" ? "All Subcategories" : sc}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -311,102 +490,141 @@ export default function CatalogPage() {
         </div>
       ) : (
         <div className="space-y-10">
-          {Object.entries(groupedProducts).map(([cat, prods]) => (
-            <div key={cat}>
-              <h2 className="text-2xl font-display mb-4 flex items-center gap-2">
-                {cat} <Badge variant="secondary" className="text-xs">{prods.length}</Badge>
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-                {prods.map(p => {
-                  const metalValue = p.netWeight * p.ratePerGram;
-                  const making = p.makingChargePct ? (metalValue * p.makingChargePct) / 100 : p.makingCharge;
-                  const totalEst = metalValue + making + (p.stoneWeight || 0);
-
-                  return (
-                    <Card key={(p as any)._id || p.id} className="overflow-hidden flex flex-col group hover:shadow-lg transition-all cursor-pointer border-border hover:border-primary/50" onClick={() => setSelectedProduct(p)}>
-                      <div className="aspect-square bg-muted relative overflow-hidden">
-                {(p.imageUrls?.[0] || p.imageUrl) ? (
-                  <img 
-                    src={p.imageUrls?.[0] || p.imageUrl} 
-                    alt={p.name} 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground opacity-50">
-                    <Gem className="w-12 h-12 mb-2" />
-                    <span className="text-xs font-medium">No Image</span>
-                  </div>
-                )}
-                {p.stock <= 0 && p.note !== "Catalog Item" && (
-                  <div className="absolute inset-0 bg-background/80 flex items-center justify-center backdrop-blur-[1px]">
-                    <Badge variant="destructive" className="text-xs uppercase tracking-widest px-3 py-1">Out of Stock</Badge>
-                  </div>
-                )}
-                <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                  <Button 
-                    variant="secondary" 
-                    size="icon" 
-                    className="w-8 h-8 rounded-full shadow-md bg-white hover:bg-slate-100 text-slate-700"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenEdit(p);
-                    }}
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button 
-                    variant="destructive" 
-                    size="icon" 
-                    className="w-8 h-8 rounded-full shadow-md"
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      if (window.confirm("Are you sure you want to delete this catalog item?")) {
-                        try {
-                          await deleteMutation.mutateAsync((p as any)._id || p.id);
-                          toast.success("Item deleted from database.");
-                        } catch (error) {
-                          toast.error("Failed to delete item.");
-                        }
-                      }
-                    }}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+          {Object.entries(groupedProducts).map(([cat, subGroups]) => {
+            const catItemCount = Object.values(subGroups).reduce((sum, arr) => sum + arr.length, 0);
+            return (
+              <div key={cat} className="space-y-6 bg-card/40 rounded-xl p-5 border border-border/60 shadow-sm">
+                <div className="flex items-center justify-between border-b pb-3 border-border/60">
+                  <h2 className="text-xl font-bold font-display flex items-center gap-2 text-foreground">
+                    <Filter className="w-5 h-5 text-primary" />
+                    <span>Category: {cat}</span>
+                    <Badge variant="secondary" className="text-xs ml-1">{catItemCount} {catItemCount === 1 ? 'item' : 'items'}</Badge>
+                  </h2>
                 </div>
+
+                <div className="space-y-6">
+                  {Object.entries(subGroups).map(([subcat, prods]) => (
+                    <div key={subcat} className="space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-md border border-border/50 w-fit">
+                        <Layers className="w-3.5 h-3.5 text-primary" />
+                        <span>Subcategory: <strong className="text-foreground">{subcat}</strong></span>
+                        <Badge variant="outline" className="text-[10px] ml-1 bg-background">{prods.length}</Badge>
                       </div>
-                      <CardContent className="p-4 flex-1 flex flex-col bg-card">
-                        <h3 className="font-semibold text-base line-clamp-1 mb-1" title={p.name}>{p.name}</h3>
-                        <div className="flex flex-wrap gap-1.5 mb-3">
-                          <Badge variant="secondary" className="text-[10px] font-normal px-1.5 py-0">{p.category}</Badge>
-                          <Badge variant="outline" className="text-[10px] font-normal px-1.5 py-0">{p.purity}</Badge>
-                        </div>
-                        <div className="mt-auto flex items-center justify-between text-sm border-t border-border pt-3">
-                          <div className="flex flex-col">
-                            <span className="text-muted-foreground text-[10px] uppercase tracking-wider">Net Wt</span>
-                            <span className="font-medium text-foreground">{p.netWeight} g</span>
-                          </div>
-                          <div className="flex flex-col items-end">
-                            <span className="text-muted-foreground text-[10px] uppercase tracking-wider">Est. Price</span>
-                            <span className="font-bold text-primary">{inr(totalEst)}</span>
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          className="w-full mt-3 text-xs bg-primary/90 hover:bg-primary"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.location.href = `/orders?createForItem=${encodeURIComponent((p as any)._id || p.id)}`;
-                          }}
-                        >
-                          Create Order for Item
-                        </Button>
-                      </CardContent>
-            </Card>
-                  )
-                })}
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                        {prods.map(p => {
+                          const metalValue = p.netWeight * p.ratePerGram;
+                          const making = p.makingChargePct ? (metalValue * p.makingChargePct) / 100 : p.makingCharge;
+                          const totalEst = metalValue + making + (p.stoneWeight || 0);
+
+                          return (
+                            <Card key={(p as any)._id || p.id} className="overflow-hidden flex flex-col group hover:shadow-lg transition-all cursor-pointer border-border hover:border-primary/50" onClick={() => setSelectedProduct(p)}>
+                              <div className="aspect-square bg-muted relative overflow-hidden">
+                                {(p.imageUrls?.[0] || p.imageUrl) ? (
+                                  <img 
+                                    src={p.imageUrls?.[0] || p.imageUrl} 
+                                    alt={p.name} 
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                                  />
+                                ) : (
+                                  <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground opacity-50">
+                                    <Gem className="w-12 h-12 mb-2" />
+                                    <span className="text-xs font-medium">No Image</span>
+                                  </div>
+                                )}
+                                {p.stock <= 0 && p.note !== "Catalog Item" && (
+                                  <div className="absolute inset-0 bg-background/80 flex items-center justify-center backdrop-blur-[1px]">
+                                    <Badge variant="destructive" className="text-xs uppercase tracking-widest px-3 py-1">Out of Stock</Badge>
+                                  </div>
+                                )}
+                                <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                  <Button 
+                                    variant="secondary" 
+                                    size="icon" 
+                                    className="w-8 h-8 rounded-full shadow-md bg-white hover:bg-slate-100 text-slate-700"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenEdit(p);
+                                    }}
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Button>
+                                  <Button 
+                                    variant="destructive" 
+                                    size="icon" 
+                                    className="w-8 h-8 rounded-full shadow-md"
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      if (window.confirm("Are you sure you want to delete this catalog item?")) {
+                                        try {
+                                          await deleteMutation.mutateAsync((p as any)._id || p.id);
+                                          toast.success("Item deleted from database.");
+                                        } catch (error) {
+                                          toast.error("Failed to delete item.");
+                                        }
+                                      }
+                                    }}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                              <CardContent className="p-4 flex-1 flex flex-col bg-card">
+                                <h3 className="font-semibold text-base line-clamp-1 mb-1" title={p.name}>{p.name}</h3>
+                                <div className="flex flex-wrap gap-1.5 mb-3">
+                                  <Badge variant="secondary" className="text-[10px] font-normal px-1.5 py-0">{p.category}</Badge>
+                                  {p.subcategory && (
+                                    <Badge variant="secondary" className="text-[10px] font-normal px-1.5 py-0 bg-primary/10 text-primary border-primary/20">{p.subcategory}</Badge>
+                                  )}
+                                  <Badge variant="outline" className="text-[10px] font-normal px-1.5 py-0">{p.purity}</Badge>
+                                </div>
+                                <div className="mt-auto pt-3 border-t border-border space-y-2">
+                                  <div className="flex items-center justify-between text-sm">
+                                    <div className="flex flex-col">
+                                      <span className="text-muted-foreground text-[10px] uppercase tracking-wider">Net Wt</span>
+                                      <span className="font-medium text-foreground">{p.netWeight} g</span>
+                                    </div>
+                                    <div className="flex flex-col items-end">
+                                      <span className="text-muted-foreground text-[10px] uppercase tracking-wider">Est. Price</span>
+                                      <span className="font-bold text-primary">{inr(totalEst)}</span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex gap-2 pt-1">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="flex-1 text-xs border-emerald-500/30 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenWhatsAppModal(p);
+                                      }}
+                                    >
+                                      <MessageSquare className="w-3.5 h-3.5 mr-1 text-emerald-600" /> WhatsApp
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      className="flex-1 text-xs bg-primary/90 hover:bg-primary"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        window.location.href = `/orders?createForItem=${encodeURIComponent((p as any)._id || p.id)}`;
+                                      }}
+                                    >
+                                      Create Order
+                                    </Button>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {totalPages > 1 && (
@@ -558,18 +776,128 @@ export default function CatalogPage() {
                     })()}
                   </div>
 
-                  <Button
-                    className="w-full mt-4 bg-primary text-white hover:bg-primary/90"
-                    onClick={() => {
-                      window.location.href = `/orders?createForItem=${encodeURIComponent((selectedProduct as any)._id || selectedProduct.id)}`;
-                    }}
-                  >
-                    Create Custom Order For This Item
-                  </Button>
+                  <div className="flex gap-3 mt-4">
+                    <Button
+                      variant="outline"
+                      className="flex-1 border-emerald-500/40 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300"
+                      onClick={() => {
+                        const p = selectedProduct;
+                        setSelectedProduct(null);
+                        handleOpenWhatsAppModal(p);
+                      }}
+                    >
+                      <MessageSquare className="w-4 h-4 mr-2 text-emerald-600" /> Share on WhatsApp
+                    </Button>
+                    <Button
+                      className="flex-1 bg-primary text-white hover:bg-primary/90"
+                      onClick={() => {
+                        window.location.href = `/orders?createForItem=${encodeURIComponent((selectedProduct as any)._id || selectedProduct.id)}`;
+                      }}
+                    >
+                      Create Custom Order
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>);
           })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={waModalOpen} onOpenChange={setWaModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+              <MessageSquare className="w-5 h-5 text-emerald-600" />
+              Send Catalog on WhatsApp
+            </DialogTitle>
+            <DialogDescription>
+              Share product details directly to your customer's WhatsApp chat.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {waProductItem && (
+              <div className="bg-muted/40 p-3 rounded-lg border border-border flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  {waProductItem.imageUrl ? (
+                    <img src={waProductItem.imageUrl} alt={waProductItem.name} className="w-12 h-12 object-cover rounded-md border shrink-0" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0 border">
+                      <Gem className="w-6 h-6" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-sm truncate">{waProductItem.name}</div>
+                    <div className="text-xs text-muted-foreground">{waProductItem.category} • {waProductItem.purity} • {waProductItem.netWeight}g</div>
+                  </div>
+                </div>
+
+                {waProductItem.imageUrl && (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-2.5" onClick={handleDownloadWaImage} title="Save photo to send on WhatsApp">
+                      <Download className="w-3.5 h-3.5 mr-1" /> Save Photo
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-2.5" onClick={handleCopyWaImage} title="Copy photo to clipboard">
+                      <Copy className="w-3.5 h-3.5 mr-1" /> Copy Photo
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Select Customer (Optional)</Label>
+              <Select value={waSelectedCustomer} onValueChange={handleSelectWaCustomer}>
+                <SelectTrigger className="text-xs">
+                  <SelectValue placeholder="Select existing customer..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="custom">-- Enter Mobile Number Manually --</SelectItem>
+                  {customersList.map((c) => (
+                    <SelectItem key={c._id || c.id} value={c._id || c.id}>
+                      {c.name} ({c.phone || c.mobile || "No phone"})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Customer Mobile Number *</Label>
+              <div className="flex gap-2">
+                <span className="inline-flex items-center px-3 rounded-md border border-input bg-muted text-xs text-muted-foreground font-semibold">
+                  +91
+                </span>
+                <Input
+                  className="text-xs"
+                  placeholder="Enter 10-digit mobile number"
+                  value={waPhone}
+                  onChange={(e) => setWaPhone(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Message Preview</Label>
+              <textarea
+                rows={6}
+                className="w-full rounded-md border border-input bg-background p-2.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono leading-relaxed resize-none"
+                value={waCustomMessage}
+                onChange={(e) => setWaCustomMessage(e.target.value)}
+              />
+              <p className="text-[11px] font-medium text-emerald-800 bg-emerald-50/80 p-2 rounded border border-emerald-200 mt-1">
+                🚀 <b>Direct Customer Chat:</b> Clicking the button opens the WhatsApp chat <b>directly for the customer's phone number</b> with all details pre-filled. Design image is auto-copied — just press <b>Ctrl+V (Paste)</b> to attach photo!
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={() => setWaModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold" onClick={handleSendWhatsApp}>
+              <Send className="w-3.5 h-3.5 mr-1.5" /> Open Direct Customer Chat
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -34,6 +34,7 @@ import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import JsBarcode from "jsbarcode";
 import { useAuth } from "@/lib/auth";
+import { BarcodeTagModal } from "@/components/BarcodeTagModal";
 
 // Extended Product Type Interface
 export interface ExtendedProduct extends Product {
@@ -245,7 +246,20 @@ export default function InventoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [subcategoryFilter, setSubcategoryFilter] = useState("ALL");
   const [purityFilter, setPurityFilter] = useState("ALL");
+
+  // Dynamic Categories and Subcategories
+  const availableCategories = useMemo(() => {
+    const cats = new Set(["Gold", "Silver", "Diamond", "Platinum", ...allItems.map(i => i.category).filter(Boolean)]);
+    return ["ALL", ...Array.from(cats)];
+  }, [allItems]);
+
+  const availableSubcategories = useMemo(() => {
+    const relevantItems = categoryFilter === "ALL" ? allItems : allItems.filter(i => i.category === categoryFilter);
+    const subcats = new Set(relevantItems.map(i => i.subcategory).filter((sc): sc is string => Boolean(sc)));
+    return ["ALL", ...Array.from(subcats)];
+  }, [allItems, categoryFilter]);
 
   // Barcode & Tag Printing State
   const [selectedTagItem, setSelectedTagItem] = useState<ExtendedProduct | null>(null);
@@ -284,16 +298,17 @@ export default function InventoryPage() {
     return allItems.filter((p) => {
       const matchQuery =
         !debouncedSearch ||
-        (p.name + p.barcode + (p.itemCode || "") + (p.huid || "") + (p.category || "") + (p.purity || ""))
+        (p.name + p.barcode + (p.itemCode || "") + (p.huid || "") + (p.category || "") + (p.subcategory || "") + (p.purity || ""))
           .toLowerCase()
           .includes(debouncedSearch.toLowerCase());
 
       const matchCat = categoryFilter === "ALL" || p.category === categoryFilter;
+      const matchSubCat = subcategoryFilter === "ALL" || p.subcategory === subcategoryFilter;
       const matchPur = purityFilter === "ALL" || p.purity === purityFilter;
 
-      return matchQuery && matchCat && matchPur;
+      return matchQuery && matchCat && matchSubCat && matchPur;
     });
-  }, [allItems, debouncedSearch, categoryFilter, purityFilter]);
+  }, [allItems, debouncedSearch, categoryFilter, subcategoryFilter, purityFilter]);
 
   const activeItemIds = useMemo(() => new Set(allItems.map(i => i._id || i.id)), [allItems]);
 
@@ -739,19 +754,28 @@ export default function InventoryPage() {
                   />
                 </div>
 
-                {/* Filters row: Category, Purity, Count Badge */}
+                {/* Filters row: Category, Subcategory, Purity, Count Badge */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 w-full">
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 w-full">
-                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <Select value={categoryFilter} onValueChange={(val) => { setCategoryFilter(val); setSubcategoryFilter("ALL"); }}>
                       <SelectTrigger className="h-9 text-xs w-full sm:w-36 bg-background">
                         <SelectValue placeholder="Category" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="ALL">All Categories</SelectItem>
-                        <SelectItem value="Gold">Gold</SelectItem>
-                        <SelectItem value="Silver">Silver</SelectItem>
-                        <SelectItem value="Diamond">Diamond</SelectItem>
-                        <SelectItem value="Platinum">Platinum</SelectItem>
+                        {availableCategories.map((c) => (
+                          <SelectItem key={c} value={c}>{c === "ALL" ? "All Categories" : c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select value={subcategoryFilter} onValueChange={setSubcategoryFilter}>
+                      <SelectTrigger className="h-9 text-xs w-full sm:w-36 bg-background">
+                        <SelectValue placeholder="Subcategory" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableSubcategories.map((sc) => (
+                          <SelectItem key={sc} value={sc}>{sc === "ALL" ? "All Subcategories" : sc}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
 
@@ -805,8 +829,16 @@ export default function InventoryPage() {
                             )}
                             <div className="min-w-0 flex-1">
                               <div className="font-bold text-sm text-foreground truncate">{item.name}</div>
-                              <div className="text-[11px] text-muted-foreground truncate">
-                                {item.category} • {item.purity} ({item.metalType || 'Gold'})
+                              <div className="text-[11px] text-muted-foreground truncate flex items-center gap-1 flex-wrap">
+                                <span className="font-semibold text-foreground">{item.category}</span>
+                                {item.subcategory && (
+                                  <>
+                                    <span className="text-muted-foreground/60">›</span>
+                                    <span className="text-primary font-medium">{item.subcategory}</span>
+                                  </>
+                                )}
+                                <span className="text-muted-foreground/60">•</span>
+                                <span>{item.purity}</span>
                               </div>
                               <div className="flex flex-wrap items-center gap-1 mt-0.5">
                                 <span className="bg-muted px-1.5 py-0.2 rounded font-mono text-[9px] truncate">
@@ -858,12 +890,12 @@ export default function InventoryPage() {
                             className="h-8 text-[11px] px-1 gap-1 w-full"
                             onClick={() => { setSelectedTagItem(item); setTagModalOpen(true); }}
                           >
-                            <Printer className="w-3.5 h-3.5" /> Tag
+                            <Printer className="w-3.5 h-3.5" /> Tag Print
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-8 text-[11px] px-1 gap-1 text-blue-600 border-blue-200 bg-blue-50/40 w-full"
+                            className="h-8 text-[11px] px-1 gap-1 w-full"
                             onClick={() => handleOpenEdit(item)}
                           >
                             <Pencil className="w-3.5 h-3.5" /> Edit
@@ -871,7 +903,7 @@ export default function InventoryPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-8 text-[11px] px-1 gap-1 text-rose-600 border-rose-200 bg-rose-50/40 w-full"
+                            className="h-8 text-[11px] px-1 gap-1 w-full text-destructive hover:bg-destructive/10"
                             onClick={() => {
                               if (confirm(`Are you sure you want to delete ${item.name}?`)) {
                                 deleteItemMutation.mutate(item._id || item.id || "");
@@ -922,8 +954,15 @@ export default function InventoryPage() {
                             </td>
 
                             <td>
-                              <div className="font-medium text-foreground">{item.category}</div>
-                              <div className="text-xs text-muted-foreground">{item.purity} ({item.metalType || 'Gold'})</div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold text-foreground">{item.category}</span>
+                                {item.subcategory && (
+                                  <Badge variant="secondary" className="text-[10px] font-normal px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
+                                    {item.subcategory}
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-0.5">{item.purity} ({item.metalType || 'Gold'})</div>
                             </td>
 
                             <td>
@@ -957,11 +996,11 @@ export default function InventoryPage() {
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  className="h-8 w-8 p-0 text-slate-600 hover:text-slate-900"
-                                  title="Print Jewellery Tag"
+                                  className="h-8 w-8 p-0 text-amber-600 hover:text-amber-800 hover:bg-amber-50"
+                                  title="Print Barcode Tag"
                                   onClick={() => { setSelectedTagItem(item); setTagModalOpen(true); }}
                                 >
-                                  <Printer className="w-4 h-4" />
+                                  <ScanBarcode className="w-4 h-4" />
                                 </Button>
                                 <Button
                                   size="sm"
@@ -1977,6 +2016,8 @@ export default function InventoryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BarcodeTagModal product={selectedTagItem} open={tagModalOpen} onOpenChange={setTagModalOpen} />
     </Layout>
   );
 }

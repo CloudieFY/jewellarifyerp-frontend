@@ -41,6 +41,8 @@ import GirviFeaturePage from "./routes/GirviFeaturePage";
 import ContactPage from "./routes/ContactPage";
 import PrivacyPolicyPage from "./routes/PrivacyPolicyPage";
 import TermsAndConditionsPage from "./routes/TermsAndConditionsPage";
+import ProductViewerPage from "./routes/ProductViewerPage";
+import InvoiceViewerPage from "./routes/InvoiceViewerPage";
 import { SuperAdminLayout } from "./components/SuperAdminLayout";
 
 /**
@@ -62,6 +64,10 @@ function App() {
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
           <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
+          <Route path="/view-product/:dbName/:inventoryId" element={<ProductViewerPage />} />
+          <Route path="/v/:inventoryId" element={<ProductViewerPage />} />
+          <Route path="/v-bill/:invoiceId" element={<InvoiceViewerPage />} />
+          <Route path="/view-invoice/:dbName/:invoiceId" element={<InvoiceViewerPage />} />
 
           {/* Super Admin Routes */}
           <Route path="/superadmin/login" element={<SuperAdminLoginPage />} />
