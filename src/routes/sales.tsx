@@ -12,8 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { inr, calcItem, type Invoice } from "@/lib/storage";
 import { useAuth } from "@/lib/auth";
-import { formatDate, useDebounce, triggerPrint } from "@/lib/utils";
-import { Receipt, Trash2, Printer, Eye, Award, DollarSign, Search, FileText, Plus, RotateCcw } from "lucide-react";
+import { formatDate, useDebounce, triggerPrint, cn } from "@/lib/utils";
+import { Receipt, Trash2, Printer, Eye, Award, DollarSign, Search, FileText, Plus, RotateCcw, X } from "lucide-react";
 import { useTenantAPI } from "@/lib/api";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -376,74 +376,137 @@ export default function SalesPage() {
 
         <TabsContent value="invoices" className="space-y-6">
           {/* SEARCH & FILTERS BAR */}
-          <Card className="shadow-sm">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="relative w-full sm:w-80">
-                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-muted-foreground" />
-                  <Input
-                    placeholder="Search Invoice #, Customer, Mobile, HUID, Item..."
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    className="pl-9 h-9 text-xs"
-                  />
-                </div>
+          <Card className="shadow-xs border border-border/60 bg-card">
+            <CardContent className="p-3 sm:p-4 space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-4">
+              {/* Search Bar */}
+              <div className="relative w-full sm:max-w-md">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  placeholder="Search Invoice #, Customer, Mobile, HUID, Item..."
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  className="pl-10 pr-10 h-10 text-xs sm:text-sm rounded-xl border-border bg-background focus-visible:ring-2 focus-visible:ring-primary/20 transition-all shadow-xs"
+                />
+                {q ? (
+                  <button
+                    onClick={() => setQ("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 rounded-full hover:bg-muted transition-colors"
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <span className="hidden sm:inline-flex items-center absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded text-[10px] font-mono text-muted-foreground/60 bg-muted border border-border/50">
+                    /
+                  </span>
+                )}
+              </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  {!isOperator && (
-                    <div className="flex items-center gap-1 border-r pr-2 mr-1">
-                      <Button
-                        size="sm"
-                        variant={docTypeFilter === "ALL" ? "default" : "ghost"}
-                        className="h-8 text-xs font-semibold"
-                        onClick={() => setDocTypeFilter("ALL")}
-                      >
-                        All Types
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={docTypeFilter === "GST" ? "default" : "ghost"}
-                        className="h-8 text-xs font-semibold text-indigo-700 hover:text-indigo-800"
-                        onClick={() => setDocTypeFilter("GST")}
-                      >
-                        GST
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={docTypeFilter === "NON-GST" ? "default" : "ghost"}
-                        className="h-8 text-xs font-semibold text-emerald-700 hover:text-emerald-800"
-                        onClick={() => setDocTypeFilter("NON-GST")}
-                      >
-                        Estimate
-                      </Button>
-                    </div>
-                  )}
+              {/* Segmented Filter Pills */}
+              <div className="flex flex-wrap items-center gap-2">
+                {!isOperator && (
+                  <div className="inline-flex items-center p-1 bg-muted/60 dark:bg-muted/30 rounded-xl gap-1 border border-border/40">
+                    <button
+                      type="button"
+                      onClick={() => setDocTypeFilter("ALL")}
+                      className={cn(
+                        "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                        docTypeFilter === "ALL"
+                          ? "bg-background text-foreground shadow-xs border border-border/40 font-bold"
+                          : "text-muted-foreground hover:text-foreground hover:bg-background/40"
+                      )}
+                    >
+                      All Types
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDocTypeFilter("GST")}
+                      className={cn(
+                        "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                        docTypeFilter === "GST"
+                          ? "bg-indigo-600 text-white shadow-xs font-bold dark:bg-indigo-700"
+                          : "text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                      )}
+                    >
+                      GST
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDocTypeFilter("NON-GST")}
+                      className={cn(
+                        "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                        docTypeFilter === "NON-GST"
+                          ? "bg-emerald-600 text-white shadow-xs font-bold dark:bg-emerald-700"
+                          : "text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                      )}
+                    >
+                      Estimate
+                    </button>
+                  </div>
+                )}
 
-
-                  <Button
-                    size="sm"
-                    variant={filterType === "ALL" ? "default" : "outline"}
-                    className="h-8 text-xs"
+                {/* Status Filter Segmented Control */}
+                <div className="inline-flex items-center p-1 bg-muted/60 dark:bg-muted/30 rounded-xl gap-1 border border-border/40">
+                  <button
+                    type="button"
                     onClick={() => setFilterType("ALL")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+                      filterType === "ALL"
+                        ? "bg-background text-foreground shadow-xs border border-border/40 font-bold"
+                        : "text-muted-foreground hover:text-foreground hover:bg-background/40"
+                    )}
                   >
-                    All ({invoices.length})
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={filterType === "PAID" ? "default" : "outline"}
-                    className="h-8 text-xs"
+                    All
+                    <span className={cn(
+                      "px-1.5 py-0.2 text-[10px] font-mono rounded-full",
+                      filterType === "ALL" ? "bg-muted text-foreground" : "bg-muted/70 text-muted-foreground"
+                    )}>
+                      {invoices.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => setFilterType("PAID")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+                      filterType === "PAID"
+                        ? "bg-emerald-600 text-white shadow-xs font-bold dark:bg-emerald-700"
+                        : "text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                    )}
                   >
-                    Fully Paid ({invoices.filter(i => (i.balanceDue || 0) <= 0).length})
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={filterType === "DUE" ? "default" : "outline"}
-                    className="h-8 text-xs"
+                    Fully Paid
+                    <span className={cn(
+                      "px-1.5 py-0.2 text-[10px] font-mono rounded-full",
+                      filterType === "PAID"
+                        ? "bg-white/20 text-white"
+                        : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                    )}>
+                      {invoices.filter(i => (i.balanceDue || 0) <= 0).length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => setFilterType("DUE")}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+                      filterType === "DUE"
+                        ? "bg-rose-600 text-white shadow-xs font-bold dark:bg-rose-700"
+                        : "text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                    )}
                   >
-                    Balance Due ({invoices.filter(i => (i.balanceDue || 0) > 0).length})
-                  </Button>
+                    Balance Due
+                    <span className={cn(
+                      "px-1.5 py-0.2 text-[10px] font-mono rounded-full",
+                      filterType === "DUE"
+                        ? "bg-white/20 text-white"
+                        : "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                    )}>
+                      {invoices.filter(i => (i.balanceDue || 0) > 0).length}
+                    </span>
+                  </button>
                 </div>
               </div>
             </CardContent>
@@ -592,62 +655,111 @@ export default function SalesPage() {
                   </div>
 
                   {/* Mobile Cards View */}
-                  <div className="md:hidden grid grid-cols-1 sm:grid-cols-2 gap-3 p-3">
+                  <div className="md:hidden space-y-3 p-3">
                     {paginatedInvoices.map((i) => {
                       const invoiceNetWt = (i.items || []).reduce((sum, it) => sum + (it.netWeight || 0), 0);
+                      const isDue = (i.balanceDue || 0) > 0;
+                      const isReturned = returnedInvoiceIds.has(i._id || i.id);
+
                       return (
-                        <div key={i._id || i.id} className="p-3.5 rounded-xl border border-border bg-card shadow-sm space-y-3">
-                          <div className="flex items-start justify-between gap-2">
+                        <div
+                          key={i._id || i.id}
+                          className={cn(
+                            "p-4 rounded-2xl border bg-card shadow-xs transition-all space-y-3 relative overflow-hidden",
+                            isReturned
+                              ? "border-amber-300/70 bg-amber-50/20 dark:bg-amber-950/10"
+                              : isDue
+                              ? "border-rose-200/80 dark:border-rose-900/40 bg-rose-50/10 dark:bg-rose-950/5"
+                              : "border-emerald-200/80 dark:border-emerald-900/40 bg-emerald-50/10 dark:bg-emerald-950/5"
+                          )}
+                        >
+                          {/* Left Accent Bar */}
+                          <div
+                            className={cn(
+                              "absolute left-0 top-0 bottom-0 w-1.5",
+                              isReturned ? "bg-amber-500" : isDue ? "bg-rose-500" : "bg-emerald-500"
+                            )}
+                          />
+
+                          {/* Top Row: Inv #, Type & Amount/Status */}
+                          <div className="flex items-start justify-between gap-2 pl-1">
                             <div>
-                              <div className="font-mono text-xs font-bold text-primary">{i.number}</div>
-                              <div className="font-semibold text-base text-foreground mt-0.5">{i.customerName}</div>
-                              <div className="text-xs text-muted-foreground">{i.customerMobile}</div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+                                  {i.number}
+                                </span>
+                                <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-normal text-muted-foreground border-border">
+                                  {i.type === "GST" ? "GST" : "Estimate"}
+                                </Badge>
+                              </div>
+                              <div className="text-[11px] text-muted-foreground mt-1">
+                                {formatDate(i.createdAt)}
+                              </div>
                             </div>
-                            {(i.balanceDue || 0) <= 0 ? (
-                              <Badge className="bg-emerald-100 text-emerald-800">Paid</Badge>
-                            ) : (
-                              <Badge variant="destructive">Due: {inr(i.balanceDue || 0)}</Badge>
-                            )}
-                            {returnedInvoiceIds.has(i._id || i.id) && (
-                              <Badge className="bg-orange-100 text-orange-800 border border-orange-300 text-[10px]">↩ Returned</Badge>
-                            )}
+
+                            <div className="text-right shrink-0">
+                              <div className="font-extrabold text-base font-display text-foreground">
+                                {inr(i.total)}
+                              </div>
+                              <div className="mt-1">
+                                {isReturned ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300">
+                                    ↩ Returned
+                                  </span>
+                                ) : isDue ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-200">
+                                    Due {inr(i.balanceDue || 0)}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200">
+                                    ✓ Paid
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
 
-                          <div className="p-2.5 rounded-lg bg-muted/40 space-y-1">
+                          {/* Customer & Net Wt */}
+                          <div className="pl-1 pt-1 border-t border-border/40 flex items-center justify-between gap-2">
+                            <div>
+                              <div className="font-bold text-sm text-foreground">{i.customerName}</div>
+                              <div className="text-xs text-muted-foreground font-mono">{i.customerMobile}</div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Gold Weight</div>
+                              <div className="text-xs font-bold text-amber-700 dark:text-amber-400 font-mono">{invoiceNetWt.toFixed(2)} g</div>
+                            </div>
+                          </div>
+
+                          {/* Items Preview */}
+                          <div className="p-2.5 rounded-xl bg-muted/40 dark:bg-muted/20 space-y-1">
                             {(i.items || []).map((it: any, idx: number) => (
-                              <div key={idx} className="text-xs flex items-center justify-between">
+                              <div key={idx} className="text-xs flex items-center justify-between gap-2">
                                 <span className="font-medium text-foreground truncate">{it.name} ({it.purity || '22K'})</span>
-                                <span className="font-mono text-amber-700">{it.netWeight || 0}g</span>
+                                <span className="font-mono text-amber-700 dark:text-amber-400 shrink-0">{it.netWeight || 0}g</span>
                               </div>
                             ))}
                           </div>
 
-                          <div className="grid grid-cols-3 gap-2 py-2 px-2.5 rounded-lg bg-muted/30 text-center text-xs">
-                            <div>
-                              <div className="text-[10px] text-muted-foreground uppercase font-medium">Gold Wt</div>
-                              <div className="font-bold text-amber-700 mt-0.5">{invoiceNetWt.toFixed(2)}g</div>
-                            </div>
-                            <div>
-                              <div className="text-[10px] text-muted-foreground uppercase font-medium">Mode</div>
-                              <div className="font-semibold mt-0.5 text-foreground">{i.paymentMode}</div>
-                            </div>
-                            <div>
-                              <div className="text-[10px] text-muted-foreground uppercase font-medium">Total</div>
-                              <div className="font-bold text-emerald-600 mt-0.5">{inr(i.total)}</div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between pt-1 border-t border-border/60 text-xs">
-                            <div className="text-[11px] text-muted-foreground">{formatDate(i.createdAt)}</div>
-                            <div className="flex items-center gap-1">
-                              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setSelectedInvoice(i)}>
+                          {/* Footer Actions */}
+                          <div className="flex items-center justify-between pt-2 border-t border-border/50 text-xs">
+                            <span className="text-[11px] text-muted-foreground">
+                              Mode: <strong className="text-foreground font-semibold">{i.paymentMode}</strong>
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 text-xs px-2.5 gap-1 border-border hover:bg-accent"
+                                onClick={() => setSelectedInvoice(i)}
+                              >
                                 <Eye className="w-3.5 h-3.5 text-primary" /> View
                               </Button>
-                              {!returnedInvoiceIds.has(i._id || i.id) && (
+                              {!isReturned && (
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 text-xs gap-1 border-rose-200 text-rose-700 hover:bg-rose-50"
+                                  className="h-8 text-xs px-2.5 gap-1 border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-300 dark:hover:bg-rose-950/50"
                                   onClick={() => {
                                     handleOpenReturnDialog();
                                     handleSelectInvoiceForReturn(i._id || i.id);
@@ -656,8 +768,14 @@ export default function SalesPage() {
                                   <RotateCcw className="w-3.5 h-3.5" /> Return
                                 </Button>
                               )}
-                              {!returnedInvoiceIds.has(i._id || i.id) && (
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-rose-600" onClick={() => removeInvoice(i)}>
+                              {!isReturned && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                                  title="Delete Invoice"
+                                  onClick={() => removeInvoice(i)}
+                                >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
                               )}

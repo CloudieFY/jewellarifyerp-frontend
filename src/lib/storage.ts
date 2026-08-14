@@ -97,6 +97,8 @@ export type Invoice = {
   items: InvoiceItem[];
   discount: number;
   oldGoldAmount: number;
+  oldSilverAmount?: number;
+  oldMetalType?: "Gold" | "Silver" | "Mixed";
   paymentMode: "Cash" | "UPI" | "Card" | "EMI";
   subtotal: number;
   gstAmount: number;

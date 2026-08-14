@@ -130,7 +130,9 @@ export default function BillingPage() {
   const debouncedSearchProd = useDebounce(searchProd, 300);
   const [items, setItems] = useState<EditableInvoiceItem[]>([]);
   const [discount, setDiscount] = useState<number | "">("");
+  const [oldMetalType, setOldMetalType] = useState<"Gold" | "Silver" | "Mixed">("Mixed");
   const [oldGoldAmount, setOldGoldAmount] = useState<number | "">("");
+  const [oldSilverAmount, setOldSilverAmount] = useState<number | "">("");
   const [cashAmount, setCashAmount] = useState<number | "">("");
   const [onlineAmount, setOnlineAmount] = useState<number | "">("");
   const [onlineMode, setOnlineMode] = useState<string>("UPI");
@@ -144,11 +146,18 @@ export default function BillingPage() {
   const calendarRef = useRef<HTMLDivElement | null>(null);
 
   const [openOldGoldCalc, setOpenOldGoldCalc] = useState(false);
+  const [oldCalcMetal, setOldCalcMetal] = useState<"Gold" | "Silver" | "Mixed">("Gold");
   const [oldGoldForm, setOldGoldForm] = useState({
     grossWeight: 0,
     lossWeight: 0,
     purityPct: 91.6,
     scrapRate: 7100,
+  });
+  const [oldSilverForm, setOldSilverForm] = useState({
+    grossWeight: 0,
+    lossWeight: 0,
+    purityPct: 80,
+    scrapRate: 85,
   });
 
   const [manualDueOpen, setManualDueOpen] = useState(false);
@@ -308,27 +317,34 @@ export default function BillingPage() {
       itemName += ` (BC: ${p.barcode})`;
     }
 
-    setItems((prev) => [
-      ...prev,
-      {
-        productId: p.id || p._id,
-        name: itemName,
-        purity: p.purity || "",
-        netWeight: p.netWeight,
-        grossWeight: p.grossWeight !== undefined ? p.grossWeight : p.netWeight,
-        stoneWeight: p.stoneWeight || 0,
-        ratePerGram: currentRate,
-        makingCharge: 0,
-        makingChargePct: 0,
-        makingChargeType: "PERCENTAGE",
-        makingChargeValue: 0,
-        stoneCharge: 0,
-        gstPct: p.gstPct,
-        qty: 1,
-        huid: p.huid || "",
-        hmc: 0,
-      } as any,
-    ]);
+    const newItem = {
+      productId: p.id || p._id,
+      name: itemName,
+      purity: p.purity || "",
+      netWeight: p.netWeight,
+      grossWeight: p.grossWeight !== undefined ? p.grossWeight : p.netWeight,
+      stoneWeight: p.stoneWeight || 0,
+      ratePerGram: currentRate,
+      makingCharge: 0,
+      makingChargePct: 0,
+      makingChargeType: "PERCENTAGE",
+      makingChargeValue: 0,
+      stoneCharge: 0,
+      gstPct: p.gstPct,
+      qty: 1,
+      huid: p.huid || "",
+      hmc: 0,
+    } as any;
+
+    setItems((prev) => {
+      const emptyIdx = prev.findIndex((item) => !item.name || !item.name.trim());
+      if (emptyIdx !== -1) {
+        const updated = [...prev];
+        updated[emptyIdx] = newItem;
+        return updated;
+      }
+      return [...prev, newItem];
+    });
   };
 
   const addCustomItem = () => {
@@ -450,15 +466,16 @@ export default function BillingPage() {
       gst += c.gst;
     });
 
-    const afterAdj = subtotal - (Number(discount) || 0) - (Number(oldGoldAmount) || 0);
+    const totalOldExchange = (Number(oldGoldAmount) || 0) + (Number(oldSilverAmount) || 0);
+    const afterAdj = subtotal - (Number(discount) || 0) - totalOldExchange;
     const preRound = Math.round((afterAdj + gst) * 100) / 100;
     const gTotal = Math.floor(preRound);
     const roundOff = Math.round((gTotal - preRound) * 100) / 100;
     const cgst = gst / 2;
     const sgst = gst / 2;
 
-    return { subtotal, gst, cgst, sgst, preRound, roundOff, gTotal };
-  }, [items, discount, oldGoldAmount, isGst]);
+    return { subtotal, gst, cgst, sgst, preRound, roundOff, gTotal, totalOldExchange };
+  }, [items, discount, oldGoldAmount, oldSilverAmount, isGst]);
 
   const selectedCust = useMemo(() => customers.find((c) => (c._id || c.id) === customerId), [customers, customerId]);
 
@@ -493,6 +510,8 @@ export default function BillingPage() {
     setItems([]);
     setDiscount("");
     setOldGoldAmount("");
+    setOldSilverAmount("");
+    setOldMetalType("Mixed");
     setCustomerId("");
     setCashAmount("");
     setOnlineAmount("");
@@ -538,6 +557,8 @@ export default function BillingPage() {
     console.log("Billing: editInvoice - items set", parsedItems.length);
     setDiscount(inv.discount || "");
     setOldGoldAmount(inv.oldGoldAmount || "");
+    setOldSilverAmount(inv.oldSilverAmount || "");
+    setOldMetalType(inv.oldMetalType || (inv.oldSilverAmount && inv.oldGoldAmount ? "Mixed" : inv.oldSilverAmount ? "Silver" : "Gold"));
     
     let cAmt = 0;
     let oAmt = 0;
@@ -697,6 +718,8 @@ export default function BillingPage() {
       items: cleanItems,
       discount: Number(discount) || 0,
       oldGoldAmount: Number(oldGoldAmount) || 0,
+      oldSilverAmount: Number(oldSilverAmount) || 0,
+      oldMetalType: oldMetalType,
       paymentMode: finalPaymentMode,
       subtotal: totals.subtotal,
       gstAmount: totals.gst,
@@ -1637,21 +1660,89 @@ export default function BillingPage() {
                       <Input type="number" className="w-32 h-8 text-right bg-background" value={discount} onChange={(e) => setDiscount(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0" />
                     </div>
                     
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-1.5">
-                        <Label className="text-muted-foreground font-normal">Old Gold / Silver (₹)</Label>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-1.5 text-[10px] text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200"
-                          onClick={() => setOpenOldGoldCalc(true)}
-                          title="Open Scrap Metal Trade-In Calculator"
-                        >
-                          <Calculator className="w-3 h-3 mr-1 text-amber-600" /> Calc
-                        </Button>
+                    <div className="space-y-2 py-0.5">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-1.5">
+                          <Label className="text-muted-foreground font-normal">
+                            {oldMetalType === "Gold" ? "Old Gold (₹)" : oldMetalType === "Silver" ? "Old Silver (₹)" : "Old Metal"}
+                          </Label>
+                          <Select value={oldMetalType} onValueChange={(val: "Gold" | "Silver" | "Mixed") => {
+                            setOldMetalType(val);
+                            if (val === "Gold") setOldSilverAmount("");
+                            if (val === "Silver") setOldGoldAmount("");
+                          }}>
+                            <SelectTrigger className="w-22 h-8 bg-background text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Gold">Gold</SelectItem>
+                              <SelectItem value="Silver">Silver</SelectItem>
+                              <SelectItem value="Mixed">Mixed</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-1.5 text-[10px] text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200"
+                            onClick={() => setOpenOldGoldCalc(true)}
+                            title="Open Scrap Metal Trade-In Calculator"
+                          >
+                            <Calculator className="w-3 h-3 mr-1 text-amber-600" /> Calc
+                          </Button>
+                        </div>
+                        
+                        {oldMetalType === "Gold" && (
+                          <Input
+                            type="number"
+                            className="w-32 h-8 text-right bg-background font-medium"
+                            value={oldGoldAmount}
+                            onChange={(e) => setOldGoldAmount(e.target.value === "" ? "" : Number(e.target.value))}
+                            placeholder="0"
+                          />
+                        )}
+
+                        {oldMetalType === "Silver" && (
+                          <Input
+                            type="number"
+                            className="w-32 h-8 text-right bg-background font-medium"
+                            value={oldSilverAmount}
+                            onChange={(e) => setOldSilverAmount(e.target.value === "" ? "" : Number(e.target.value))}
+                            placeholder="0"
+                          />
+                        )}
                       </div>
-                      <Input type="number" className="w-32 h-8 text-right bg-background font-medium" value={oldGoldAmount} onChange={(e) => setOldGoldAmount(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0" />
+
+                      {oldMetalType === "Mixed" && (
+                        <div className="bg-amber-50/60 rounded-md border border-amber-200/80 p-2.5 space-y-2 text-xs mt-1">
+                          <div className="flex items-center justify-between gap-4">
+                            <Label className="text-amber-900 font-medium">Old Gold (₹)</Label>
+                            <Input
+                              type="number"
+                              className="w-28 h-7 text-right bg-background font-medium"
+                              value={oldGoldAmount}
+                              onChange={(e) => setOldGoldAmount(e.target.value === "" ? "" : Number(e.target.value))}
+                              placeholder="0"
+                            />
+                          </div>
+                          <div className="flex items-center justify-between gap-4">
+                            <Label className="text-amber-900 font-medium">Old Silver (₹)</Label>
+                            <Input
+                              type="number"
+                              className="w-28 h-7 text-right bg-background font-medium"
+                              value={oldSilverAmount}
+                              onChange={(e) => setOldSilverAmount(e.target.value === "" ? "" : Number(e.target.value))}
+                              placeholder="0"
+                            />
+                          </div>
+                          {((Number(oldGoldAmount) || 0) > 0 || (Number(oldSilverAmount) || 0) > 0) && (
+                            <div className="flex items-center justify-between font-semibold text-amber-950 pt-1 border-t border-amber-200/80">
+                              <span>Total Metal Exchange:</span>
+                              <span>{inr((Number(oldGoldAmount) || 0) + (Number(oldSilverAmount) || 0))}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {isGst && (
@@ -2032,91 +2123,179 @@ export default function BillingPage() {
       )})}
       </div>
 
-      {/* OLD GOLD TRADE-IN CALCULATOR MODAL */}
+      {/* OLD GOLD/SILVER TRADE-IN CALCULATOR MODAL */}
       <Dialog open={openOldGoldCalc} onOpenChange={setOpenOldGoldCalc}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display flex items-center gap-2">
               <Scale className="w-5 h-5 text-amber-600" /> Scrap Metal Trade-in Calculator
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3 text-xs pt-2">
-            <div>
-              <Label className="text-xs">Gross Old Metal Weight (g)</Label>
-              <Input
-                type="number"
-                value={oldGoldForm.grossWeight || ""}
-                onChange={(e) => setOldGoldForm({ ...oldGoldForm, grossWeight: Number(e.target.value) })}
-                placeholder="e.g. 10.5"
-                className="mt-1 h-8 bg-background"
-              />
+          <div className="space-y-3 text-xs pt-1">
+            <div className="flex items-center justify-between gap-2 bg-muted/40 p-2 rounded-lg border border-border">
+              <Label className="text-xs font-semibold">Metal Category:</Label>
+              <Select value={oldCalcMetal} onValueChange={(v: "Gold" | "Silver" | "Mixed") => setOldCalcMetal(v)}>
+                <SelectTrigger className="w-32 h-8 bg-background text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Gold">Gold</SelectItem>
+                  <SelectItem value="Silver">Silver</SelectItem>
+                  <SelectItem value="Mixed">Mixed (Both)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            <div>
-              <Label className="text-xs">Melting / Dust Loss Weight (g)</Label>
-              <Input
-                type="number"
-                value={oldGoldForm.lossWeight || ""}
-                onChange={(e) => setOldGoldForm({ ...oldGoldForm, lossWeight: Number(e.target.value) })}
-                placeholder="e.g. 0.5"
-                className="mt-1 h-8 bg-background"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs">Purity Touch %</Label>
-                <Input
-                  type="number"
-                  value={oldGoldForm.purityPct || ""}
-                  onChange={(e) => setOldGoldForm({ ...oldGoldForm, purityPct: Number(e.target.value) })}
-                  placeholder="91.6"
-                  className="mt-1 h-8 bg-background"
-                />
+            {(oldCalcMetal === "Gold" || oldCalcMetal === "Mixed") && (
+              <div className="p-3 bg-amber-50/60 rounded-lg border border-amber-200/80 space-y-2">
+                <div className="font-bold text-amber-900">Gold Scrap Details</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-[11px]">Gross Wt (g)</Label>
+                    <Input
+                      type="number"
+                      value={oldGoldForm.grossWeight || ""}
+                      onChange={(e) => setOldGoldForm({ ...oldGoldForm, grossWeight: Number(e.target.value) })}
+                      placeholder="10.5"
+                      className="mt-0.5 h-7 bg-background text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[11px]">Melting Loss (g)</Label>
+                    <Input
+                      type="number"
+                      value={oldGoldForm.lossWeight || ""}
+                      onChange={(e) => setOldGoldForm({ ...oldGoldForm, lossWeight: Number(e.target.value) })}
+                      placeholder="0.5"
+                      className="mt-0.5 h-7 bg-background text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[11px]">Touch Purity %</Label>
+                    <Input
+                      type="number"
+                      value={oldGoldForm.purityPct || ""}
+                      onChange={(e) => setOldGoldForm({ ...oldGoldForm, purityPct: Number(e.target.value) })}
+                      placeholder="91.6"
+                      className="mt-0.5 h-7 bg-background text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[11px]">Scrap Rate (₹/g)</Label>
+                    <Input
+                      type="number"
+                      value={oldGoldForm.scrapRate || ""}
+                      onChange={(e) => setOldGoldForm({ ...oldGoldForm, scrapRate: Number(e.target.value) })}
+                      placeholder="7100"
+                      className="mt-0.5 h-7 bg-background text-xs"
+                    />
+                  </div>
+                </div>
               </div>
+            )}
 
-              <div>
-                <Label className="text-xs">Scrap Rate (₹/g)</Label>
-                <Input
-                  type="number"
-                  value={oldGoldForm.scrapRate || ""}
-                  onChange={(e) => setOldGoldForm({ ...oldGoldForm, scrapRate: Number(e.target.value) })}
-                  placeholder="7100"
-                  className="mt-1 h-8 bg-background"
-                />
+            {(oldCalcMetal === "Silver" || oldCalcMetal === "Mixed") && (
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+                <div className="font-bold text-slate-800">Silver Scrap Details</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-[11px]">Gross Wt (g)</Label>
+                    <Input
+                      type="number"
+                      value={oldSilverForm.grossWeight || ""}
+                      onChange={(e) => setOldSilverForm({ ...oldSilverForm, grossWeight: Number(e.target.value) })}
+                      placeholder="100"
+                      className="mt-0.5 h-7 bg-background text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[11px]">Melting Loss (g)</Label>
+                    <Input
+                      type="number"
+                      value={oldSilverForm.lossWeight || ""}
+                      onChange={(e) => setOldSilverForm({ ...oldSilverForm, lossWeight: Number(e.target.value) })}
+                      placeholder="2"
+                      className="mt-0.5 h-7 bg-background text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[11px]">Touch Purity %</Label>
+                    <Input
+                      type="number"
+                      value={oldSilverForm.purityPct || ""}
+                      onChange={(e) => setOldSilverForm({ ...oldSilverForm, purityPct: Number(e.target.value) })}
+                      placeholder="80"
+                      className="mt-0.5 h-7 bg-background text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[11px]">Scrap Rate (₹/g)</Label>
+                    <Input
+                      type="number"
+                      value={oldSilverForm.scrapRate || ""}
+                      onChange={(e) => setOldSilverForm({ ...oldSilverForm, scrapRate: Number(e.target.value) })}
+                      placeholder="85"
+                      className="mt-0.5 h-7 bg-background text-xs"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
 
             {(() => {
-              const netWt = Math.max(0, (oldGoldForm.grossWeight || 0) - (oldGoldForm.lossWeight || 0));
-              const pureWt = (netWt * (oldGoldForm.purityPct || 0)) / 100;
-              const valuation = Math.round(pureWt * (oldGoldForm.scrapRate || 0));
+              const goldNet = Math.max(0, (oldGoldForm.grossWeight || 0) - (oldGoldForm.lossWeight || 0));
+              const goldPure = (goldNet * (oldGoldForm.purityPct || 0)) / 100;
+              const goldValuation = Math.round(goldPure * (oldGoldForm.scrapRate || 0));
+
+              const silverNet = Math.max(0, (oldSilverForm.grossWeight || 0) - (oldSilverForm.lossWeight || 0));
+              const silverPure = (silverNet * (oldSilverForm.purityPct || 0)) / 100;
+              const silverValuation = Math.round(silverPure * (oldSilverForm.scrapRate || 0));
+
+              const totalValuation =
+                oldCalcMetal === "Gold" ? goldValuation : oldCalcMetal === "Silver" ? silverValuation : goldValuation + silverValuation;
+
               return (
-                <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 space-y-1.5 mt-3">
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Net Weight:</span>
-                    <span className="font-semibold text-foreground">{netWt.toFixed(2)} g</span>
-                  </div>
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Pure Gold Equivalent:</span>
-                    <span className="font-semibold text-foreground">{pureWt.toFixed(2)} g</span>
-                  </div>
+                <div className="p-3 bg-amber-50/80 rounded-lg border border-amber-200 space-y-1.5 mt-3 text-xs">
+                  {oldCalcMetal !== "Silver" && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Gold Scrap Credit:</span>
+                      <span className="font-semibold text-foreground">{inr(goldValuation)}</span>
+                    </div>
+                  )}
+                  {oldCalcMetal !== "Gold" && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Silver Scrap Credit:</span>
+                      <span className="font-semibold text-foreground">{inr(silverValuation)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-bold text-sm text-amber-900 border-t border-amber-200 pt-1.5">
-                    <span>Scrap Trade-in Credit:</span>
-                    <span>{inr(valuation)}</span>
+                    <span>Total Calculated Trade-in:</span>
+                    <span>{inr(totalValuation)}</span>
                   </div>
 
                   <Button
                     type="button"
                     className="w-full mt-3 bg-amber-700 hover:bg-amber-800 text-white h-8"
                     onClick={() => {
-                      setOldGoldAmount(valuation);
+                      if (oldCalcMetal === "Gold") {
+                        setOldGoldAmount(goldValuation);
+                        setOldSilverAmount("");
+                        setOldMetalType("Gold");
+                      } else if (oldCalcMetal === "Silver") {
+                        setOldSilverAmount(silverValuation);
+                        setOldGoldAmount("");
+                        setOldMetalType("Silver");
+                      } else {
+                        setOldGoldAmount(goldValuation);
+                        setOldSilverAmount(silverValuation);
+                        setOldMetalType("Mixed");
+                      }
                       setOpenOldGoldCalc(false);
-                      toast.success(`Applied ${inr(valuation)} Old Gold Trade-in Credit`);
+                      toast.success(`Applied ${inr(totalValuation)} Metal Trade-in Credit`);
                     }}
                   >
-                    Apply {inr(valuation)} Credit
+                    Apply {inr(totalValuation)} Credit to Billing
                   </Button>
                 </div>
               );
@@ -2527,7 +2706,22 @@ function InvoiceModal({ inv, onClose, isReturned }: { inv: any; onClose: () => v
                 <tbody>
                   <tr><td className="py-0.5 text-slate-600">Subtotal</td><td className="py-0.5 text-right font-semibold">{inr(inv.subtotal)}</td></tr>
                   {inv.discount > 0 && <tr><td className="py-0.5 text-slate-600">Discount</td><td className="py-0.5 text-right font-semibold text-green-600">- {inr(inv.discount)}</td></tr>}
-                  {invSettings.showOldGoldSection && inv.oldGoldAmount > 0 && <tr><td className="py-0.5 text-slate-600">Old Gold / Silver Exchange</td><td className="py-0.5 text-right font-semibold text-green-600">- {inr(inv.oldGoldAmount)}</td></tr>}
+                  {invSettings.showOldGoldSection && (
+                    <>
+                      {inv.oldMetalType === "Silver" ? (
+                        <tr><td className="py-0.5 text-slate-600">Old Silver Exchange</td><td className="py-0.5 text-right font-semibold text-green-600">- {inr(inv.oldSilverAmount || inv.oldGoldAmount)}</td></tr>
+                      ) : inv.oldMetalType === "Mixed" || (inv.oldGoldAmount > 0 && (inv.oldSilverAmount || 0) > 0) ? (
+                        <>
+                          {inv.oldGoldAmount > 0 && <tr><td className="py-0.5 text-slate-600">Old Gold Exchange</td><td className="py-0.5 text-right font-semibold text-green-600">- {inr(inv.oldGoldAmount)}</td></tr>}
+                          {(inv.oldSilverAmount || 0) > 0 && <tr><td className="py-0.5 text-slate-600">Old Silver Exchange</td><td className="py-0.5 text-right font-semibold text-green-600">- {inr(inv.oldSilverAmount)}</td></tr>}
+                        </>
+                      ) : inv.oldGoldAmount > 0 ? (
+                        <tr><td className="py-0.5 text-slate-600">Old Gold Exchange</td><td className="py-0.5 text-right font-semibold text-green-600">- {inr(inv.oldGoldAmount)}</td></tr>
+                      ) : (inv.oldSilverAmount || 0) > 0 ? (
+                        <tr><td className="py-0.5 text-slate-600">Old Silver Exchange</td><td className="py-0.5 text-right font-semibold text-green-600">- {inr(inv.oldSilverAmount)}</td></tr>
+                      ) : null}
+                    </>
+                  )}
                   {inv.type === "GST" && invSettings.showGstBreakdown && (
                     <>
                       <tr><td className="py-0.5 text-slate-600">CGST @ 1.5%</td><td className="py-0.5 text-right font-semibold">{inr(inv.gstAmount / 2)}</td></tr>
@@ -2538,7 +2732,8 @@ function InvoiceModal({ inv, onClose, isReturned }: { inv: any; onClose: () => v
                     <tr><td className="py-0.5 text-slate-600">GST (3%)</td><td className="py-0.5 text-right font-semibold">{inr(inv.gstAmount)}</td></tr>
                   )}
                   {(() => {
-                    const preRound = Math.round((inv.subtotal - inv.discount - inv.oldGoldAmount + (inv.type === "GST" ? inv.gstAmount : 0)) * 100) / 100;
+                    const totalOld = inv.oldMetalType === "Silver" ? (inv.oldSilverAmount || inv.oldGoldAmount || 0) : ((inv.oldGoldAmount || 0) + (inv.oldSilverAmount || 0));
+                    const preRound = Math.round((inv.subtotal - inv.discount - totalOld + (inv.type === "GST" ? inv.gstAmount : 0)) * 100) / 100;
                     const roundOff = Math.round((inv.total - preRound) * 100) / 100;
                     return roundOff !== 0 ? <tr><td className="py-0.5 text-slate-600">Round Off</td><td className="py-0.5 text-right font-semibold">{inr(roundOff)}</td></tr> : null;
                   })()}

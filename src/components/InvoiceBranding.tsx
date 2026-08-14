@@ -70,7 +70,8 @@ export function ThermalInvoiceReceipt({ inv, widthMm }: { inv: any; widthMm: 58 
     return `${inr(value)} Fixed`;
   };
 
-  const preRound = Math.round((inv.subtotal - inv.discount - inv.oldGoldAmount + (inv.type === "GST" ? inv.gstAmount : 0)) * 100) / 100;
+  const totalOldMetal = (inv.oldGoldAmount || 0) + (inv.oldSilverAmount || 0);
+  const preRound = Math.round((inv.subtotal - inv.discount - totalOldMetal + (inv.type === "GST" ? inv.gstAmount : 0)) * 100) / 100;
   const roundOff = Math.round((inv.total - preRound) * 100) / 100;
 
   return (
@@ -119,7 +120,16 @@ export function ThermalInvoiceReceipt({ inv, widthMm }: { inv: any; widthMm: 58 
       <div className="text-[10px] space-y-0.5">
         <div className="flex justify-between"><span>Subtotal</span><span>{inr(inv.subtotal)}</span></div>
         {inv.discount > 0 && <div className="flex justify-between"><span>Discount</span><span>-{inr(inv.discount)}</span></div>}
-        {inv.oldGoldAmount > 0 && <div className="flex justify-between"><span>Old Gold Exch.</span><span>-{inr(inv.oldGoldAmount)}</span></div>}
+        {(() => {
+          const gAmt = inv.oldMetalType === "Silver" ? 0 : inv.oldGoldAmount || 0;
+          const sAmt = inv.oldMetalType === "Silver" ? (inv.oldSilverAmount || inv.oldGoldAmount || 0) : (inv.oldSilverAmount || 0);
+          return (
+            <>
+              {gAmt > 0 && <div className="flex justify-between"><span>Old Gold Exch.</span><span>-{inr(gAmt)}</span></div>}
+              {sAmt > 0 && <div className="flex justify-between"><span>Old Silver Exch.</span><span>-{inr(sAmt)}</span></div>}
+            </>
+          );
+        })()}
         {inv.type === "GST" && (
           <>
             <div className="flex justify-between"><span>CGST @1.5%</span><span>{inr(inv.gstAmount / 2)}</span></div>
@@ -295,7 +305,16 @@ export function CompactA5Invoice({ inv }: { inv: any }) {
         <div className="w-56 space-y-1 text-right">
           <div className="flex justify-between"><span className="text-slate-600">Subtotal:</span><span>{inr(inv.subtotal)}</span></div>
           {inv.discount > 0 && <div className="flex justify-between text-green-700"><span>Discount:</span><span>-{inr(inv.discount)}</span></div>}
-          {invSettings.showOldGoldSection && inv.oldGoldAmount > 0 && <div className="flex justify-between text-green-700"><span>Old Gold Exch:</span><span>-{inr(inv.oldGoldAmount)}</span></div>}
+          {invSettings.showOldGoldSection && (() => {
+            const gAmt = inv.oldMetalType === "Silver" ? 0 : inv.oldGoldAmount || 0;
+            const sAmt = inv.oldMetalType === "Silver" ? (inv.oldSilverAmount || inv.oldGoldAmount || 0) : (inv.oldSilverAmount || 0);
+            return (
+              <>
+                {gAmt > 0 && <div className="flex justify-between text-green-700"><span>Old Gold Exch:</span><span>-{inr(gAmt)}</span></div>}
+                {sAmt > 0 && <div className="flex justify-between text-green-700"><span>Old Silver Exch:</span><span>-{inr(sAmt)}</span></div>}
+              </>
+            );
+          })()}
           {inv.type === "GST" && invSettings.showGstBreakdown ? (
             <>
               <div className="flex justify-between text-slate-600"><span>CGST (1.5%):</span><span>{inr(inv.gstAmount / 2)}</span></div>
@@ -416,7 +435,16 @@ export function BillOfSupplyEstimate({ inv }: { inv: any }) {
         <div className="w-64 space-y-1 text-right">
           <div className="flex justify-between text-slate-600"><span>Estimated Subtotal:</span><span>{inr(inv.subtotal)}</span></div>
           {inv.discount > 0 && <div className="flex justify-between text-green-700"><span>Discount:</span><span>-{inr(inv.discount)}</span></div>}
-          {inv.oldGoldAmount > 0 && <div className="flex justify-between text-green-700"><span>Old Gold Exch:</span><span>-{inr(inv.oldGoldAmount)}</span></div>}
+          {(() => {
+            const gAmt = inv.oldMetalType === "Silver" ? 0 : inv.oldGoldAmount || 0;
+            const sAmt = inv.oldMetalType === "Silver" ? (inv.oldSilverAmount || inv.oldGoldAmount || 0) : (inv.oldSilverAmount || 0);
+            return (
+              <>
+                {gAmt > 0 && <div className="flex justify-between text-green-700"><span>Old Gold Exch:</span><span>-{inr(gAmt)}</span></div>}
+                {sAmt > 0 && <div className="flex justify-between text-green-700"><span>Old Silver Exch:</span><span>-{inr(sAmt)}</span></div>}
+              </>
+            );
+          })()}
 
           <div className="flex justify-between font-bold text-base border-t border-slate-300 pt-1 text-slate-900">
             <span>Estimated Total:</span><span>{inr(inv.total)}</span>
@@ -575,7 +603,16 @@ export function PremiumA4Invoice({ inv }: { inv: any }) {
         <div className="w-full sm:w-1/2 max-w-xs ml-auto space-y-1 text-right">
           <div className="flex justify-between text-slate-600"><span>Subtotal:</span><span className="font-semibold">{inr(inv.subtotal)}</span></div>
           {inv.discount > 0 && <div className="flex justify-between text-emerald-700"><span>Discount:</span><span className="font-semibold">-{inr(inv.discount)}</span></div>}
-          {invSettings.showOldGoldSection && inv.oldGoldAmount > 0 && <div className="flex justify-between text-amber-800"><span>Old Gold Exch:</span><span className="font-semibold">-{inr(inv.oldGoldAmount)}</span></div>}
+          {invSettings.showOldGoldSection && (() => {
+            const gAmt = inv.oldMetalType === "Silver" ? 0 : inv.oldGoldAmount || 0;
+            const sAmt = inv.oldMetalType === "Silver" ? (inv.oldSilverAmount || inv.oldGoldAmount || 0) : (inv.oldSilverAmount || 0);
+            return (
+              <>
+                {gAmt > 0 && <div className="flex justify-between text-amber-800"><span>Old Gold Exch:</span><span className="font-semibold">-{inr(gAmt)}</span></div>}
+                {sAmt > 0 && <div className="flex justify-between text-amber-800"><span>Old Silver Exch:</span><span className="font-semibold">-{inr(sAmt)}</span></div>}
+              </>
+            );
+          })()}
           {inv.type === "GST" && (
             <div className="flex justify-between text-slate-600"><span>GST (3%):</span><span>{inr(inv.gstAmount)}</span></div>
           )}
@@ -743,7 +780,16 @@ export function LuxuryJewelleryInvoice({ inv }: { inv: any }) {
         <div className="w-full sm:w-1/2 max-w-xs ml-auto space-y-1 text-right font-serif">
           <div className="flex justify-between text-slate-700"><span>Subtotal Amount:</span><span className="font-sans font-semibold">{inr(inv.subtotal)}</span></div>
           {inv.discount > 0 && <div className="flex justify-between text-emerald-800"><span>Special Discount:</span><span className="font-sans font-semibold">-{inr(inv.discount)}</span></div>}
-          {invSettings.showOldGoldSection && inv.oldGoldAmount > 0 && <div className="flex justify-between text-amber-900"><span>Old Gold Exchange:</span><span className="font-sans font-semibold">-{inr(inv.oldGoldAmount)}</span></div>}
+          {invSettings.showOldGoldSection && (() => {
+            const gAmt = inv.oldMetalType === "Silver" ? 0 : inv.oldGoldAmount || 0;
+            const sAmt = inv.oldMetalType === "Silver" ? (inv.oldSilverAmount || inv.oldGoldAmount || 0) : (inv.oldSilverAmount || 0);
+            return (
+              <>
+                {gAmt > 0 && <div className="flex justify-between text-amber-900"><span>Old Gold Exchange:</span><span className="font-sans font-semibold">-{inr(gAmt)}</span></div>}
+                {sAmt > 0 && <div className="flex justify-between text-amber-900"><span>Old Silver Exchange:</span><span className="font-sans font-semibold">-{inr(sAmt)}</span></div>}
+              </>
+            );
+          })()}
           {inv.type === "GST" && (
             <div className="flex justify-between text-slate-700"><span>GST Tax (3%):</span><span className="font-sans font-semibold">{inr(inv.gstAmount)}</span></div>
           )}
@@ -918,7 +964,16 @@ export function ModernInvoice({ inv }: { inv: any }) {
         <div className="w-full sm:w-1/2 max-w-xs ml-auto space-y-1 text-right">
           <div className="flex justify-between text-slate-600"><span>Subtotal:</span><span className="font-semibold">{inr(inv.subtotal)}</span></div>
           {inv.discount > 0 && <div className="flex justify-between text-green-600"><span>Discount:</span><span className="font-semibold">-{inr(inv.discount)}</span></div>}
-          {invSettings.showOldGoldSection && inv.oldGoldAmount > 0 && <div className="flex justify-between text-amber-700"><span>Old Gold Exch:</span><span className="font-semibold">-{inr(inv.oldGoldAmount)}</span></div>}
+          {invSettings.showOldGoldSection && (() => {
+            const gAmt = inv.oldMetalType === "Silver" ? 0 : inv.oldGoldAmount || 0;
+            const sAmt = inv.oldMetalType === "Silver" ? (inv.oldSilverAmount || inv.oldGoldAmount || 0) : (inv.oldSilverAmount || 0);
+            return (
+              <>
+                {gAmt > 0 && <div className="flex justify-between text-amber-700"><span>Old Gold Exch:</span><span className="font-semibold">-{inr(gAmt)}</span></div>}
+                {sAmt > 0 && <div className="flex justify-between text-amber-700"><span>Old Silver Exch:</span><span className="font-semibold">-{inr(sAmt)}</span></div>}
+              </>
+            );
+          })()}
           {inv.type === "GST" && (
             <div className="flex justify-between text-slate-600"><span>GST Tax (3%):</span><span className="font-semibold">{inr(inv.gstAmount)}</span></div>
           )}
