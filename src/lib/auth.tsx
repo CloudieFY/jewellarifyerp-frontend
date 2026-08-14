@@ -27,6 +27,7 @@ export type TenantUser = {
 export type TenantShopInfo = {
   id: string;
   slug: string;
+  dbName?: string;
   shopName: string;
   plan: string;
   subscriptionEndDate: string;

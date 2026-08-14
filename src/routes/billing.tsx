@@ -170,27 +170,22 @@ export default function BillingPage() {
 
     const shopName = tenantSession?.shop?.shopName || "Our Jewellery Shop";
     const shopPhone = tenantSession?.shop?.phone || "";
-    const invId = inv._id || inv.id;
     
-    // Digital Bill link
-    const billLink = invId ? `${window.location.protocol}//${window.location.host}/v-bill/${invId}` : "";
     const isPaid = (inv.balanceDue || 0) <= 0;
     const itemsList = inv.items?.map((it: any) => `• ${it.name} (${it.netWeight || 0}g)`).join("\n") || "Jewellery Items";
 
-    const msg = `✨ *${shopName}* ✨\n🧾 *INVOICE BILL / ESTIMATE*\n\nDear *${inv.customerName || "Customer"}*,\nThank you for shopping with us! Here are your invoice bill details:\n\n📌 *Invoice No:* ${inv.number}\n📅 *Date:* ${formatDate(inv.createdAt || new Date())}\n💳 *Payment Mode:* ${inv.paymentMode}\n💰 *Grand Total:* ${inr(inv.total)}\n${!isPaid ? `⚠️ *Balance Due:* ${inr(inv.balanceDue || 0)}\n` : '✅ *Status:* PAID COMPLETE\n'}\n🛍️ *Items Purchased:*\n${itemsList}\n${billLink ? `\n🔗 *View Digital Invoice Bill:*\n${billLink}\n` : ''}\nThank you for your business! 💍✨${shopPhone ? `\nFor queries call: ${shopPhone}` : ''}`;
+    const msg = `✨ *${shopName}* ✨\n🧾 *INVOICE BILL / ESTIMATE*\n\nDear *${inv.customerName || "Customer"}*,\nThank you for shopping with us! Here are your invoice bill details:\n\n📌 *Invoice No:* ${inv.number}\n📅 *Date:* ${formatDate(inv.createdAt || new Date())}\n💳 *Payment Mode:* ${inv.paymentMode}\n💰 *Grand Total:* ${inr(inv.total)}\n${!isPaid ? `⚠️ *Balance Due:* ${inr(inv.balanceDue || 0)}\n` : '✅ *Status:* PAID COMPLETE\n'}\n🛍️ *Items Purchased:*\n${itemsList}\n\nThank you for your business! 💍✨${shopPhone ? `\nFor queries call: ${shopPhone}` : ''}`;
+
+    const rawMobile = inv.customerMobile || (inv as any).phone || (inv as any).mobile || "";
+    let displayPhone = rawMobile.replace(/\D/g, "");
+    if (displayPhone.startsWith("91") && displayPhone.length === 12) {
+      displayPhone = displayPhone.slice(2);
+    }
 
     setWaInvItem(inv);
     setWaInvMessage(msg);
-
-    if (cleanPhone.length >= 10) {
-      setWaInvPhone(cleanPhone);
-      const encoded = encodeURIComponent(msg);
-      window.open(`https://wa.me/${cleanPhone}?text=${encoded}`, "_blank");
-      toast.success(`Opening WhatsApp chat for ${inv.customerName || cleanPhone}!`);
-    } else {
-      setWaInvPhone("");
-      setWaInvModalOpen(true);
-    }
+    setWaInvPhone(displayPhone || rawMobile);
+    setWaInvModalOpen(true);
   };
 
   const [type, setType] = useState<"GST" | "NON-GST">("GST");
@@ -2733,9 +2728,13 @@ export default function BillingPage() {
                   return;
                 }
                 let clean = waInvPhone.replace(/\D/g, "");
-                if (clean.length === 10) clean = "91" + clean;
-                if (clean.length < 10) {
-                  toast.error("Please enter a valid 10-digit mobile number.");
+                if (clean.length === 10) {
+                  clean = "91" + clean;
+                } else if (clean.length > 0 && !clean.startsWith("91")) {
+                  clean = "91" + clean;
+                }
+                if (!clean) {
+                  toast.error("Please enter a valid mobile number.");
                   return;
                 }
                 const encoded = encodeURIComponent(waInvMessage);
@@ -2750,7 +2749,7 @@ export default function BillingPage() {
         </DialogContent>
       </Dialog>
 
-      {viewing && <InvoiceModal inv={viewing} isReturned={new Set(salesReturns.map((r: any) => r.invoiceId)).has((viewing as any)._id || (viewing as any).id)} onClose={() => setViewing(null)} onSendWhatsApp={handleSendInvoiceWhatsApp} />}
+      {viewing && <InvoiceModal inv={viewing} isReturned={new Set(salesReturns.map((r: any) => r.invoiceId)).has((viewing as any)._id || (viewing as any).id)} onClose={() => setViewing(null)} />}
     </Layout>
   );
 }
@@ -2807,7 +2806,7 @@ function NumI({ v, on, className = "w-24 h-8", onKeyDown }: { v: number; on: (n:
 
 
 
-function InvoiceModal({ inv, onClose, isReturned, onSendWhatsApp }: { inv: any; onClose: () => void; isReturned?: boolean; onSendWhatsApp?: (inv: any) => void }) {
+function InvoiceModal({ inv, onClose, isReturned }: { inv: any; onClose: () => void; isReturned?: boolean }) {
   const { tenantSession } = useAuth();
   const invSettings: InvoiceSettings = { ...defaultInvoiceSettings, ...((tenantSession?.shop as any)?.invoiceSettings || {}) };
 
@@ -3194,11 +3193,6 @@ function InvoiceModal({ inv, onClose, isReturned, onSendWhatsApp }: { inv: any; 
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={onClose}>Close</Button>
-            {onSendWhatsApp && (
-              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold" onClick={() => onSendWhatsApp(inv)}>
-                <WhatsAppIcon className="w-4 h-4 mr-1.5 shrink-0" /> Send Bill on WhatsApp
-              </Button>
-            )}
             <Button onClick={triggerPrint}>
               <Printer className="w-4 h-4 mr-2" /> Print Bill
             </Button>

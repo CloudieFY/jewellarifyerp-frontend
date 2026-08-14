@@ -9,7 +9,7 @@ import { formatDate, triggerPrint } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function InvoiceViewerPage() {
-  const { invoiceId } = useParams<{ invoiceId: string }>();
+  const { dbName, invoiceId } = useParams<{ dbName?: string; invoiceId: string }>();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +21,11 @@ export default function InvoiceViewerPage() {
       return;
     }
 
-    fetch(`/api/public/invoice/${invoiceId}`)
+    const endpoint = dbName
+      ? `/api/public/invoice/${dbName}/${invoiceId}`
+      : `/api/public/invoice/${invoiceId}`;
+
+    fetch(endpoint)
       .then((res) => {
         if (!res.ok) throw new Error("Invoice bill not found");
         return res.json();
@@ -34,7 +38,7 @@ export default function InvoiceViewerPage() {
         setError(err.message || "Failed to load invoice details");
         setLoading(false);
       });
-  }, [invoiceId]);
+  }, [dbName, invoiceId]);
 
   if (loading) {
     return (
