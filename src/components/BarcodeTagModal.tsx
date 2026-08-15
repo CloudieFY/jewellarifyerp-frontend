@@ -53,6 +53,115 @@ export function BarcodeTagModal({ product, open, onOpenChange }: BarcodeTagModal
   if (!product) return null;
 
   const handlePrint = () => {
+    try {
+      const tagContent = document.querySelector(".printable-tag-wrapper");
+      if (tagContent) {
+        const printWin = window.open("", "_blank", "width=650,height=550");
+        if (printWin) {
+          printWin.document.write(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>Barcode Tag - ${shopName}</title>
+                <style>
+                  @page { margin: 0; size: auto; }
+                  body {
+                    margin: 0;
+                    padding: 10px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    background: #ffffff;
+                    color: #000000;
+                    font-family: system-ui, -apple-system, sans-serif;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                  }
+                  .barcode-print-container {
+                    margin-bottom: 10px;
+                    page-break-after: always;
+                    break-after: page;
+                  }
+                  .barcode-print-container:last-child {
+                    page-break-after: auto;
+                    break-after: auto;
+                  }
+                  .w-\\[330px\\] { width: 330px; }
+                  .h-\\[110px\\] { height: 110px; }
+                  .w-\\[260px\\] { width: 260px; }
+                  .h-\\[105px\\] { height: 105px; }
+                  .w-\\[220px\\] { width: 220px; }
+                  .h-\\[120px\\] { height: 120px; }
+                  .w-\\[145px\\] { width: 145px; }
+                  .w-\\[165px\\] { width: 165px; }
+                  .bg-white { background-color: #ffffff; }
+                  .border { border: 1px solid #cbd5e1; }
+                  .border-r { border-right: 1px solid #cbd5e1; }
+                  .border-t { border-top: 1px solid #e2e8f0; }
+                  .border-dashed { border-style: dashed; }
+                  .rounded-md { border-radius: 6px; }
+                  .p-2 { padding: 8px; }
+                  .pr-1\\.5 { padding-right: 6px; }
+                  .pl-0\\.5 { padding-left: 2px; }
+                  .pt-1 { padding-top: 4px; }
+                  .mt-1 { margin-top: 4px; }
+                  .mt-0\\.5 { margin-top: 2px; }
+                  .flex { display: flex; }
+                  .flex-col { flex-direction: column; }
+                  .items-center { align-items: center; }
+                  .justify-between { justify-content: space-between; }
+                  .h-full { height: 100%; }
+                  .w-full { width: 100%; }
+                  .h-11 { height: 44px; }
+                  .h-12 { height: 48px; }
+                  .w-7 { width: 28px; }
+                  .h-7 { height: 28px; }
+                  .w-14 { width: 56px; }
+                  .h-14 { height: 56px; }
+                  .text-\\[10px\\] { font-size: 10px; }
+                  .text-\\[11px\\] { font-size: 11px; }
+                  .text-\\[9.5px\\] { font-size: 9.5px; }
+                  .text-\\[9px\\] { font-size: 9px; }
+                  .text-\\[8.5px\\] { font-size: 8.5px; }
+                  .font-bold { font-weight: 700; }
+                  .font-semibold { font-weight: 600; }
+                  .font-mono { font-family: monospace; }
+                  .text-center { text-align: center; }
+                  .text-right { text-align: right; }
+                  .uppercase { text-transform: uppercase; }
+                  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                  .object-contain { object-fit: contain; }
+                  .shrink-0 { flex-shrink: 0; }
+                  .space-y-0\\.5 > * + * { margin-top: 2px; }
+                  .text-amber-900 { color: #78350f; }
+                  .text-slate-900 { color: #0f172a; }
+                  .text-slate-700 { color: #334155; }
+                  .text-slate-500 { color: #64748b; }
+                  img { max-width: 100%; display: block; }
+                </style>
+              </head>
+              <body>
+                ${tagContent.innerHTML}
+                <script>
+                  window.onload = function() {
+                    setTimeout(function() {
+                      window.focus();
+                      window.print();
+                      window.close();
+                    }, 250);
+                  };
+                </script>
+              </body>
+            </html>
+          `);
+          printWin.document.close();
+          return;
+        }
+      }
+    } catch (e) {
+      console.error("Popup print failed, falling back to window.print()", e);
+    }
     window.print();
   };
 
@@ -110,7 +219,7 @@ export function BarcodeTagModal({ product, open, onOpenChange }: BarcodeTagModal
 
         {/* Print Printable Area */}
         <div className="my-2 p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-col items-center justify-center print:m-0 print:p-0 print:border-none print:bg-white print:w-full">
-          <div className="printable-tag-wrapper">
+          <div className="printable-tag-wrapper print-section">
             {Array.from({ length: Math.max(1, quantity) }).map((_, idx) => (
               <div key={idx} className="barcode-print-container mb-3 last:mb-0">
                 {/* JEWELLERY DUMBBELL / RAT-TAIL TAG FORMAT */}

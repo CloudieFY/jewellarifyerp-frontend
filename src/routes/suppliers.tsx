@@ -271,9 +271,21 @@ export default function SuppliersPage() {
     }
   };
 
+  const activeBillNumbers = useMemo(() => new Set(purchases.map((p: any) => p.billNo).filter(Boolean)), [purchases]);
+
+  const isDocActive = (t: SupplierTransaction) => {
+    if (!t.note) return true;
+    const match = t.note.match(/(?:PUR|PO|PR)-\d+/i);
+    if (match) {
+      const billNo = match[0];
+      return activeBillNumbers.has(billNo);
+    }
+    return true;
+  };
+
   const goldTx = useMemo(() => {
     if (!detailSupplier?.transactions) return [];
-    let txs = detailSupplier.transactions.filter(t => t.kind !== "Payment" && t.metal === "Gold");
+    let txs = detailSupplier.transactions.filter(t => t.kind !== "Payment" && t.metal === "Gold" && isDocActive(t));
     if (debouncedTxSearchQuery) {
       const sq = debouncedTxSearchQuery.toLowerCase();
       txs = txs.filter(t =>
@@ -285,11 +297,11 @@ export default function SuppliersPage() {
     }
     if (txSearchDate) txs = txs.filter(t => t.date === txSearchDate);
     return txs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [detailSupplier, debouncedTxSearchQuery, txSearchDate]);
+  }, [detailSupplier, debouncedTxSearchQuery, txSearchDate, activeBillNumbers]);
 
   const silverTx = useMemo(() => {
     if (!detailSupplier?.transactions) return [];
-    let txs = detailSupplier.transactions.filter(t => t.kind !== "Payment" && t.metal === "Silver");
+    let txs = detailSupplier.transactions.filter(t => t.kind !== "Payment" && t.metal === "Silver" && isDocActive(t));
     if (debouncedTxSearchQuery) {
       const sq = debouncedTxSearchQuery.toLowerCase();
       txs = txs.filter(t =>
@@ -301,12 +313,12 @@ export default function SuppliersPage() {
     }
     if (txSearchDate) txs = txs.filter(t => t.date === txSearchDate);
     return txs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [detailSupplier, debouncedTxSearchQuery, txSearchDate]);
+  }, [detailSupplier, debouncedTxSearchQuery, txSearchDate, activeBillNumbers]);
 
   const paymentTx = useMemo(() => {
     if (!detailSupplier?.transactions) return [];
-    return detailSupplier.transactions.filter(t => t.kind === "Payment").sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [detailSupplier]);
+    return detailSupplier.transactions.filter(t => t.kind === "Payment" && isDocActive(t)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [detailSupplier, activeBillNumbers]);
 
   const totalGoldPages = Math.ceil(goldTx.length / 10) || 1;
   const currentGoldPage = Math.min(goldPage, totalGoldPages);
