@@ -110,7 +110,30 @@ export default function InvoiceViewerPage() {
       {/* Main Invoice Card */}
       <main className="max-w-xl mx-auto p-4 space-y-4 print:max-w-none print:p-0">
         <Card className="border border-border/80 shadow-md bg-card print:border-none print:shadow-none">
-          <CardContent className="p-5 sm:p-7 space-y-6">
+          <CardContent className="p-5 sm:p-7 space-y-6 relative overflow-hidden">
+            {invoice.isReturned && (
+              <div
+                className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-10 print:flex overflow-hidden"
+                style={{ transform: 'rotate(-30deg)' }}
+              >
+                <span
+                  style={{
+                    fontSize: '4.5rem',
+                    fontWeight: 900,
+                    color: 'rgba(220, 38, 38, 0.14)',
+                    letterSpacing: '0.08em',
+                    whiteSpace: 'nowrap',
+                    border: '5px solid rgba(220, 38, 38, 0.14)',
+                    padding: '0.25em 0.6em',
+                    borderRadius: '0.2em',
+                    lineHeight: 1,
+                    userSelect: 'none',
+                  }}
+                >
+                  RETURNED
+                </span>
+              </div>
+            )}
             {/* Header branding */}
             <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-4 border-b border-border">
               <div>

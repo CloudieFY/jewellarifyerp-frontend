@@ -1132,7 +1132,30 @@ function CreditNoteViewModal({ salesReturn, onClose }: { salesReturn: any; onClo
     <div className="print-section fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:static print:block print:bg-white print:p-0 print:overflow-visible print:h-auto overflow-y-auto pointer-events-auto">
       <div className="bg-white w-full max-w-3xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:my-0 print:max-h-none print:block">
         <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
-        <div className="p-6 sm:p-10 print:p-2 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
+        <div className="p-6 sm:p-10 print:p-2 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible relative">
+
+          {/* SALES RETURN Watermark Overlay */}
+          <div
+            className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-10 print:flex overflow-hidden"
+            style={{ transform: 'rotate(-30deg)' }}
+          >
+            <span
+              style={{
+                fontSize: '5rem',
+                fontWeight: 900,
+                color: 'rgba(225, 29, 72, 0.12)',
+                letterSpacing: '0.08em',
+                whiteSpace: 'nowrap',
+                border: '6px solid rgba(225, 29, 72, 0.12)',
+                padding: '0.25em 0.6em',
+                borderRadius: '0.2em',
+                lineHeight: 1,
+                userSelect: 'none',
+              }}
+            >
+              SALES RETURN
+            </span>
+          </div>
 
           <ShopHeader documentLabel="SALES RETURN CREDIT NOTE" compact />
 
