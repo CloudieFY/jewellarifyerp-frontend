@@ -30,7 +30,7 @@ import {
   Keyboard,
   ChevronRight,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode, useMemo } from "react";
+import { useEffect, useState, useRef, useLayoutEffect, type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -106,6 +106,24 @@ const adminGroups: { title: string; items: NavItem[] }[] = [
 /* ─────────────────────────────────────────────────────────────── */
 /*  Sidebar body                                                   */
 /* ─────────────────────────────────────────────────────────────── */
+const SIDEBAR_SCROLL_KEY = "ajms_sidebar_scroll_top";
+let sidebarScrollPosition = (() => {
+  try {
+    return parseInt(sessionStorage.getItem(SIDEBAR_SCROLL_KEY) || "0", 10) || 0;
+  } catch {
+    return 0;
+  }
+})();
+
+function updateSidebarScroll(top: number) {
+  sidebarScrollPosition = top;
+  try {
+    sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(top));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
   const { tenantSession } = useAuth();
@@ -114,6 +132,38 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const shopName   = tenantSession?.shop?.shopName || "JewelShop";
   const logoUrl    = tenantSession?.shop?.logoUrl;
   const initials   = shopName.slice(0, 2).toUpperCase();
+
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const container = scrollAreaRef.current;
+    if (!container) return;
+
+    const viewport = container.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]");
+    if (!viewport) return;
+
+    viewport.scrollTop = sidebarScrollPosition;
+
+    const rafId = requestAnimationFrame(() => {
+      if (viewport) viewport.scrollTop = sidebarScrollPosition;
+    });
+
+    const timeoutId = setTimeout(() => {
+      if (viewport) viewport.scrollTop = sidebarScrollPosition;
+    }, 50);
+
+    const handleScroll = () => {
+      updateSidebarScroll(viewport.scrollTop);
+    };
+
+    viewport.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(timeoutId);
+      viewport.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
 
   const groups = isKarigar
     ? [{ title: "nav.groupMyWorkspace", items: [{ to: "/karigar-tasks", label: "nav.myTasks", icon: ClipboardList }] }]
@@ -158,48 +208,50 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       {/* ── Nav ── */}
-      <ScrollArea className="flex-1">
-        <nav className="px-3 py-3 space-y-4">
-          {groups.map((g) => (
-            <div key={g.title}>
-              {/* Group label */}
-              <div className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">
-                {t(g.title)}
-              </div>
+      <div ref={scrollAreaRef} className="flex-1 flex flex-col min-h-0">
+        <ScrollArea className="flex-1">
+          <nav className="px-3 py-3 space-y-4">
+            {groups.map((g) => (
+              <div key={g.title}>
+                {/* Group label */}
+                <div className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">
+                  {t(g.title)}
+                </div>
 
-              <div className="space-y-0.5">
-                {g.items.map((n) => {
-                  const Icon = n.icon;
-                  return (
-                    <NavLink
-                      key={n.to}
-                      to={n.to === "/" ? "/dashboard" : n.to}
-                      end={n.to === "/"}
-                      onClick={onNavigate}
-                      className={({ isActive }) =>
-                        cn(
-                          "group flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-medium transition-all duration-150",
-                          isActive
-                            ? "bg-primary text-primary-foreground shadow-sm"
-                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                        )
-                      }
-                    >
-                      {({ isActive }) => (
-                        <>
-                          <Icon className={cn("w-4 h-4 shrink-0", isActive ? "opacity-100" : "opacity-60 group-hover:opacity-100")} />
-                          <span className="flex-1 truncate">{t(n.label)}</span>
-                          {isActive && <ChevronRight className="w-3 h-3 opacity-50 shrink-0" />}
-                        </>
-                      )}
-                    </NavLink>
-                  );
-                })}
+                <div className="space-y-0.5">
+                  {g.items.map((n) => {
+                    const Icon = n.icon;
+                    return (
+                      <NavLink
+                        key={n.to}
+                        to={n.to === "/" ? "/dashboard" : n.to}
+                        end={n.to === "/"}
+                        onClick={onNavigate}
+                        className={({ isActive }) =>
+                          cn(
+                            "group flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-medium transition-all duration-150",
+                            isActive
+                              ? "bg-primary text-primary-foreground shadow-sm"
+                              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                          )
+                        }
+                      >
+                        {({ isActive }) => (
+                          <>
+                            <Icon className={cn("w-4 h-4 shrink-0", isActive ? "opacity-100" : "opacity-60 group-hover:opacity-100")} />
+                            <span className="flex-1 truncate">{t(n.label)}</span>
+                            {isActive && <ChevronRight className="w-3 h-3 opacity-50 shrink-0" />}
+                          </>
+                        )}
+                      </NavLink>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
-        </nav>
-      </ScrollArea>
+            ))}
+          </nav>
+        </ScrollArea>
+      </div>
 
       {/* ── Logout ── */}
       <div className="px-3 py-3 border-t border-sidebar-border">
