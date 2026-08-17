@@ -62,7 +62,7 @@ export default function ContactPage() {
       title: "WhatsApp Assistance",
       desc: "Chat directly for quick assistance & video demo",
       lines: [
-        { text: "+91 9691365052 (Chat Now)", href: "https://wa.me/9691365052?text=Hello!%20I'd%20like%20to%20know%20more%20about%20jewellarifyerp." },
+        { text: "+91 9691365052 (Chat Now - India 🇮🇳)", href: "https://wa.me/919691365052?text=Hello!%20I'd%20like%20to%20know%20more%20about%20jewellarifyerp." },
       ],
       badge: "Instant Chat",
     },
@@ -182,7 +182,7 @@ export default function ContactPage() {
                     <Input
                       id="name"
                       value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, name: e.target.value })}
                       className="mt-1 rounded-xl"
                       placeholder="e.g. Rajesh Soni"
                       required
@@ -196,7 +196,7 @@ export default function ContactPage() {
                     <Input
                       id="shopName"
                       value={form.shopName}
-                      onChange={(e) => setForm({ ...form, shopName: e.target.value })}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, shopName: e.target.value })}
                       className="mt-1 rounded-xl"
                       placeholder="e.g. Soni Jewellers"
                       required
@@ -212,7 +212,7 @@ export default function ContactPage() {
                     <Input
                       id="phone"
                       value={form.phone}
-                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, phone: e.target.value })}
                       className="mt-1 rounded-xl"
                       placeholder="9000000000"
                       required
@@ -227,7 +227,7 @@ export default function ContactPage() {
                       id="email"
                       type="email"
                       value={form.email}
-                      onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, email: e.target.value })}
                       className="mt-1 rounded-xl"
                       placeholder="e.g. info@sonijewellers.com"
                     />
@@ -241,7 +241,7 @@ export default function ContactPage() {
                   <Input
                     id="address"
                     value={form.address}
-                    onChange={(e) => setForm({ ...form, address: e.target.value })}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, address: e.target.value })}
                     className="mt-1 rounded-xl"
                     placeholder="e.g. Jaipur, Rajasthan"
                   />

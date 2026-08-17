@@ -802,7 +802,7 @@ export function Footer() {
 export function WhatsAppButton() {
   return (
     <a
-      href="https://wa.me/9691365052?text=Hello!%20I'm%20looking%20for%20a%20Jewellery%20Management%20Software.%0APlease%20contact%20me%20with%20the%20demo%20and%20subscription%20plans."
+      href="https://wa.me/919691365052?text=Hello!%20I'm%20looking%20for%20a%20Jewellery%20Management%20Software.%0APlease%20contact%20me%20with%20the%20demo%20and%20subscription%20plans."
       target="_blank"
       rel="noopener noreferrer"
       className="fixed bottom-6 right-6 z-50 grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-white shadow-xl transition-transform hover:scale-110 active:scale-95"
@@ -855,23 +855,23 @@ export function DemoRequestModal({ children }: { children: ReactNode }) {
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div>
             <Label htmlFor="name" className="text-xs font-bold uppercase text-slate-700">Full Name *</Label>
-            <Input id="name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="mt-1" placeholder="e.g. Rajesh Soni" required />
+            <Input id="name" value={form.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, name: e.target.value })} className="mt-1" placeholder="e.g. Rajesh Soni" required />
           </div>
           <div>
             <Label htmlFor="shopName" className="text-xs font-bold uppercase text-slate-700">Showroom / Shop Name *</Label>
-            <Input id="shopName" value={form.shopName} onChange={e => setForm({ ...form, shopName: e.target.value })} className="mt-1" placeholder="e.g. Soni Jewellers" required />
+            <Input id="shopName" value={form.shopName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, shopName: e.target.value })} className="mt-1" placeholder="e.g. Soni Jewellers" required />
           </div>
           <div>
             <Label htmlFor="phone" className="text-xs font-bold uppercase text-slate-700">Phone Number *</Label>
-            <Input id="phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="mt-1" placeholder="9000000000" required />
+            <Input id="phone" value={form.phone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, phone: e.target.value })} className="mt-1" placeholder="9000000000" required />
           </div>
           <div>
             <Label htmlFor="email" className="text-xs font-bold uppercase text-slate-700">Email Address</Label>
-            <Input id="email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="mt-1" placeholder="e.g. info@sonijewellers.com" />
+            <Input id="email" type="email" value={form.email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, email: e.target.value })} className="mt-1" placeholder="e.g. info@sonijewellers.com" />
           </div>
           <div>
             <Label htmlFor="address" className="text-xs font-bold uppercase text-slate-700">City / Location</Label>
-            <Input id="address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="mt-1" placeholder="e.g. Jaipur, Rajasthan" />
+            <Input id="address" value={form.address} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, address: e.target.value })} className="mt-1" placeholder="e.g. Jaipur, Rajasthan" />
           </div>
           <DialogFooter className="pt-2">
             <Button type="submit" disabled={isSubmitting} className="w-full bg-[#FA8112] hover:bg-[#FA8112]/90 text-white font-bold py-3 rounded-xl shadow-md">
