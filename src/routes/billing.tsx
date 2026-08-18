@@ -389,6 +389,7 @@ export default function BillingPage() {
       payments: [initialPayment],
       items: [
         {
+          productId: "manual-due",
           name: manualDue.itemName.trim() || "Manual Due",
           purity: "22K",
           netWeight: 0,
@@ -396,6 +397,8 @@ export default function BillingPage() {
           ratePerGram: 0,
           totalPrice: amount,
           makingCharge: 0,
+          stoneCharge: 0,
+          gstPct: 0,
           qty: 1,
         },
       ],
