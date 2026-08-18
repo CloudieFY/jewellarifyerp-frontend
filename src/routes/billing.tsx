@@ -332,8 +332,8 @@ export default function BillingPage() {
   });
 
   const saveManualDue = async () => {
-    if (!manualDue.customerName || !manualDue.customerName.trim() || !manualDue.itemName || !manualDue.itemName.trim() || !manualDue.dueAmount || Number(manualDue.dueAmount) <= 0) {
-      toast.error("Please enter Customer Name, Item Name/Reason, and a valid Due Amount.");
+    if (!manualDue.customerName || !manualDue.customerName.trim() || !manualDue.dueAmount || Number(manualDue.dueAmount) <= 0) {
+      toast.error("Please enter Customer Name and a valid Due Amount.");
       return;
     }
 
@@ -389,7 +389,7 @@ export default function BillingPage() {
       payments: [initialPayment],
       items: [
         {
-          name: manualDue.itemName.trim(),
+          name: manualDue.itemName.trim() || "Manual Due",
           purity: "22K",
           netWeight: 0,
           grossWeight: 0,
@@ -2622,7 +2622,7 @@ export default function BillingPage() {
             </div>
 
             <div>
-              <Label className="text-xs font-semibold text-muted-foreground uppercase">Item Name / Reason *</Label>
+              <Label className="text-xs font-semibold text-muted-foreground uppercase">Item Name / Reason</Label>
               <Input
                 value={manualDue.itemName}
                 onChange={(e) => setManualDue({ ...manualDue, itemName: e.target.value })}
