@@ -82,7 +82,12 @@ export function useFormKeyboardNav(onSave?: () => void) {
         ? focusable[idx - 1]
         : focusable[idx + 1];
 
-      if (!next) return;
+      if (!next) {
+        if (isEnter && !isArrowUp) {
+          onSave?.();
+        }
+        return;
+      }
       next.focus();
       if (next instanceof HTMLInputElement) next.select();
     },

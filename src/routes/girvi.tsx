@@ -597,15 +597,18 @@ export default function GirviPage() {
           </Button>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button size="lg" className="w-full sm:w-auto" onClick={startNew}>
+              <Button data-new-button="true" size="lg" className="w-full sm:w-auto" onClick={startNew}>
                 <Plus className="w-4 h-4 mr-2" /> {t("girvi.newGirvi")}
               </Button>
             </DialogTrigger>
-          <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto p-4 sm:p-6" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
-            <DialogHeader>
-              <DialogTitle>{editingId ? t("girvi.editLoan") : t("girvi.newLoan")}</DialogTitle>
+          <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-neutral-50 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
+            <DialogHeader className="p-3.5 sm:p-4 bg-rose-100/80 dark:bg-slate-900 border-b border-rose-300 dark:border-rose-950 flex items-center justify-between">
+              <DialogTitle className="text-base sm:text-lg font-bold font-sans text-rose-950 dark:text-rose-100 uppercase tracking-wide flex items-center gap-2">
+                <Landmark className="w-5 h-5 text-rose-700 dark:text-rose-400" />
+                <span>{editingId ? t("girvi.editLoan") : t("girvi.newLoan")}</span>
+              </DialogTitle>
             </DialogHeader>
-            <div className="space-y-3">
+            <div className="p-4 sm:p-6 space-y-4">
               <div>
                 <Label>{t("girvi.arrivalDate")}</Label>
                 {(() => {

@@ -25,7 +25,8 @@ import {
   Plus, Trash2, Pencil, Image as ImageIcon, Printer,
   ScanBarcode, Award, Boxes, ArrowLeftRight,
   FileSpreadsheet, CheckCircle2, AlertTriangle, Search,
-  Store, DollarSign, BarChart3, History, Scale
+  Store, DollarSign, BarChart3, History, Scale,
+  PhoneCall, ArrowDownRight, ArrowUpRight, Download, Filter
 } from "lucide-react";
 import { inr, type Product } from "@/lib/storage";
 import { useDebounce } from "@/lib/utils";
@@ -33,6 +34,7 @@ import { useTenantAPI } from "@/lib/api";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import JsBarcode from "jsbarcode";
+import * as XLSX from "xlsx";
 import { useAuth } from "@/lib/auth";
 import { BarcodeTagModal } from "@/components/BarcodeTagModal";
 
@@ -185,10 +187,25 @@ export default function InventoryPage() {
     queryFn: () => api.stockLedger.get()
   });
 
+  const { data: invoices = [] } = useQuery<any[]>({
+    queryKey: ["invoices"],
+    queryFn: api.invoices.getAll
+  });
+
+  const { data: purchases = [] } = useQuery<any[]>({
+    queryKey: ["purchases"],
+    queryFn: api.purchases.getAll
+  });
+
   const { data: summaryReport } = useQuery({
     queryKey: ["inventorySummaryReport"],
     queryFn: api.inventoryReports.getSummary
   });
+
+  // State for Item Ledger Modal & Stock Audit Filter
+  const [ledgerSelectedItem, setLedgerSelectedItem] = useState<ExtendedProduct | null>(null);
+  const [ledgerSearchTerm, setLedgerSearchTerm] = useState("");
+  const [ledgerTypeFilter, setLedgerTypeFilter] = useState("ALL");
 
   // Mutations
   const createItemMutation = useMutation({
@@ -238,9 +255,132 @@ export default function InventoryPage() {
   // State Management
   const [activeMainTab, setActiveMainTab] = useState("stock-list");
   const [activeFormTab, setActiveFormTab] = useState("basic");
+  const [formViewMode, setFormViewMode] = useState<"openstock" | "all" | "tabbed">("openstock");
   const [modalOpen, setModalOpen] = useState(false);
   const [draft, setDraft] = useState<ExtendedProduct>(emptyProduct);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // OPEN.STOCK Desktop ERP Form State & Helpers
+  const createDefaultOpenStockRow = () => ({
+    name: "",
+    stamp: "22K",
+    unit: "Gm",
+    pcs: 1,
+    grossWeight: 0,
+    lessWeight: 0,
+    netWeight: 0,
+    tunch: 0,
+    wastage: 0,
+    rate: 0,
+    labour: 0,
+    on: "Wt",
+    other: 0,
+    goldFine: 0,
+    silFine: 0,
+    total: 0,
+  });
+
+  const [openStockHeader, setOpenStockHeader] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    billNo: "1",
+    narration: "Opening Stock Entry",
+  });
+
+  const [openStockRows, setOpenStockRows] = useState([
+    createDefaultOpenStockRow(),
+  ]);
+
+  const updateOpenStockRow = (idx: number, field: string, val: any) => {
+    setOpenStockRows(prev => {
+      const updated = [...prev];
+      const item = { ...updated[idx], [field]: val };
+
+      const gw = Number(item.grossWeight) || 0;
+      const less = Number(item.lessWeight) || 0;
+      const net = Math.max(0, gw - less);
+      item.netWeight = parseFloat(net.toFixed(3));
+
+      const tunch = Number(item.tunch) || 0;
+      const wastage = Number(item.wastage) || 0;
+      const fineWt = parseFloat((net * (tunch + wastage) / 100).toFixed(3));
+
+      const isSilver = (item.stamp && item.stamp.toLowerCase().includes("sil")) || (item.unit && item.unit.toLowerCase().includes("sil"));
+      if (isSilver) {
+        item.silFine = fineWt;
+        item.goldFine = 0;
+      } else {
+        item.goldFine = fineWt;
+        item.silFine = 0;
+      }
+
+      const rate = Number(item.rate) || 0;
+      const lbr = Number(item.labour) || 0;
+      const other = Number(item.other) || 0;
+      item.total = Math.round((net * rate) + lbr + other);
+
+      updated[idx] = item;
+      return updated;
+    });
+  };
+
+  const addOpenStockRow = () => {
+    setOpenStockRows(prev => [...prev, createDefaultOpenStockRow()]);
+  };
+
+  const removeOpenStockRow = (idx: number) => {
+    if (openStockRows.length <= 1) {
+      setOpenStockRows([createDefaultOpenStockRow()]);
+    } else {
+      setOpenStockRows(prev => prev.filter((_, i) => i !== idx));
+    }
+  };
+
+  const handleSaveOpenStock = async () => {
+    const validRows = openStockRows.filter(r => r.name && r.name.trim());
+    if (validRows.length === 0) {
+      return toast.error("Please enter at least one item name in OPEN.STOCK grid!");
+    }
+
+    try {
+      let savedCount = 0;
+      for (const row of validRows) {
+        const barcode = `STK-${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
+        const payload: any = {
+          name: row.name.toUpperCase(),
+          category: (row.stamp.toLowerCase().includes("sil") || row.unit.toLowerCase().includes("sil")) ? "Silver" : "Gold",
+          subcategory: "Ornaments",
+          purity: row.stamp || "22K",
+          unit: row.unit || "Gm",
+          stock: Number(row.pcs) || 1,
+          initialStock: Number(row.pcs) || 1,
+          grossWeight: Number(row.grossWeight) || 0,
+          stoneWeight: Number(row.lessWeight) || 0,
+          netWeight: Number(row.netWeight) || 0,
+          tunch: Number(row.tunch) || 91.6,
+          wastage: Number(row.wastage) || 0,
+          costPrice: Number(row.rate) || 0,
+          sellingPrice: Number(row.total) || Math.round((Number(row.netWeight) || 0) * (Number(row.rate) || 0)),
+          labourCharges: Number(row.labour) || 0,
+          otherCharges: Number(row.other) || 0,
+          barcode,
+          status: "Active",
+          location: "Main Counter Display",
+          narration: openStockHeader.narration,
+          billNo: openStockHeader.billNo,
+          entryDate: openStockHeader.date,
+        };
+
+        await createItemMutation.mutateAsync(payload);
+        savedCount++;
+      }
+
+      toast.success(`✓ Saved ${savedCount} OPEN.STOCK item(s) into Inventory stock!`);
+      setModalOpen(false);
+    } catch (err: any) {
+      console.error("Failed to save OPEN.STOCK entry:", err);
+      toast.error("Error saving OPEN.STOCK entry.");
+    }
+  };
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -310,18 +450,282 @@ export default function InventoryPage() {
     });
   }, [allItems, debouncedSearch, categoryFilter, subcategoryFilter, purityFilter]);
 
-  const activeItemIds = useMemo(() => new Set(allItems.map(i => i._id || i.id)), [allItems]);
+  // ── Unified Master Inventory Stock Audit Ledger Calculation ──
+  const unifiedStockLedger = useMemo(() => {
+    const records: any[] = [];
+    const recordIds = new Set<string>();
 
-  const activeItemNames = useMemo(() => new Set(allItems.map(i => (i.name || "").trim().toLowerCase())), [allItems]);
+    // 1. Process Sales Invoices (Deductions / Stock OUT)
+    (invoices || []).forEach((inv: any) => {
+      const invNo = inv.invoiceNumber || inv.invoiceNo || (inv.id ? `INV-${inv.id.slice(-4)}` : "INV-SALE");
+      const invDate = (inv.date || inv.createdAt || new Date().toISOString()).slice(0, 10);
+      const buyerName = inv.customerName || inv.customer?.name || "Walk-in Customer";
+      const buyerMobile = inv.customerMobile || inv.phone || inv.customer?.phone || "";
 
+      (inv.items || []).forEach((item: any, idx: number) => {
+        const recId = `inv-${inv._id || inv.id}-${item._id || item.id || idx}`;
+        if (recordIds.has(recId)) return;
+        recordIds.add(recId);
+
+        const qty = Math.abs(Number(item.quantity || item.qty || 1));
+        const rate = Number(item.unitPrice || item.rate || (item.total ? item.total / qty : 0));
+        const totalAmt = Number(item.total || (rate * qty));
+
+        records.push({
+          id: recId,
+          date: invDate,
+          rawDate: new Date(inv.date || inv.createdAt || Date.now()).getTime(),
+          itemId: item.productId || item.id || item._id || item.itemId || "",
+          itemName: item.productName || item.name || item.itemName || item.description || "Inventory Item",
+          sku: item.sku || item.tagNo || item.barcode || "",
+          transactionType: "Sale Invoice (Stock OUT)",
+          txnCategory: "SALE",
+          qtyChange: -qty,
+          unitPrice: rate,
+          totalAmount: totalAmt,
+          referenceNo: invNo,
+          partyName: buyerName,
+          partyMobile: buyerMobile,
+          partyType: "Customer",
+          netWeight: item.netWeight || item.netWt || 0,
+          grossWeight: item.grossWeight || item.grossWt || 0,
+          remarks: `Deducted on Sale Invoice #${invNo} to ${buyerName}${buyerMobile ? ` (${buyerMobile})` : ""}`,
+        });
+      });
+    });
+
+    // 2. Process Purchase Bills (Inward / Stock IN)
+    (purchases || []).forEach((pur: any) => {
+      const purNo = pur.billNo || pur.purchaseNumber || pur.invoiceNo || (pur.id ? `PUR-${pur.id.slice(-4)}` : "PUR-IN");
+      const purDate = (pur.date || pur.createdAt || new Date().toISOString()).slice(0, 10);
+      const supplierName = pur.supplierName || pur.supplier?.name || "Direct Supplier";
+
+      (pur.items || []).forEach((item: any, idx: number) => {
+        const recId = `pur-${pur._id || pur.id}-${item._id || item.id || idx}`;
+        if (recordIds.has(recId)) return;
+        recordIds.add(recId);
+
+        const qty = Math.abs(Number(item.quantity || item.qty || 1));
+        const rate = Number(item.unitPrice || item.rate || (item.total ? item.total / qty : 0));
+        const totalAmt = Number(item.total || (rate * qty));
+
+        records.push({
+          id: recId,
+          date: purDate,
+          rawDate: new Date(pur.date || pur.createdAt || Date.now()).getTime(),
+          itemId: item.productId || item.id || item._id || item.itemId || "",
+          itemName: item.productName || item.name || item.itemName || "Inventory Item",
+          sku: item.sku || item.tagNo || item.barcode || "",
+          transactionType: "Purchase Bill (Stock IN)",
+          txnCategory: "PURCHASE",
+          qtyChange: qty,
+          unitPrice: rate,
+          totalAmount: totalAmt,
+          referenceNo: purNo,
+          partyName: supplierName,
+          partyMobile: pur.supplierMobile || "",
+          partyType: "Supplier",
+          netWeight: item.netWeight || item.netWt || 0,
+          grossWeight: item.grossWeight || item.grossWt || 0,
+          remarks: `Inward stock received from Purchase Bill #${purNo} (${supplierName})`,
+        });
+      });
+    });
+
+    // 3. Process Manual Stock Adjustments
+    (stockAdjustments || []).forEach((adj: any) => {
+      const recId = `adj-${adj._id || adj.id}`;
+      if (recordIds.has(recId)) return;
+      recordIds.add(recId);
+
+      const isAdd = adj.type === "Addition" || (adj.qtyChange || 0) > 0;
+      const qty = Math.abs(Number(adj.qtyChange || adj.quantity || 1));
+
+      records.push({
+        id: recId,
+        date: (adj.date || new Date().toISOString()).slice(0, 10),
+        rawDate: new Date(adj.date || Date.now()).getTime(),
+        itemId: adj.itemId || "",
+        itemName: adj.itemName || "Inventory Item",
+        sku: adj.sku || adj.tagNo || "",
+        transactionType: isAdd ? "Stock Adjustment (Inward)" : "Stock Adjustment (Deduction)",
+        txnCategory: isAdd ? "ADJUSTMENT_IN" : "ADJUSTMENT_OUT",
+        qtyChange: isAdd ? qty : -qty,
+        unitPrice: Number(adj.unitPrice || 0),
+        totalAmount: Number(adj.totalAmount || 0),
+        referenceNo: adj.referenceNo || `ADJ-${(adj._id || adj.id || "").slice(-4)}`,
+        partyName: "Internal Audit",
+        partyMobile: "",
+        partyType: "Internal",
+        remarks: adj.reason || adj.remarks || "Manual stock adjustment entry",
+      });
+    });
+
+    // 4. Backend Stock Ledger entries fallback
+    (stockLedger || []).forEach((led: any) => {
+      const recId = `led-${led._id || led.id}`;
+      if (recordIds.has(recId)) return;
+      recordIds.add(recId);
+
+      const qty = Number(led.qtyChange || 1);
+      records.push({
+        id: recId,
+        date: (led.date || new Date().toISOString()).slice(0, 10),
+        rawDate: new Date(led.date || Date.now()).getTime(),
+        itemId: led.itemId || "",
+        itemName: led.itemName || led.item || "Inventory Item",
+        sku: led.sku || led.tagNo || "",
+        transactionType: led.transactionType || (qty >= 0 ? "Stock Inward" : "Stock Deduction"),
+        txnCategory: qty >= 0 ? "INWARD" : "DEDUCTION",
+        qtyChange: qty,
+        unitPrice: Number(led.unitPrice || 0),
+        totalAmount: Number(led.totalAmount || 0),
+        referenceNo: led.referenceNo || "-",
+        partyName: led.customerName || led.supplierName || led.partyName || "Record Entry",
+        partyMobile: led.customerMobile || led.partyMobile || "",
+        partyType: led.partyType || (qty >= 0 ? "Supplier" : "Customer"),
+        remarks: led.remarks || "Stock movement log",
+      });
+    });
+
+    // 5. Initial Opening Stock entries for inventory products
+    (allItems || []).forEach((item: any) => {
+      const initialStock = Number(item.initialStock || item.stock || 0);
+      if (initialStock > 0) {
+        const recId = `init-${item._id || item.id}`;
+        if (!recordIds.has(recId)) {
+          recordIds.add(recId);
+          records.push({
+            id: recId,
+            date: (item.createdAt || new Date().toISOString()).slice(0, 10),
+            rawDate: new Date(item.createdAt || 0).getTime(),
+            itemId: item._id || item.id || "",
+            itemName: item.name || "Inventory Item",
+            sku: item.sku || item.tagNo || item.barcode || "",
+            transactionType: "Opening Stock",
+            txnCategory: "OPENING",
+            qtyChange: initialStock,
+            unitPrice: Number(item.costPrice || item.sellingPrice || 0),
+            totalAmount: Number(item.costPrice || item.sellingPrice || 0) * initialStock,
+            referenceNo: "INIT-STOCK",
+            partyName: "Opening Balance",
+            partyMobile: "",
+            partyType: "Internal",
+            remarks: `Initial opening inventory stock entry for ${item.name}`,
+          });
+        }
+      }
+    });
+
+    // Sort chronologically (oldest to newest) to calculate running stock balance
+    records.sort((a, b) => a.rawDate - b.rawDate);
+
+    // Calculate running stock balance per item
+    const itemRunningBalances: Record<string, number> = {};
+    records.forEach((rec) => {
+      const itemKey = (rec.itemId || rec.itemName || "").trim().toLowerCase();
+      const currentBal = itemRunningBalances[itemKey] || 0;
+      const newBal = currentBal + rec.qtyChange;
+      itemRunningBalances[itemKey] = newBal;
+      rec.balanceQty = newBal;
+    });
+
+    // Reverse to show newest transactions at top
+    return records.reverse();
+  }, [invoices, purchases, stockAdjustments, stockLedger, allItems]);
+
+  // Main Stock Audit Ledger Filter
   const filteredStockLedger = useMemo(() => {
-    return stockLedger.filter((led: any) => {
-      if (led.itemId && activeItemIds.has(led.itemId)) return true;
-      if (led.itemName && activeItemNames.has((led.itemName || "").trim().toLowerCase())) return true;
-      if (led.item && activeItemNames.has((led.item || "").trim().toLowerCase())) return true;
+    return unifiedStockLedger.filter((led: any) => {
+      if (ledgerTypeFilter !== "ALL") {
+        if (ledgerTypeFilter === "SALE" && !led.txnCategory.includes("SALE")) return false;
+        if (ledgerTypeFilter === "PURCHASE" && !led.txnCategory.includes("PURCHASE")) return false;
+        if (ledgerTypeFilter === "ADJUSTMENT" && !led.txnCategory.includes("ADJUSTMENT")) return false;
+        if (ledgerTypeFilter === "OPENING" && !led.txnCategory.includes("OPENING")) return false;
+      }
+
+      if (!ledgerSearchTerm.trim()) return true;
+      const q = ledgerSearchTerm.toLowerCase();
+      return (
+        (led.itemName && led.itemName.toLowerCase().includes(q)) ||
+        (led.sku && led.sku.toLowerCase().includes(q)) ||
+        (led.referenceNo && led.referenceNo.toLowerCase().includes(q)) ||
+        (led.partyName && led.partyName.toLowerCase().includes(q)) ||
+        (led.partyMobile && led.partyMobile.includes(q)) ||
+        (led.remarks && led.remarks.toLowerCase().includes(q))
+      );
+    });
+  }, [unifiedStockLedger, ledgerTypeFilter, ledgerSearchTerm]);
+
+  // Individual Per-Item Audit Ledger Computation
+  const itemLedgerEntries = useMemo(() => {
+    if (!ledgerSelectedItem) return [];
+    const targetId = (ledgerSelectedItem._id || ledgerSelectedItem.id || "").toString();
+    const targetSku = (ledgerSelectedItem.sku || (ledgerSelectedItem as any).tagNo || ledgerSelectedItem.barcode || "").trim().toLowerCase();
+    const targetName = (ledgerSelectedItem.name || "").trim().toLowerCase();
+
+    return unifiedStockLedger.filter((rec: any) => {
+      if (rec.itemId && rec.itemId.toString() === targetId) return true;
+      if (targetSku && rec.sku && rec.sku.trim().toLowerCase() === targetSku) return true;
+      if (targetName && rec.itemName && rec.itemName.trim().toLowerCase() === targetName) return true;
       return false;
     });
-  }, [stockLedger, activeItemIds, activeItemNames]);
+  }, [unifiedStockLedger, ledgerSelectedItem]);
+
+  const itemLedgerSummary = useMemo(() => {
+    let totalInward = 0;
+    let totalSold = 0;
+    let totalSalesRevenue = 0;
+
+    itemLedgerEntries.forEach((rec: any) => {
+      if (rec.qtyChange > 0) {
+        totalInward += rec.qtyChange;
+      } else if (rec.qtyChange < 0) {
+        const soldQty = Math.abs(rec.qtyChange);
+        totalSold += soldQty;
+        totalSalesRevenue += (rec.totalAmount || (rec.unitPrice * soldQty) || 0);
+      }
+    });
+
+    return {
+      totalInward,
+      totalSold,
+      totalSalesRevenue,
+      currentStock: ledgerSelectedItem?.stock || 0,
+    };
+  }, [itemLedgerEntries, ledgerSelectedItem]);
+
+  // Export Stock Ledger to Excel
+  const exportStockLedgerToExcel = () => {
+    if (!filteredStockLedger.length) {
+      return toast.error("No stock ledger entries to export!");
+    }
+
+    const sheetData = [
+      ["Date", "Item Name", "SKU / Tag No", "Transaction Type", "Qty Change", "Running Balance", "Reference No", "Buyer / Supplier Name", "Buyer Mobile", "Unit Rate (INR)", "Total Amount (INR)", "Remarks"],
+      ...filteredStockLedger.map((led: any) => [
+        led.date || "",
+        led.itemName || "",
+        led.sku || "",
+        led.transactionType || "",
+        led.qtyChange || 0,
+        led.balanceQty || 0,
+        led.referenceNo || "",
+        led.partyName || "",
+        led.partyMobile || "",
+        led.unitPrice || 0,
+        led.totalAmount || 0,
+        led.remarks || "",
+      ]),
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+    ws["!cols"] = [{ wch: 14 }, { wch: 25 }, { wch: 15 }, { wch: 22 }, { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 16 }, { wch: 35 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Inventory Stock Ledger");
+    XLSX.writeFile(wb, `Inventory_Stock_Audit_Ledger_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success("Stock Audit Ledger exported to Excel!");
+  };
 
 
   // Open Create Modal
@@ -547,7 +951,7 @@ export default function InventoryPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={handleOpenCreate} className="bg-primary hover:bg-primary/90">
+          <Button data-new-button="true" onClick={handleOpenCreate} className="bg-primary hover:bg-primary/90">
             <Plus className="w-4 h-4 mr-1.5" /> Add New Item
           </Button>
         </div>
@@ -883,34 +1287,43 @@ export default function InventoryPage() {
                         </div>
 
                         {/* Row 3: Action Buttons */}
-                        <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+                        <div className="grid grid-cols-4 gap-1 pt-0.5">
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-8 text-[11px] px-1 gap-1 w-full"
+                            className="h-8 text-[10px] px-1 gap-1 w-full text-purple-700 border-purple-200 hover:bg-purple-50"
+                            onClick={() => setLedgerSelectedItem(item)}
+                            title="View Stock Ledger & Deductions"
+                          >
+                            <History className="w-3 h-3" /> Ledger
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-[10px] px-1 gap-1 w-full"
                             onClick={() => { setSelectedTagItem(item); setTagModalOpen(true); }}
                           >
-                            <Printer className="w-3.5 h-3.5" /> Tag Print
+                            <Printer className="w-3 h-3" /> Tag
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-8 text-[11px] px-1 gap-1 w-full"
+                            className="h-8 text-[10px] px-1 gap-1 w-full"
                             onClick={() => handleOpenEdit(item)}
                           >
-                            <Pencil className="w-3.5 h-3.5" /> Edit
+                            <Pencil className="w-3 h-3" /> Edit
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-8 text-[11px] px-1 gap-1 w-full text-destructive hover:bg-destructive/10"
+                            className="h-8 text-[10px] px-1 gap-1 w-full text-destructive hover:bg-destructive/10"
                             onClick={() => {
                               if (confirm(`Are you sure you want to delete ${item.name}?`)) {
                                 deleteItemMutation.mutate(item._id || item.id || "");
                               }
                             }}
                           >
-                            <Trash2 className="w-3.5 h-3.5" /> Delete
+                            <Trash2 className="w-3 h-3" /> Delete
                           </Button>
                         </div>
                       </div>
@@ -993,6 +1406,15 @@ export default function InventoryPage() {
 
                             <td className="text-right px-4">
                               <div className="flex items-center justify-end gap-1.5">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 text-purple-600 hover:text-purple-900 hover:bg-purple-50"
+                                  title="View Item Stock Audit Ledger & Sales Deductions"
+                                  onClick={() => setLedgerSelectedItem(item)}
+                                >
+                                  <History className="w-4 h-4" />
+                                </Button>
                                 <Button
                                   size="sm"
                                   variant="ghost"
@@ -1280,69 +1702,200 @@ export default function InventoryPage() {
         {/* TAB 6: STOCK LEDGER */}
         {/* ======================================================== */}
         <TabsContent value="stock-ledger" className="space-y-6">
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="shadow-sm border-l-4 border-l-purple-500 bg-card">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+                  <span>Total Audit Log Records</span>
+                  <History className="w-4 h-4 text-purple-600" />
+                </div>
+                <div className="text-2xl font-bold font-mono mt-1">{filteredStockLedger.length}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">Real-time inventory movements</div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm border-l-4 border-l-rose-500 bg-card">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+                  <span>Total Sold / Deductions</span>
+                  <ArrowUpRight className="w-4 h-4 text-rose-600" />
+                </div>
+                <div className="text-2xl font-bold font-mono text-rose-600 mt-1">
+                  {Math.abs(filteredStockLedger.filter((l: any) => l.qtyChange < 0).reduce((acc: number, l: any) => acc + l.qtyChange, 0))} Pcs
+                </div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">Stock outward to customers</div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm border-l-4 border-l-emerald-500 bg-card">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+                  <span>Total Inward Purchased</span>
+                  <ArrowDownRight className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="text-2xl font-bold font-mono text-emerald-600 mt-1">
+                  {filteredStockLedger.filter((l: any) => l.qtyChange > 0).reduce((acc: number, l: any) => acc + l.qtyChange, 0)} Pcs
+                </div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">Stock inward entries</div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm border-l-4 border-l-amber-500 bg-card">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+                  <span>Export Stock Ledger</span>
+                  <FileSpreadsheet className="w-4 h-4 text-amber-600" />
+                </div>
+                <Button size="sm" variant="outline" className="w-full mt-2 h-8 text-xs gap-1 text-amber-800 border-amber-300 hover:bg-amber-50" onClick={exportStockLedgerToExcel}>
+                  <Download className="w-3.5 h-3.5" /> Download Excel
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
           <Card className="shadow-sm">
             <CardHeader className="pb-3 border-b bg-muted/20">
-              <CardTitle className="text-base font-display flex items-center gap-2">
-                <History className="w-5 h-5 text-purple-600" /> Complete Stock Audit Ledger
-              </CardTitle>
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                <CardTitle className="text-base font-display flex items-center gap-2">
+                  <History className="w-5 h-5 text-purple-600" /> Complete Stock Audit Ledger & Sales Deduction History
+                </CardTitle>
+
+                {/* Filter and Search Bar */}
+                <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+                  <div className="relative flex-1 md:w-64">
+                    <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Search Item, Tag #, Buyer, Mobile, Invoice..."
+                      className="pl-8 h-9 text-xs"
+                      value={ledgerSearchTerm}
+                      onChange={(e) => setLedgerSearchTerm(e.target.value)}
+                    />
+                  </div>
+
+                  <Select value={ledgerTypeFilter} onValueChange={setLedgerTypeFilter}>
+                    <SelectTrigger className="h-9 text-xs w-36">
+                      <SelectValue placeholder="Txn Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All Movements</SelectItem>
+                      <SelectItem value="SALE">Sales Outward</SelectItem>
+                      <SelectItem value="PURCHASE">Purchase Inward</SelectItem>
+                      <SelectItem value="ADJUSTMENT">Adjustments</SelectItem>
+                      <SelectItem value="OPENING">Opening Stock</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Button size="sm" variant="outline" className="h-9 text-xs gap-1" onClick={exportStockLedgerToExcel}>
+                    <Download className="w-3.5 h-3.5" /> Export
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               {filteredStockLedger.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground text-sm">
-                  Stock Ledger is empty. Movements will be recorded automatically during Sales, Purchases, Adjustments and Transfers.
+                  No matching stock ledger records found. Movements are logged automatically on Sales Invoices, Purchases, and Adjustments.
                 </div>
               ) : (
                 <>
                   {/* Mobile View */}
                   <div className="block md:hidden divide-y">
                     {filteredStockLedger.map((led: any) => (
-                      <div key={led._id || led.id} className="p-3 space-y-2 hover:bg-muted/10 transition-colors">
+                      <div key={led.id} className="p-3 space-y-2 hover:bg-muted/10 transition-colors">
                         <div className="flex items-center justify-between">
                           <span className="font-mono text-xs text-muted-foreground">{led.date}</span>
-                          <Badge variant="outline" className="font-semibold text-xs">
+                          <Badge
+                            variant="outline"
+                            className={`font-semibold text-xs ${
+                              led.qtyChange < 0
+                                ? "bg-rose-50 text-rose-700 border-rose-200"
+                                : led.txnCategory === "PURCHASE"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-amber-50 text-amber-700 border-amber-200"
+                            }`}
+                          >
                             {led.transactionType}
                           </Badge>
                         </div>
-                        <div className="font-bold text-sm">{led.itemName}</div>
-                        <div className="flex items-center justify-between text-xs font-mono">
-                          <span>Qty: <strong className={led.qtyChange >= 0 ? "text-emerald-600" : "text-rose-600"}>{led.qtyChange >= 0 ? `+${led.qtyChange}` : led.qtyChange} Pcs</strong></span>
-                          <span>Bal: <strong>{led.balanceQty} Pcs</strong></span>
+                        <div className="font-bold text-sm text-foreground">{led.itemName}</div>
+                        {led.sku && <div className="text-xs font-mono text-purple-700">SKU / Tag: {led.sku}</div>}
+                        <div className="text-xs bg-muted/30 p-1.5 rounded space-y-1">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Ref #:</span>
+                            <span className="font-mono font-bold text-primary">{led.referenceNo}</span>
+                          </div>
+                          {led.partyName && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">{led.partyType || "Party"}:</span>
+                              <span className="font-medium">{led.partyName} {led.partyMobile ? `(${led.partyMobile})` : ""}</span>
+                            </div>
+                          )}
                         </div>
-                        {led.remarks && <div className="text-[11px] text-muted-foreground italic">{led.remarks}</div>}
+                        <div className="flex items-center justify-between text-xs font-mono pt-1">
+                          <span>Qty: <strong className={led.qtyChange >= 0 ? "text-emerald-600" : "text-rose-600"}>{led.qtyChange >= 0 ? `+${led.qtyChange}` : led.qtyChange} Pcs</strong></span>
+                          <span>Stock Bal: <strong>{led.balanceQty} Pcs</strong></span>
+                        </div>
                       </div>
                     ))}
                   </div>
 
                   {/* Desktop View */}
                   <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-sm text-left border-collapse min-w-[800px]">
+                    <table className="w-full text-sm text-left border-collapse min-w-[950px]">
                       <thead className="bg-muted/40 text-muted-foreground text-xs uppercase border-b">
                         <tr>
                           <th className="py-3 px-4">Date</th>
-                          <th>Item</th>
+                          <th>Item & SKU</th>
                           <th>Txn Type</th>
-                          <th>Qty Change</th>
-                          <th>Running Balance</th>
                           <th>Reference #</th>
+                          <th>Buyer / Customer / Supplier</th>
+                          <th>Qty Change</th>
+                          <th>Stock Balance</th>
+                          <th>Rate & Value</th>
                           <th>Remarks</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredStockLedger.map((led: any) => (
-                          <tr key={led._id || led.id} className="border-b last:border-0 hover:bg-muted/20">
-                            <td className="py-3 px-4 font-mono">{led.date}</td>
-                            <td className="font-medium">{led.itemName}</td>
+                          <tr key={led.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                            <td className="py-3 px-4 font-mono text-xs font-medium">{led.date}</td>
                             <td>
-                              <Badge variant="outline" className="font-semibold">
+                              <div className="font-semibold text-foreground">{led.itemName}</div>
+                              {led.sku && <div className="text-[11px] font-mono text-purple-700">SKU: {led.sku}</div>}
+                            </td>
+                            <td>
+                              <Badge
+                                variant="outline"
+                                className={`font-semibold text-xs ${
+                                  led.qtyChange < 0
+                                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                                    : led.txnCategory === "PURCHASE"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-amber-50 text-amber-700 border-amber-200"
+                                }`}
+                              >
                                 {led.transactionType}
                               </Badge>
                             </td>
-                            <td className={`font-bold ${led.qtyChange >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                            <td className="font-mono font-bold text-xs text-primary">{led.referenceNo || "-"}</td>
+                            <td>
+                              <div className="font-medium text-xs">{led.partyName || "-"}</div>
+                              {led.partyMobile && (
+                                <div className="text-[11px] text-muted-foreground font-mono">{led.partyMobile}</div>
+                              )}
+                            </td>
+                            <td className={`font-bold font-mono ${led.qtyChange >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                               {led.qtyChange >= 0 ? `+${led.qtyChange}` : led.qtyChange} Pcs
                             </td>
-                            <td className="font-bold">{led.balanceQty} Pcs</td>
-                            <td className="font-mono text-xs">{led.referenceNo || "-"}</td>
-                            <td className="text-xs text-muted-foreground">{led.remarks || "-"}</td>
+                            <td className="font-bold font-mono text-foreground">{led.balanceQty} Pcs</td>
+                            <td className="text-xs font-mono">
+                              {led.unitPrice ? inr(led.unitPrice) : "-"}
+                              {led.totalAmount ? <div className="text-[10px] text-muted-foreground">Total: {inr(led.totalAmount)}</div> : null}
+                            </td>
+                            <td className="text-xs text-muted-foreground max-w-[200px] truncate" title={led.remarks}>
+                              {led.remarks || "-"}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1425,431 +1978,1291 @@ export default function InventoryPage() {
       </Tabs>
 
       {/* ======================================================== */}
-      {/* MULTI-TAB ITEM MASTER CREATE / EDIT DIALOG MODAL */}
+      {/* ALL-IN-ONE ITEM MASTER CREATE / EDIT DIALOG MODAL        */}
       {/* ======================================================== */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
-          <DialogHeader className="p-6 pb-3 border-b bg-muted/10">
-            <DialogTitle className="font-display text-xl">
-              {editingId ? "Edit Item Master" : "Create New Jewellery Item Master"}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Complete 12-section master fields with real-time net weight calculation & price validation.
-            </DialogDescription>
+        <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-slate-100 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none">
+          {/* Header */}
+          <DialogHeader className="p-3.5 md:p-4 pb-2.5 border-b border-amber-300 dark:border-slate-800 bg-amber-100/80 dark:bg-slate-900">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <DialogTitle className="font-sans text-base md:text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-amber-100 uppercase tracking-wide">
+                  <Boxes className="w-5 h-5 text-amber-700 dark:text-amber-400" />
+                  <span>{editingId ? "Edit Jewellery Item Master" : "Create New Jewellery Item Master"}</span>
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 font-medium">
+                  Professional Desktop ERP master form with real-time fine weight calculation & stock ledger integration.
+                </DialogDescription>
+              </div>
+
+              {/* View Mode Selector Toggle */}
+              <div className="flex items-center gap-1 bg-muted p-1 rounded-lg self-start sm:self-auto border">
+                <button
+                  type="button"
+                  onClick={() => setFormViewMode("openstock")}
+                  className={`text-xs px-3 py-1 rounded-md font-medium transition-all flex items-center gap-1.5 ${
+                    formViewMode === "openstock"
+                      ? "bg-background text-foreground shadow-sm font-bold border border-border"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Boxes className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+                  <span>OPEN.STOCK Grid</span>
+                  <Badge variant="secondary" className="text-[9px] px-1 py-0 bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200">Default ERP</Badge>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormViewMode("all")}
+                  className={`text-xs px-3 py-1 rounded-md font-medium transition-all flex items-center gap-1.5 ${
+                    formViewMode === "all"
+                      ? "bg-background text-foreground shadow-sm font-bold border border-border"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-amber-600" />
+                  <span>All-in-One Form</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormViewMode("tabbed")}
+                  className={`text-xs px-3 py-1 rounded-md font-medium transition-all flex items-center gap-1.5 ${
+                    formViewMode === "tabbed"
+                      ? "bg-background text-foreground shadow-sm font-bold border border-border"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>Tabbed View</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Live Summary Ribbon */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2.5 p-2 bg-background/90 rounded-md border text-xs font-mono">
+              <div className="flex items-center justify-between px-2 py-1 bg-muted/30 rounded">
+                <span className="text-muted-foreground text-[10px] uppercase font-bold">Gross Weight:</span>
+                <span className="font-bold text-foreground">
+                  {formViewMode === "openstock"
+                    ? openStockRows.reduce((s, r) => s + (r.grossWeight || 0), 0).toFixed(3)
+                    : (draft.grossWeight || 0)} g
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-2 py-1 bg-emerald-50 dark:bg-emerald-950/30 rounded border border-emerald-200">
+                <span className="text-emerald-800 dark:text-emerald-300 text-[10px] uppercase font-bold">Net Fine Wt:</span>
+                <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                  {formViewMode === "openstock"
+                    ? openStockRows.reduce((s, r) => s + (r.goldFine + r.silFine || 0), 0).toFixed(3)
+                    : (draft.netWeight || 0)} g
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-2 py-1 bg-blue-50 dark:bg-blue-950/30 rounded border border-blue-200">
+                <span className="text-blue-800 dark:text-blue-300 text-[10px] uppercase font-bold">Total Stock Value:</span>
+                <span className="font-bold text-blue-700 dark:text-blue-400">
+                  {formViewMode === "openstock"
+                    ? inr(openStockRows.reduce((s, r) => s + (r.total || 0), 0))
+                    : inr(draft.sellingPrice || 0)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-2 py-1 bg-amber-50 dark:bg-amber-950/30 rounded border border-amber-200">
+                <span className="text-amber-800 dark:text-amber-300 text-[10px] uppercase font-bold">Current Items:</span>
+                <span className="font-bold text-amber-700 dark:text-amber-400">
+                  {formViewMode === "openstock" ? `${openStockRows.length} Rows` : `${draft.stock || 0} Pcs`}
+                </span>
+              </div>
+            </div>
           </DialogHeader>
 
-          <form onSubmit={handleSaveItem} className="flex-1 flex flex-col overflow-hidden">
-            {/* Modal Form Sub-Tabs */}
-            <div className="px-6 pt-2 border-b bg-muted/20">
-              <Tabs value={activeFormTab} onValueChange={setActiveFormTab}>
-                <TabsList className="flex flex-wrap h-auto gap-1 bg-transparent p-0">
-                  <TabsTrigger value="basic" className="text-xs py-1.5 px-3">Basic Info</TabsTrigger>
-                  <TabsTrigger value="jewellery" className="text-xs py-1.5 px-3">Jewellery Specs</TabsTrigger>
-                  <TabsTrigger value="weight" className="text-xs py-1.5 px-3">Weight Details</TabsTrigger>
-                  <TabsTrigger value="stone" className="text-xs py-1.5 px-3">Stones ({draft.stones?.length || 0})</TabsTrigger>
-                  <TabsTrigger value="diamond" className="text-xs py-1.5 px-3">Diamonds ({draft.diamonds?.length || 0})</TabsTrigger>
-                  <TabsTrigger value="pricing" className="text-xs py-1.5 px-3">Pricing & Cost</TabsTrigger>
-                  <TabsTrigger value="gst" className="text-xs py-1.5 px-3">GST</TabsTrigger>
-                  <TabsTrigger value="inventory-tab" className="text-xs py-1.5 px-3">Inventory & Location</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
+          <form onSubmit={formViewMode === "openstock" ? (e) => { e.preventDefault(); handleSaveOpenStock(); } : handleSaveItem} className="flex-1 flex flex-col overflow-hidden">
+            {/* If tabbed view is selected, render tab list */}
+            {formViewMode === "tabbed" && (
+              <div className="px-6 pt-2 border-b bg-muted/20">
+                <Tabs value={activeFormTab} onValueChange={setActiveFormTab}>
+                  <TabsList className="flex flex-wrap h-auto gap-1 bg-transparent p-0">
+                    <TabsTrigger value="basic" className="text-xs py-1.5 px-3">Basic Info</TabsTrigger>
+                    <TabsTrigger value="jewellery" className="text-xs py-1.5 px-3">Jewellery Specs</TabsTrigger>
+                    <TabsTrigger value="weight" className="text-xs py-1.5 px-3">Weight Details</TabsTrigger>
+                    <TabsTrigger value="stone" className="text-xs py-1.5 px-3">Stones ({draft.stones?.length || 0})</TabsTrigger>
+                    <TabsTrigger value="diamond" className="text-xs py-1.5 px-3">Diamonds ({draft.diamonds?.length || 0})</TabsTrigger>
+                    <TabsTrigger value="pricing" className="text-xs py-1.5 px-3">Pricing & Cost</TabsTrigger>
+                    <TabsTrigger value="gst" className="text-xs py-1.5 px-3">GST</TabsTrigger>
+                    <TabsTrigger value="inventory-tab" className="text-xs py-1.5 px-3">Inventory & Location</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            )}
 
             {/* Scrollable Form Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {/* TAB 1: BASIC INFO */}
-              {activeFormTab === "basic" && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Item Name *</Label>
-                    <Input value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. Traditional Bridal Necklace" required />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Item Code (Manual/Auto)</Label>
-                    <Input value={draft.itemCode || ""} onChange={e => setDraft({ ...draft, itemCode: e.target.value })} placeholder="e.g. JW-100234" />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Barcode Number *</Label>
-                    <Input value={draft.barcode || ""} onChange={e => setDraft({ ...draft, barcode: e.target.value })} placeholder="e.g. 89012345678" />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Category *</Label>
-                    <Select value={draft.category || ""} onValueChange={v => setDraft({ ...draft, category: v })}>
-                      <SelectTrigger><SelectValue placeholder="Select Category" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Gold">Gold Ornaments</SelectItem>
-                        <SelectItem value="Silver">Silver Articles</SelectItem>
-                        <SelectItem value="Diamond">Diamond Jewellery</SelectItem>
-                        <SelectItem value="Platinum">Platinum Items</SelectItem>
-                        <SelectItem value="Coins">Coins & Bars</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Sub Category</Label>
-                    <Input value={draft.subcategory || ""} onChange={e => setDraft({ ...draft, subcategory: e.target.value })} placeholder="e.g. Necklace / Ring / Bangle" />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Brand</Label>
-                    <Input value={draft.brand || ""} onChange={e => setDraft({ ...draft, brand: e.target.value })} placeholder="e.g. Brand / In-House" />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Collection</Label>
-                    <Input value={draft.collectionName || ""} onChange={e => setDraft({ ...draft, collectionName: e.target.value })} placeholder="e.g. Bridal 2026" />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Design Number</Label>
-                    <Input value={draft.designNo || ""} onChange={e => setDraft({ ...draft, designNo: e.target.value })} placeholder="e.g. DSG-99" />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">SKU</Label>
-                    <Input value={draft.sku || ""} onChange={e => setDraft({ ...draft, sku: e.target.value })} placeholder="e.g. SKU-GOLD-01" />
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 2: JEWELLERY SPECS */}
-              {activeFormTab === "jewellery" && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Metal Type *</Label>
-                    <Select value={draft.metalType || ""} onValueChange={v => setDraft({ ...draft, metalType: v })}>
-                      <SelectTrigger><SelectValue placeholder="Select Metal Type" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Gold">Gold</SelectItem>
-                        <SelectItem value="Silver">Silver</SelectItem>
-                        <SelectItem value="Diamond">Diamond</SelectItem>
-                        <SelectItem value="Platinum">Platinum</SelectItem>
-                        <SelectItem value="Gemstone">Gemstone</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Purity *</Label>
-                    <Select value={draft.purity || ""} onValueChange={v => setDraft({ ...draft, purity: v })}>
-                      <SelectTrigger><SelectValue placeholder="Select Purity" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="24K">24K (99.9%)</SelectItem>
-                        <SelectItem value="22K">22K (91.6%)</SelectItem>
-                        <SelectItem value="20K">20K (83.3%)</SelectItem>
-                        <SelectItem value="18K">18K (75.0%)</SelectItem>
-                        <SelectItem value="14K">14K (58.5%)</SelectItem>
-                        <SelectItem value="925">925 Silver</SelectItem>
-                        <SelectItem value="999">999 Fine Silver</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Hallmark Number (HUID)</Label>
-                    <Input value={draft.huid || ""} onChange={e => setDraft({ ...draft, huid: e.target.value })} placeholder="e.g. ABC123" />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Metal Color</Label>
-                    <Select value={draft.metalColor || ""} onValueChange={v => setDraft({ ...draft, metalColor: v })}>
-                      <SelectTrigger><SelectValue placeholder="Select Metal Color" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Yellow">Yellow Gold</SelectItem>
-                        <SelectItem value="White">White Gold</SelectItem>
-                        <SelectItem value="Rose">Rose Gold</SelectItem>
-                        <SelectItem value="Dual Tone">Dual Tone</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Gender</Label>
-                    <Select value={draft.gender || ""} onValueChange={v => setDraft({ ...draft, gender: v })}>
-                      <SelectTrigger><SelectValue placeholder="Select Gender" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Women">Women</SelectItem>
-                        <SelectItem value="Men">Men</SelectItem>
-                        <SelectItem value="Kids">Kids</SelectItem>
-                        <SelectItem value="Unisex">Unisex</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 3: WEIGHT DETAILS */}
-              {activeFormTab === "weight" && (
-                <div className="space-y-4">
-                  <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg flex items-center justify-between text-xs">
-                    <span className="font-semibold text-emerald-800">Formula: Net Weight = Gross Wt - Stone Wt - Diamond Wt - Other Wt</span>
-                    <Badge className="bg-emerald-600 text-white font-mono">{draft.netWeight || 0} g Pure Net</Badge>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">Gross Weight (g) *</Label>
-                      <Input type="number" step="0.001" value={draft.grossWeight || ""} onChange={e => setDraft({ ...draft, grossWeight: parseFloat(e.target.value) || 0 })} placeholder="0.000" required />
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+              {formViewMode === "openstock" ? (
+                /* OPEN.STOCK TRADITIONAL DESKTOP ERP INTERFACE (SOFTWARE THEME - NO PINK) */
+                <div className="space-y-3.5 bg-amber-50/20 dark:bg-slate-950 p-3.5 rounded-xl border border-amber-200 dark:border-slate-800 shadow-sm">
+                  {/* Top Header Card */}
+                  <div className="bg-amber-100/90 dark:bg-slate-900 p-2.5 rounded-lg border border-amber-300 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 flex-wrap flex-1">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs font-bold text-slate-900 dark:text-amber-100 uppercase">Date</Label>
+                        <Input
+                          type="date"
+                          value={openStockHeader.date}
+                          onChange={e => setOpenStockHeader(h => ({ ...h, date: e.target.value }))}
+                          className="h-7.5 text-xs font-mono font-bold bg-white dark:bg-slate-800 w-36 border-slate-300"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs font-bold text-slate-900 dark:text-amber-100 uppercase">Bill No</Label>
+                        <Input
+                          type="text"
+                          value={openStockHeader.billNo}
+                          onChange={e => setOpenStockHeader(h => ({ ...h, billNo: e.target.value }))}
+                          className="h-7.5 text-xs font-mono font-bold bg-white dark:bg-slate-800 w-24 border-slate-300"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 flex-1 min-w-[220px]">
+                        <Label className="text-xs font-bold text-slate-900 dark:text-amber-100 uppercase">Narration</Label>
+                        <Input
+                          type="text"
+                          value={openStockHeader.narration}
+                          onChange={e => setOpenStockHeader(h => ({ ...h, narration: e.target.value }))}
+                          placeholder="Opening stock entry remarks..."
+                          className="h-7.5 text-xs bg-white dark:bg-slate-800 border-slate-300 flex-1"
+                        />
+                      </div>
                     </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">Stone Weight (g)</Label>
-                      <Input type="number" step="0.001" value={draft.stoneWeight || ""} onChange={e => setDraft({ ...draft, stoneWeight: parseFloat(e.target.value) || 0 })} placeholder="0.000" />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">Diamond Wt (g)</Label>
-                      <Input type="number" step="0.001" value={draft.diamondWeight || ""} onChange={e => setDraft({ ...draft, diamondWeight: parseFloat(e.target.value) || 0 })} placeholder="0.000" />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">Other Wt (g)</Label>
-                      <Input type="number" step="0.001" value={draft.otherWeight || ""} onChange={e => setDraft({ ...draft, otherWeight: parseFloat(e.target.value) || 0 })} placeholder="0.000" />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold text-emerald-700">Calculated Net Wt (g)</Label>
-                      <Input type="number" step="0.001" value={draft.netWeight || 0} readOnly placeholder="0.000" className="bg-emerald-50/60 font-bold text-emerald-800" />
-                    </div>
+                    <Badge className="bg-slate-900 text-white font-mono font-bold text-xs uppercase px-3 py-1 shadow-2xs">
+                      OPEN.STOCK
+                    </Badge>
                   </div>
-                </div>
-              )}
 
-              {/* TAB 4: STONE DETAILS */}
-              {activeFormTab === "stone" && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold">Precious & Semi-Precious Stones Embedded</Label>
-                    <Button type="button" size="sm" variant="outline" onClick={addStoneRow}>
-                      <Plus className="w-3.5 h-3.5 mr-1" /> Add Stone Row
+                  {/* Master Stock Table Grid (Full Width - Fits Screen cleanly) */}
+                  <div className="overflow-x-auto border-2 border-slate-400 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-md">
+                    <table className="w-full text-xs sm:text-sm border-collapse min-w-[1250px]">
+                      <thead className="bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-slate-100 uppercase font-black border-b-2 border-slate-400 dark:border-slate-700">
+                        <tr>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-left w-[14%]">Item Name</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-center w-[7%]">Stamp</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-center w-[5%]">Unit</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-center w-[4%]">Pc</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-right w-[6%]">Gr.Wt.</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-right w-[5%]">Less</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-right w-[6%]">Net.Wt.</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-right w-[5%]">Tunch</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-right w-[5%]">Wstg</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-right w-[7%]">Rate</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-right w-[6%]">Lbr.</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-center w-[4%]">On</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-right w-[5%]">Other</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-right w-[7%] bg-amber-100 dark:bg-amber-950/80 font-bold">Gold Fine</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-right w-[6%] bg-amber-100 dark:bg-amber-950/80 font-bold">Sil.Fine</th>
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-right w-[8%] bg-amber-200 dark:bg-amber-900/90 font-black">Total</th>
+                          <th className="p-1.5 text-center w-[4%] border border-slate-300 dark:border-slate-700"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="font-mono text-xs sm:text-sm">
+                        {openStockRows.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-sky-50/50 dark:hover:bg-slate-800/60 border-b border-slate-300 dark:border-slate-700">
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input
+                                value={row.name}
+                                onChange={e => updateOpenStockRow(idx, "name", e.target.value.toUpperCase())}
+                                placeholder="e.g. BENGAL / RING"
+                                className="w-full h-8.5 px-2 text-xs sm:text-sm font-bold font-sans bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 text-slate-900 dark:text-white"
+                              />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <select
+                                value={row.stamp}
+                                onChange={e => updateOpenStockRow(idx, "stamp", e.target.value)}
+                                className="w-full h-8.5 text-xs sm:text-sm font-bold text-center bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 cursor-pointer text-slate-900 dark:text-white"
+                              >
+                                {["24K", "22K", "20K", "18K", "14K", "925", "999"].map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <select
+                                value={row.unit}
+                                onChange={e => updateOpenStockRow(idx, "unit", e.target.value)}
+                                className="w-full h-8.5 text-xs sm:text-sm font-bold text-center bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 cursor-pointer text-slate-900 dark:text-white"
+                              >
+                                {["Gm", "Pcs", "Ct", "Kg"].map(u => <option key={u} value={u}>{u}</option>)}
+                              </select>
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input
+                                type="number"
+                                value={row.pcs}
+                                onChange={e => updateOpenStockRow(idx, "pcs", +e.target.value)}
+                                className="w-full h-8.5 px-1.5 text-center font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 text-slate-900 dark:text-white"
+                              />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input
+                                type="number"
+                                step="0.001"
+                                value={row.grossWeight || ""}
+                                onChange={e => updateOpenStockRow(idx, "grossWeight", +e.target.value)}
+                                className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-black bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 text-slate-900 dark:text-white"
+                              />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input
+                                type="number"
+                                step="0.001"
+                                value={row.lessWeight || ""}
+                                onChange={e => updateOpenStockRow(idx, "lessWeight", +e.target.value)}
+                                className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 text-slate-900 dark:text-white"
+                              />
+                            </td>
+                            <td className="p-2 border border-slate-300 dark:border-slate-700 text-right font-mono font-black text-xs sm:text-sm text-slate-950 dark:text-white bg-slate-100/70 dark:bg-slate-800/70">
+                              {row.netWeight ? row.netWeight.toFixed(3) : "0.000"}
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={row.tunch || ""}
+                                onChange={e => updateOpenStockRow(idx, "tunch", +e.target.value)}
+                                className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-black text-amber-700 dark:text-amber-400 bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                              />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={row.wastage || ""}
+                                onChange={e => updateOpenStockRow(idx, "wastage", +e.target.value)}
+                                className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 text-slate-900 dark:text-white"
+                              />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input
+                                type="number"
+                                value={row.rate || ""}
+                                onChange={e => updateOpenStockRow(idx, "rate", +e.target.value)}
+                                className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 text-slate-900 dark:text-white"
+                              />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input
+                                type="number"
+                                value={row.labour || ""}
+                                onChange={e => updateOpenStockRow(idx, "labour", +e.target.value)}
+                                className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 text-slate-900 dark:text-white"
+                              />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <select
+                                value={row.on}
+                                onChange={e => updateOpenStockRow(idx, "on", e.target.value)}
+                                className="w-full h-8.5 text-xs sm:text-sm font-bold text-center bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 cursor-pointer text-slate-900 dark:text-white"
+                              >
+                                <option value="Wt">Wt</option>
+                                <option value="%">%</option>
+                                <option value="Rs">Rs</option>
+                              </select>
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input
+                                type="number"
+                                value={row.other || ""}
+                                onChange={e => updateOpenStockRow(idx, "other", +e.target.value)}
+                                className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 text-slate-900 dark:text-white"
+                              />
+                            </td>
+                            <td className="p-2 border border-slate-300 dark:border-slate-700 text-right font-mono font-black text-xs sm:text-sm bg-amber-100/80 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200">
+                              {row.goldFine ? row.goldFine.toFixed(3) : "0.000"}
+                            </td>
+                            <td className="p-2 border border-slate-300 dark:border-slate-700 text-right font-mono font-bold text-xs sm:text-sm bg-slate-100/80 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200">
+                              {row.silFine ? row.silFine.toFixed(3) : "0.000"}
+                            </td>
+                            <td className="p-2 border border-slate-300 dark:border-slate-700 text-right font-mono font-black text-sm sm:text-base bg-amber-200/80 dark:bg-amber-900/70 text-slate-950 dark:text-white">
+                              {inr(row.total || 0)}
+                            </td>
+                            <td className="p-1 border border-slate-300 dark:border-slate-700 text-center">
+                              <button
+                                type="button"
+                                onClick={() => removeOpenStockRow(idx)}
+                                className="text-rose-600 hover:text-rose-800 font-black text-sm px-2 py-0.5 rounded hover:bg-rose-100"
+                              >
+                                ✕
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Add Row & Action Bar */}
+                  <div className="flex justify-between items-center gap-2 pt-0.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={addOpenStockRow}
+                      className="bg-white border-amber-300 text-amber-950 hover:bg-amber-100 font-bold text-xs shadow-2xs"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1 text-amber-700" /> Add Item Row
                     </Button>
+                    <div className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300">
+                      Total Rows: {openStockRows.length} | Active Items: {openStockRows.filter(r => r.name).length}
+                    </div>
                   </div>
 
-                  {(draft.stones || []).length === 0 ? (
-                    <div className="py-6 text-center text-xs text-muted-foreground border rounded-lg">No stones added yet.</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {(draft.stones || []).map((s, idx) => (
-                        <div key={idx} className="grid grid-cols-6 gap-2 items-center border p-2 rounded-md bg-card">
-                          <Input placeholder="Stone Name" value={s.name} onChange={e => {
-                            const newStones = [...(draft.stones || [])];
-                            newStones[idx].name = e.target.value;
-                            setDraft({ ...draft, stones: newStones });
-                          }} className="text-xs h-8" />
-                          <Input type="number" placeholder="Pcs" value={s.pcs || ""} onChange={e => {
-                            const newStones = [...(draft.stones || [])];
-                            newStones[idx].pcs = parseInt(e.target.value) || 0;
-                            setDraft({ ...draft, stones: newStones });
-                          }} className="text-xs h-8" />
-                          <Input type="number" step="0.01" placeholder="Wt (ct/g)" value={s.weight || ""} onChange={e => {
-                            const newStones = [...(draft.stones || [])];
-                            newStones[idx].weight = parseFloat(e.target.value) || 0;
-                            newStones[idx].amount = newStones[idx].weight * newStones[idx].rate;
-                            setDraft({ ...draft, stones: newStones });
-                          }} className="text-xs h-8" />
-                          <Input type="number" placeholder="Rate" value={s.rate || ""} onChange={e => {
-                            const newStones = [...(draft.stones || [])];
-                            newStones[idx].rate = parseFloat(e.target.value) || 0;
-                            newStones[idx].amount = newStones[idx].weight * newStones[idx].rate;
-                            setDraft({ ...draft, stones: newStones });
-                          }} className="text-xs h-8" />
-                          <Input type="number" placeholder="Amount" value={s.amount || 0} readOnly className="text-xs h-8 bg-muted font-semibold" />
-                          <Button type="button" size="sm" variant="ghost" className="h-8 text-rose-600" onClick={() => removeStoneRow(idx)}>
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                  {/* Bottom Summary Ledger Panel (Matching Software ERP Screenshot Layout) */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                    {/* Summary Box 1: Fine & Gross Weight Details */}
+                    <div className="bg-amber-50/90 dark:bg-slate-900 border border-amber-300 dark:border-slate-800 rounded-lg p-2.5 space-y-2 text-xs font-mono shadow-2xs">
+                      <div className="grid grid-cols-2 gap-2 border-b border-amber-200 dark:border-slate-800 pb-2">
+                        <div>
+                          <span className="text-slate-600 dark:text-slate-400 uppercase font-bold text-[10px]">Fine Gold (g):</span>
+                          <div className="text-base font-bold text-amber-800 dark:text-amber-300 bg-white dark:bg-slate-800 border border-amber-300 px-2 py-0.5 rounded mt-0.5">
+                            {openStockRows.reduce((sum, r) => sum + (r.goldFine || 0), 0).toFixed(3)}
+                          </div>
                         </div>
-                      ))}
+                        <div>
+                          <span className="text-slate-600 dark:text-slate-400 uppercase font-bold text-[10px]">T-G.W.-G (Gold GW):</span>
+                          <div className="text-base font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border border-slate-300 px-2 py-0.5 rounded mt-0.5">
+                            {openStockRows.reduce((sum, r) => sum + (r.grossWeight || 0), 0).toFixed(3)}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-slate-600 dark:text-slate-400 uppercase font-bold text-[10px]">Total Labour:</span>
+                          <div className="font-bold text-foreground bg-white dark:bg-slate-800 border border-slate-200 px-2 py-0.5 rounded mt-0.5">
+                            {inr(openStockRows.reduce((sum, r) => sum + (r.labour || 0), 0))}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-slate-600 dark:text-slate-400 uppercase font-bold text-[10px]">No. of Pcs / Rows:</span>
+                          <div className="font-bold text-foreground bg-white dark:bg-slate-800 border border-slate-200 px-2 py-0.5 rounded mt-0.5">
+                            Pcs: {openStockRows.reduce((sum, r) => sum + (r.pcs || 0), 0)} | Rows: {openStockRows.length}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Summary Box 2: Total Values & Fine Summary */}
+                    <div className="md:col-span-2 bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white rounded-lg p-3 flex flex-col justify-between shadow-sm border border-slate-800">
+                      <div className="flex items-center justify-between border-b border-slate-700/60 pb-1.5">
+                        <div className="text-xs uppercase font-bold tracking-wide text-amber-200 flex items-center gap-1.5">
+                          <Boxes className="w-4 h-4 text-amber-400" /> Opening Stock Valuation Summary
+                        </div>
+                        <div className="font-mono text-xs font-bold text-amber-300">
+                          {openStockHeader.date} (Bill No: {openStockHeader.billNo})
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1.5 font-mono">
+                        <div>
+                          <span className="text-[10px] text-slate-300 uppercase font-bold">Total Gross Wt</span>
+                          <div className="text-base font-bold text-white">
+                            {openStockRows.reduce((sum, r) => sum + (r.grossWeight || 0), 0).toFixed(3)} g
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-amber-300 uppercase font-bold">Total Net Fine Wt</span>
+                          <div className="text-base font-bold text-amber-300">
+                            {openStockRows.reduce((sum, r) => sum + (r.goldFine + r.silFine || 0), 0).toFixed(3)} g
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-emerald-300 uppercase font-bold">Total Opening Stock Value</span>
+                          <div className="text-base font-bold text-emerald-400">
+                            {inr(openStockRows.reduce((sum, r) => sum + (r.total || 0), 0))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom Desktop Control Buttons */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Button
+                        type="button"
+                        onClick={handleSaveOpenStock}
+                        className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs uppercase px-5 shadow-sm"
+                      >
+                        Save OPEN.STOCK
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setModalOpen(false)}
+                        className="text-xs font-bold uppercase border-slate-300"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setOpenStockRows([createDefaultOpenStockRow()])}
+                        className="text-xs font-bold uppercase text-rose-700 border-rose-300 hover:bg-rose-50"
+                      >
+                        Delete / Clear
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={addOpenStockRow}
+                        className="text-xs font-bold uppercase border-slate-300"
+                      >
+                        New Row
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          const activeEl = document.activeElement as HTMLElement;
+                          const container = activeEl?.closest("table, form, [role='dialog']") || document.body;
+                          const inputs = Array.from(container.querySelectorAll<HTMLElement>("input, select, textarea")).filter(
+                            el => !el.hasAttribute("disabled") && el.tabIndex !== -1
+                          );
+                          const index = inputs.indexOf(activeEl);
+                          if (index > 0) {
+                            inputs[index - 1].focus();
+                            if (inputs[index - 1].tagName === "INPUT") (inputs[index - 1] as HTMLInputElement).select?.();
+                          } else if (inputs.length > 0) {
+                            inputs[0].focus();
+                          }
+                        }}
+                        className="text-xs font-bold uppercase border-slate-300"
+                      >
+                        Prev.
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          const activeEl = document.activeElement as HTMLElement;
+                          const container = activeEl?.closest("table, form, [role='dialog']") || document.body;
+                          const inputs = Array.from(container.querySelectorAll<HTMLElement>("input, select, textarea")).filter(
+                            el => !el.hasAttribute("disabled") && el.tabIndex !== -1
+                          );
+                          const index = inputs.indexOf(activeEl);
+                          if (index >= 0 && index < inputs.length - 1) {
+                            inputs[index + 1].focus();
+                            if (inputs[index + 1].tagName === "INPUT") (inputs[index + 1] as HTMLInputElement).select?.();
+                          } else if (inputs.length > 0) {
+                            inputs[inputs.length - 1].focus();
+                          }
+                        }}
+                        className="text-xs font-bold uppercase border-slate-300"
+                      >
+                        Next
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => window.print()}
+                        className="text-xs font-semibold border-slate-300"
+                      >
+                        Print Grid
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          const ws = XLSX.utils.json_to_sheet(openStockRows);
+                          const wb = XLSX.utils.book_new();
+                          XLSX.utils.book_append_sheet(wb, ws, "OPEN_STOCK");
+                          XLSX.writeFile(wb, `OPEN_STOCK_${openStockHeader.date}.xlsx`);
+                          toast.success("OPEN.STOCK exported to Excel!");
+                        }}
+                        className="text-xs font-semibold border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+                      >
+                        Export
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : formViewMode === "all" ? (
+                /* ALL-IN-ONE SINGLE PAGE FORM TABLE VIEW */
+                <div className="space-y-6">
+                  {/* Section 1: Basic Identity & Barcode */}
+                  <div className="border rounded-lg overflow-hidden bg-card shadow-sm">
+                    <div className="bg-muted/40 p-3 border-b flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                        <Boxes className="w-4 h-4 text-amber-600" /> Section 1: Basic Identity & Barcode
+                      </h3>
+                      <Badge variant="outline" className="text-[10px] font-mono">Master Info</Badge>
+                    </div>
+                    <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <Label className="text-xs font-semibold">Item Name *</Label>
+                        <Input value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. Traditional Gold Necklace 22K" required />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Barcode Number *</Label>
+                        <Input value={draft.barcode || ""} onChange={e => setDraft({ ...draft, barcode: e.target.value })} placeholder="e.g. 89012345678" required />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Category *</Label>
+                        <Select value={draft.category || ""} onValueChange={v => setDraft({ ...draft, category: v })}>
+                          <SelectTrigger><SelectValue placeholder="Select Category" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Gold">Gold Ornaments</SelectItem>
+                            <SelectItem value="Silver">Silver Articles</SelectItem>
+                            <SelectItem value="Diamond">Diamond Jewellery</SelectItem>
+                            <SelectItem value="Platinum">Platinum Items</SelectItem>
+                            <SelectItem value="Coins">Coins & Bars</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Sub Category</Label>
+                        <Input value={draft.subcategory || ""} onChange={e => setDraft({ ...draft, subcategory: e.target.value })} placeholder="e.g. Necklace / Ring / Bangle" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Item Code (Manual/Auto)</Label>
+                        <Input value={draft.itemCode || ""} onChange={e => setDraft({ ...draft, itemCode: e.target.value })} placeholder="e.g. JW-100234" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Brand / Manufacturer</Label>
+                        <Input value={draft.brand || ""} onChange={e => setDraft({ ...draft, brand: e.target.value })} placeholder="e.g. In-House / Brand" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Collection</Label>
+                        <Input value={draft.collectionName || ""} onChange={e => setDraft({ ...draft, collectionName: e.target.value })} placeholder="e.g. Bridal 2026" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Design Number / SKU</Label>
+                        <Input value={draft.designNo || draft.sku || ""} onChange={e => setDraft({ ...draft, designNo: e.target.value, sku: e.target.value })} placeholder="e.g. DSG-99 / SKU-GOLD-01" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 2: Metal Specs & Hallmark HUID */}
+                  <div className="border rounded-lg overflow-hidden bg-card shadow-sm">
+                    <div className="bg-muted/40 p-3 border-b flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                        <Award className="w-4 h-4 text-amber-600" /> Section 2: Metal, Purity & Hallmark HUID
+                      </h3>
+                      <Badge variant="outline" className="text-[10px] font-mono bg-amber-50 text-amber-700">BIS Hallmark</Badge>
+                    </div>
+                    <div className="p-4 grid grid-cols-1 sm:grid-cols-4 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Metal Type *</Label>
+                        <Select value={draft.metalType || ""} onValueChange={v => setDraft({ ...draft, metalType: v })}>
+                          <SelectTrigger><SelectValue placeholder="Select Metal" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Gold">Gold</SelectItem>
+                            <SelectItem value="Silver">Silver</SelectItem>
+                            <SelectItem value="Diamond">Diamond</SelectItem>
+                            <SelectItem value="Platinum">Platinum</SelectItem>
+                            <SelectItem value="Gemstone">Gemstone</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Purity *</Label>
+                        <Select value={draft.purity || ""} onValueChange={v => setDraft({ ...draft, purity: v })}>
+                          <SelectTrigger><SelectValue placeholder="Select Purity" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="24K">24K (99.9%)</SelectItem>
+                            <SelectItem value="22K">22K (91.6%)</SelectItem>
+                            <SelectItem value="20K">20K (83.3%)</SelectItem>
+                            <SelectItem value="18K">18K (75.0%)</SelectItem>
+                            <SelectItem value="14K">14K (58.5%)</SelectItem>
+                            <SelectItem value="925">925 Silver</SelectItem>
+                            <SelectItem value="999">999 Fine Silver</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Hallmark HUID Number</Label>
+                        <Input value={draft.huid || ""} onChange={e => setDraft({ ...draft, huid: e.target.value })} placeholder="e.g. HUID-ABC123" className="font-mono" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Metal Color & Gender</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Select value={draft.metalColor || ""} onValueChange={v => setDraft({ ...draft, metalColor: v })}>
+                            <SelectTrigger><SelectValue placeholder="Color" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Yellow">Yellow</SelectItem>
+                              <SelectItem value="White">White</SelectItem>
+                              <SelectItem value="Rose">Rose</SelectItem>
+                              <SelectItem value="Dual Tone">Dual</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Select value={draft.gender || ""} onValueChange={v => setDraft({ ...draft, gender: v })}>
+                            <SelectTrigger><SelectValue placeholder="Gender" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Women">Women</SelectItem>
+                              <SelectItem value="Men">Men</SelectItem>
+                              <SelectItem value="Kids">Kids</SelectItem>
+                              <SelectItem value="Unisex">Unisex</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 3: Weight Details */}
+                  <div className="border rounded-lg overflow-hidden bg-card shadow-sm border-emerald-500/20">
+                    <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-3 border-b border-emerald-200/50 flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                        <Scale className="w-4 h-4 text-emerald-600" /> Section 3: Weight Breakdown & Pure Net Weight Formula
+                      </h3>
+                      <Badge className="bg-emerald-600 text-white font-mono text-[10px]">
+                        Net Wt = Gross - Stones - Diamonds - Other
+                      </Badge>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">Gross Weight (g) *</Label>
+                          <Input type="number" step="0.001" value={draft.grossWeight || ""} onChange={e => setDraft({ ...draft, grossWeight: parseFloat(e.target.value) || 0 })} placeholder="0.000" required className="font-bold" />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">Stone Weight (g)</Label>
+                          <Input type="number" step="0.001" value={draft.stoneWeight || ""} onChange={e => setDraft({ ...draft, stoneWeight: parseFloat(e.target.value) || 0 })} placeholder="0.000" />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">Diamond Wt (g)</Label>
+                          <Input type="number" step="0.001" value={draft.diamondWeight || ""} onChange={e => setDraft({ ...draft, diamondWeight: parseFloat(e.target.value) || 0 })} placeholder="0.000" />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">Other Wt (g)</Label>
+                          <Input type="number" step="0.001" value={draft.otherWeight || ""} onChange={e => setDraft({ ...draft, otherWeight: parseFloat(e.target.value) || 0 })} placeholder="0.000" />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Calculated Pure Net Wt (g)</Label>
+                          <Input type="number" step="0.001" value={draft.netWeight || 0} readOnly placeholder="0.000" className="bg-emerald-50/80 font-bold text-emerald-800 dark:text-emerald-300 border-emerald-300" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 4: Stones & Diamonds Tables */}
+                  <div className="border rounded-lg overflow-hidden bg-card shadow-sm">
+                    <div className="bg-muted/40 p-3 border-b flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                        <ScanBarcode className="w-4 h-4 text-purple-600" /> Section 4: Embedded Stones & Certified Diamonds
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={addStoneRow}>
+                          <Plus className="w-3 h-3" /> Add Stone
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={addDiamondRow}>
+                          <Plus className="w-3 h-3" /> Add Diamond
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="p-4 space-y-4">
+                      {/* Stones Table */}
+                      {(draft.stones || []).length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-bold text-muted-foreground">Precious & Semi-Precious Stones ({draft.stones?.length})</div>
+                          <div className="space-y-2">
+                            {(draft.stones || []).map((s, idx) => (
+                              <div key={idx} className="grid grid-cols-6 gap-2 items-center border p-2 rounded-md bg-muted/20">
+                                <Input placeholder="Stone Name" value={s.name} onChange={e => {
+                                  const arr = [...(draft.stones || [])];
+                                  arr[idx].name = e.target.value;
+                                  setDraft({ ...draft, stones: arr });
+                                }} className="text-xs h-8" />
+                                <Input type="number" placeholder="Pcs" value={s.pcs || ""} onChange={e => {
+                                  const arr = [...(draft.stones || [])];
+                                  arr[idx].pcs = parseInt(e.target.value) || 0;
+                                  setDraft({ ...draft, stones: arr });
+                                }} className="text-xs h-8" />
+                                <Input type="number" step="0.01" placeholder="Wt (ct/g)" value={s.weight || ""} onChange={e => {
+                                  const arr = [...(draft.stones || [])];
+                                  arr[idx].weight = parseFloat(e.target.value) || 0;
+                                  arr[idx].amount = arr[idx].weight * arr[idx].rate;
+                                  setDraft({ ...draft, stones: arr });
+                                }} className="text-xs h-8" />
+                                <Input type="number" placeholder="Rate" value={s.rate || ""} onChange={e => {
+                                  const arr = [...(draft.stones || [])];
+                                  arr[idx].rate = parseFloat(e.target.value) || 0;
+                                  arr[idx].amount = arr[idx].weight * arr[idx].rate;
+                                  setDraft({ ...draft, stones: arr });
+                                }} className="text-xs h-8" />
+                                <Input type="number" placeholder="Amount" value={s.amount || 0} readOnly className="text-xs h-8 bg-muted font-semibold" />
+                                <Button type="button" size="sm" variant="ghost" className="h-8 text-rose-600" onClick={() => removeStoneRow(idx)}>
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Diamonds Table */}
+                      {(draft.diamonds || []).length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-bold text-muted-foreground">Certified Diamonds ({draft.diamonds?.length})</div>
+                          <div className="space-y-2">
+                            {(draft.diamonds || []).map((d, idx) => (
+                              <div key={idx} className="grid grid-cols-7 gap-2 items-center border p-2 rounded-md bg-muted/20">
+                                <Input placeholder="Shape (Round)" value={d.shape} onChange={e => {
+                                  const arr = [...(draft.diamonds || [])];
+                                  arr[idx].shape = e.target.value;
+                                  setDraft({ ...draft, diamonds: arr });
+                                }} className="text-xs h-8" />
+                                <Input placeholder="Color/Clarity" value={`${d.color}/${d.clarity}`} onChange={e => {
+                                  const parts = e.target.value.split("/");
+                                  const arr = [...(draft.diamonds || [])];
+                                  arr[idx].color = parts[0] || "G";
+                                  arr[idx].clarity = parts[1] || "VS1";
+                                  setDraft({ ...draft, diamonds: arr });
+                                }} className="text-xs h-8" />
+                                <Input type="number" step="0.01" placeholder="Carat Wt" value={d.weight || ""} onChange={e => {
+                                  const arr = [...(draft.diamonds || [])];
+                                  arr[idx].weight = parseFloat(e.target.value) || 0;
+                                  arr[idx].amount = arr[idx].weight * arr[idx].rate;
+                                  setDraft({ ...draft, diamonds: arr });
+                                }} className="text-xs h-8" />
+                                <Input type="number" placeholder="Rate/Ct" value={d.rate || ""} onChange={e => {
+                                  const arr = [...(draft.diamonds || [])];
+                                  arr[idx].rate = parseFloat(e.target.value) || 0;
+                                  arr[idx].amount = arr[idx].weight * arr[idx].rate;
+                                  setDraft({ ...draft, diamonds: arr });
+                                }} className="text-xs h-8" />
+                                <Input placeholder="Cert #" value={d.certNo || ""} onChange={e => {
+                                  const arr = [...(draft.diamonds || [])];
+                                  arr[idx].certNo = e.target.value;
+                                  setDraft({ ...draft, diamonds: arr });
+                                }} className="text-xs h-8" />
+                                <Input type="number" placeholder="Amount" value={d.amount || 0} readOnly className="text-xs h-8 bg-muted font-semibold" />
+                                <Button type="button" size="sm" variant="ghost" className="h-8 text-rose-600" onClick={() => removeDiamondRow(idx)}>
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {(draft.stones || []).length === 0 && (draft.diamonds || []).length === 0 && (
+                        <div className="py-4 text-center text-xs text-muted-foreground border border-dashed rounded-md">
+                          No embedded stones or diamonds added yet. Use buttons above to attach stones/diamonds.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Section 5: Pricing, Making Charges & GST Presets */}
+                  <div className="border rounded-lg overflow-hidden bg-card shadow-sm">
+                    <div className="bg-muted/40 p-3 border-b flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                        <DollarSign className="w-4 h-4 text-blue-600" /> Section 5: Pricing, Making Charges & GST
+                      </h3>
+                      <Badge variant="outline" className="text-[10px] font-mono bg-blue-50 text-blue-700">Tax & Valuation</Badge>
+                    </div>
+                    <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Metal Rate (₹/g)</Label>
+                        <Input type="number" value={draft.metalRate || ""} onChange={e => setDraft({ ...draft, metalRate: parseFloat(e.target.value) || 0 })} placeholder="0.00" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Making Charge Type</Label>
+                        <Select value={draft.makingChargeType || "fixed"} onValueChange={(v: any) => setDraft({ ...draft, makingChargeType: v })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="fixed">Fixed Amount (₹)</SelectItem>
+                            <SelectItem value="per_gram">Per Gram (₹/g)</SelectItem>
+                            <SelectItem value="percentage">Percentage (%)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Making Charge Value</Label>
+                        <Input type="number" step="0.01" value={draft.makingCharge || ""} onChange={e => setDraft({ ...draft, makingCharge: parseFloat(e.target.value) || 0 })} placeholder="0.00" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Cost Price (₹)</Label>
+                        <Input type="number" value={draft.costPrice || ""} onChange={e => setDraft({ ...draft, costPrice: parseFloat(e.target.value) || 0 })} placeholder="0.00" className="font-bold text-blue-700" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Selling Price (₹) *</Label>
+                        <Input type="number" value={draft.sellingPrice || ""} onChange={e => setDraft({ ...draft, sellingPrice: parseFloat(e.target.value) || 0 })} placeholder="0.00" className="font-bold text-emerald-700" required />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">GST Rate (%) & Presets</Label>
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={draft.gstPct !== undefined && draft.gstPct !== null ? draft.gstPct : ""}
+                            onChange={e => setDraft({ ...draft, gstPct: e.target.value === "" ? 0 : parseFloat(e.target.value) })}
+                            placeholder="3%"
+                            className="w-24 font-bold text-xs"
+                          />
+                          <div className="flex flex-wrap gap-1">
+                            {[0, 1.5, 3, 5, 18].map(p => (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() => setDraft({ ...draft, gstPct: p })}
+                                className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${draft.gstPct === p ? "bg-amber-600 text-white" : "bg-muted text-slate-700"}`}
+                              >
+                                {p}%
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 6: Inventory Stock & Store Location */}
+                  <div className="border rounded-lg overflow-hidden bg-card shadow-sm">
+                    <div className="bg-muted/40 p-3 border-b flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                        <Store className="w-4 h-4 text-indigo-600" /> Section 6: Stock Quantity & Vault Location
+                      </h3>
+                      <Badge variant="outline" className="text-[10px] font-mono">Location & Stock</Badge>
+                    </div>
+                    <div className="p-4 grid grid-cols-1 sm:grid-cols-4 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Current Stock Qty *</Label>
+                        <Input type="number" value={draft.stock || ""} onChange={e => setDraft({ ...draft, stock: parseInt(e.target.value) || 0 })} placeholder="1" required className="font-bold" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Reorder Alert Level</Label>
+                        <Input type="number" value={draft.reorderLevel || ""} onChange={e => setDraft({ ...draft, reorderLevel: parseInt(e.target.value) || 0 })} placeholder="1" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Store Branch</Label>
+                        <Input value={draft.branch || ""} onChange={e => setDraft({ ...draft, branch: e.target.value })} placeholder="e.g. Main Store" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Locker / Tray Number</Label>
+                        <Input value={draft.tray || ""} onChange={e => setDraft({ ...draft, tray: e.target.value })} placeholder="e.g. Tray T-1" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* TABBED VIEW FOR USERS WHO PREFER STEP-BY-STEP */
+                <div className="space-y-4">
+                  {/* TAB 1: BASIC INFO */}
+                  {activeFormTab === "basic" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Item Name *</Label>
+                        <Input value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. Traditional Bridal Necklace" required />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Item Code (Manual/Auto)</Label>
+                        <Input value={draft.itemCode || ""} onChange={e => setDraft({ ...draft, itemCode: e.target.value })} placeholder="e.g. JW-100234" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Barcode Number *</Label>
+                        <Input value={draft.barcode || ""} onChange={e => setDraft({ ...draft, barcode: e.target.value })} placeholder="e.g. 89012345678" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Category *</Label>
+                        <Select value={draft.category || ""} onValueChange={v => setDraft({ ...draft, category: v })}>
+                          <SelectTrigger><SelectValue placeholder="Select Category" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Gold">Gold Ornaments</SelectItem>
+                            <SelectItem value="Silver">Silver Articles</SelectItem>
+                            <SelectItem value="Diamond">Diamond Jewellery</SelectItem>
+                            <SelectItem value="Platinum">Platinum Items</SelectItem>
+                            <SelectItem value="Coins">Coins & Bars</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Sub Category</Label>
+                        <Input value={draft.subcategory || ""} onChange={e => setDraft({ ...draft, subcategory: e.target.value })} placeholder="e.g. Necklace / Ring / Bangle" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Brand</Label>
+                        <Input value={draft.brand || ""} onChange={e => setDraft({ ...draft, brand: e.target.value })} placeholder="e.g. Brand / In-House" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Collection</Label>
+                        <Input value={draft.collectionName || ""} onChange={e => setDraft({ ...draft, collectionName: e.target.value })} placeholder="e.g. Bridal 2026" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Design Number</Label>
+                        <Input value={draft.designNo || ""} onChange={e => setDraft({ ...draft, designNo: e.target.value })} placeholder="e.g. DSG-99" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">SKU</Label>
+                        <Input value={draft.sku || ""} onChange={e => setDraft({ ...draft, sku: e.target.value })} placeholder="e.g. SKU-GOLD-01" />
+                      </div>
                     </div>
                   )}
-                </div>
-              )}
 
-              {/* TAB 5: DIAMOND DETAILS */}
-              {activeFormTab === "diamond" && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold">Certified Diamonds Embedded</Label>
-                    <Button type="button" size="sm" variant="outline" onClick={addDiamondRow}>
-                      <Plus className="w-3.5 h-3.5 mr-1" /> Add Diamond Row
-                    </Button>
-                  </div>
+                  {/* TAB 2: JEWELLERY SPECS */}
+                  {activeFormTab === "jewellery" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Metal Type *</Label>
+                        <Select value={draft.metalType || ""} onValueChange={v => setDraft({ ...draft, metalType: v })}>
+                          <SelectTrigger><SelectValue placeholder="Select Metal Type" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Gold">Gold</SelectItem>
+                            <SelectItem value="Silver">Silver</SelectItem>
+                            <SelectItem value="Diamond">Diamond</SelectItem>
+                            <SelectItem value="Platinum">Platinum</SelectItem>
+                            <SelectItem value="Gemstone">Gemstone</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  {(draft.diamonds || []).length === 0 ? (
-                    <div className="py-6 text-center text-xs text-muted-foreground border rounded-lg">No diamonds added yet.</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {(draft.diamonds || []).map((d, idx) => (
-                        <div key={idx} className="grid grid-cols-7 gap-2 items-center border p-2 rounded-md bg-card">
-                          <Input placeholder="Shape (Round)" value={d.shape} onChange={e => {
-                            const arr = [...(draft.diamonds || [])];
-                            arr[idx].shape = e.target.value;
-                            setDraft({ ...draft, diamonds: arr });
-                          }} className="text-xs h-8" />
-                          <Input placeholder="Color/Clarity" value={`${d.color}/${d.clarity}`} onChange={e => {
-                            const parts = e.target.value.split("/");
-                            const arr = [...(draft.diamonds || [])];
-                            arr[idx].color = parts[0] || "G";
-                            arr[idx].clarity = parts[1] || "VS1";
-                            setDraft({ ...draft, diamonds: arr });
-                          }} className="text-xs h-8" />
-                          <Input type="number" step="0.01" placeholder="Carat Wt" value={d.weight || ""} onChange={e => {
-                            const arr = [...(draft.diamonds || [])];
-                            arr[idx].weight = parseFloat(e.target.value) || 0;
-                            arr[idx].amount = arr[idx].weight * arr[idx].rate;
-                            setDraft({ ...draft, diamonds: arr });
-                          }} className="text-xs h-8" />
-                          <Input type="number" placeholder="Rate/Ct" value={d.rate || ""} onChange={e => {
-                            const arr = [...(draft.diamonds || [])];
-                            arr[idx].rate = parseFloat(e.target.value) || 0;
-                            arr[idx].amount = arr[idx].weight * arr[idx].rate;
-                            setDraft({ ...draft, diamonds: arr });
-                          }} className="text-xs h-8" />
-                          <Input placeholder="Cert #" value={d.certNo || ""} onChange={e => {
-                            const arr = [...(draft.diamonds || [])];
-                            arr[idx].certNo = e.target.value;
-                            setDraft({ ...draft, diamonds: arr });
-                          }} className="text-xs h-8" />
-                          <Input type="number" placeholder="Amount" value={d.amount || 0} readOnly className="text-xs h-8 bg-muted font-semibold" />
-                          <Button type="button" size="sm" variant="ghost" className="h-8 text-rose-600" onClick={() => removeDiamondRow(idx)}>
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      ))}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Purity *</Label>
+                        <Select value={draft.purity || ""} onValueChange={v => setDraft({ ...draft, purity: v })}>
+                          <SelectTrigger><SelectValue placeholder="Select Purity" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="24K">24K (99.9%)</SelectItem>
+                            <SelectItem value="22K">22K (91.6%)</SelectItem>
+                            <SelectItem value="20K">20K (83.3%)</SelectItem>
+                            <SelectItem value="18K">18K (75.0%)</SelectItem>
+                            <SelectItem value="14K">14K (58.5%)</SelectItem>
+                            <SelectItem value="925">925 Silver</SelectItem>
+                            <SelectItem value="999">999 Fine Silver</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Hallmark Number (HUID)</Label>
+                        <Input value={draft.huid || ""} onChange={e => setDraft({ ...draft, huid: e.target.value })} placeholder="e.g. ABC123" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Metal Color</Label>
+                        <Select value={draft.metalColor || ""} onValueChange={v => setDraft({ ...draft, metalColor: v })}>
+                          <SelectTrigger><SelectValue placeholder="Select Metal Color" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Yellow">Yellow Gold</SelectItem>
+                            <SelectItem value="White">White Gold</SelectItem>
+                            <SelectItem value="Rose">Rose Gold</SelectItem>
+                            <SelectItem value="Dual Tone">Dual Tone</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Gender</Label>
+                        <Select value={draft.gender || ""} onValueChange={v => setDraft({ ...draft, gender: v })}>
+                          <SelectTrigger><SelectValue placeholder="Select Gender" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Women">Women</SelectItem>
+                            <SelectItem value="Men">Men</SelectItem>
+                            <SelectItem value="Kids">Kids</SelectItem>
+                            <SelectItem value="Unisex">Unisex</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   )}
-                </div>
-              )}
 
-              {/* TAB 6: PRICING & COST */}
-              {activeFormTab === "pricing" && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Metal Rate (₹/g)</Label>
-                    <Input type="number" value={draft.metalRate || ""} onChange={e => setDraft({ ...draft, metalRate: parseFloat(e.target.value) || 0 })} placeholder="0.00" />
-                  </div>
+                  {/* TAB 3: WEIGHT DETAILS */}
+                  {activeFormTab === "weight" && (
+                    <div className="space-y-4">
+                      <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg flex items-center justify-between text-xs">
+                        <span className="font-semibold text-emerald-800">Formula: Net Weight = Gross Wt - Stone Wt - Diamond Wt - Other Wt</span>
+                        <Badge className="bg-emerald-600 text-white font-mono">{draft.netWeight || 0} g Pure Net</Badge>
+                      </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Making Charge Type</Label>
-                    <Select value={draft.makingChargeType || "fixed"} onValueChange={(v: any) => setDraft({ ...draft, makingChargeType: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="fixed">Fixed Amount (₹)</SelectItem>
-                        <SelectItem value="per_gram">Per Gram (₹/g)</SelectItem>
-                        <SelectItem value="percentage">Percentage (%)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">Gross Weight (g) *</Label>
+                          <Input type="number" step="0.001" value={draft.grossWeight || ""} onChange={e => setDraft({ ...draft, grossWeight: parseFloat(e.target.value) || 0 })} placeholder="0.000" required />
+                        </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">
-                      {draft.makingChargeType === "percentage" ? "Making Charge (%)" : draft.makingChargeType === "per_gram" ? "Making Charge (₹/g)" : "Making Charge Value (₹)"}
-                    </Label>
-                    <Input type="number" step="0.01" value={draft.makingCharge || ""} onChange={e => setDraft({ ...draft, makingCharge: parseFloat(e.target.value) || 0 })} placeholder={draft.makingChargeType === "percentage" ? "e.g. 8 for 8%" : "0.00"} />
-                  </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">Stone Weight (g)</Label>
+                          <Input type="number" step="0.001" value={draft.stoneWeight || ""} onChange={e => setDraft({ ...draft, stoneWeight: parseFloat(e.target.value) || 0 })} placeholder="0.000" />
+                        </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Wastage (%) (Optional)</Label>
-                    <Input type="number" step="0.01" value={draft.wastagePct || ""} onChange={e => setDraft({ ...draft, wastagePct: parseFloat(e.target.value) || 0 })} placeholder="e.g. 2.5" />
-                  </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">Diamond Wt (g)</Label>
+                          <Input type="number" step="0.001" value={draft.diamondWeight || ""} onChange={e => setDraft({ ...draft, diamondWeight: parseFloat(e.target.value) || 0 })} placeholder="0.000" />
+                        </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Cost Price (₹)</Label>
-                    <Input type="number" value={draft.costPrice || ""} onChange={e => setDraft({ ...draft, costPrice: parseFloat(e.target.value) || 0 })} placeholder="0.00" className="font-bold text-blue-700" />
-                  </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">Other Wt (g)</Label>
+                          <Input type="number" step="0.001" value={draft.otherWeight || ""} onChange={e => setDraft({ ...draft, otherWeight: parseFloat(e.target.value) || 0 })} placeholder="0.000" />
+                        </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Selling Price (₹) *</Label>
-                    <Input type="number" value={draft.sellingPrice || ""} onChange={e => setDraft({ ...draft, sellingPrice: parseFloat(e.target.value) || 0 })} placeholder="0.00" className="font-bold text-emerald-700" required />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Min Selling Price (₹)</Label>
-                    <Input type="number" value={draft.minSellingPrice || ""} onChange={e => setDraft({ ...draft, minSellingPrice: parseFloat(e.target.value) || 0 })} placeholder="0.00" />
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 7: GST */}
-              {activeFormTab === "gst" && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">HSN Code (Optional)</Label>
-                    <Input value={draft.hsnCode || ""} onChange={e => setDraft({ ...draft, hsnCode: e.target.value })} placeholder="e.g. 7113" />
-                  </div>
-
-                  <div className="space-y-1.5 col-span-2">
-                    <Label className="text-xs font-semibold">GST Rate (%) — Manual Entry &amp; Quick Presets</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={draft.gstPct !== undefined && draft.gstPct !== null ? draft.gstPct : ""}
-                        onChange={e => setDraft({ ...draft, gstPct: e.target.value === "" ? 0 : parseFloat(e.target.value) })}
-                        placeholder="Enter manual % (e.g. 3, 1.5, 18)"
-                        className="w-48 font-bold"
-                      />
-                      <span className="text-xs font-bold text-slate-500">%</span>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold text-emerald-700">Calculated Net Wt (g)</Label>
+                          <Input type="number" step="0.001" value={draft.netWeight || 0} readOnly placeholder="0.000" className="bg-emerald-50/60 font-bold text-emerald-800" />
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground mt-1.5">
-                      <span className="font-medium mr-1 text-slate-600">Quick Presets:</span>
-                      {[0, 0.25, 1.5, 3, 5, 12, 18].map(p => (
-                        <button
-                          key={p}
-                          type="button"
-                          onClick={() => setDraft({ ...draft, gstPct: p })}
-                          className={`px-2 py-0.5 rounded border text-xs font-medium transition-colors ${draft.gstPct === p ? "bg-amber-600 text-white border-amber-600" : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300"}`}
-                        >
-                          {p}%
-                        </button>
-                      ))}
+                  )}
+
+                  {/* TAB 4: STONE DETAILS */}
+                  {activeFormTab === "stone" && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold">Precious & Semi-Precious Stones Embedded</Label>
+                        <Button type="button" size="sm" variant="outline" onClick={addStoneRow}>
+                          <Plus className="w-3.5 h-3.5 mr-1" /> Add Stone Row
+                        </Button>
+                      </div>
+
+                      {(draft.stones || []).length === 0 ? (
+                        <div className="py-6 text-center text-xs text-muted-foreground border rounded-lg">No stones added yet.</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {(draft.stones || []).map((s, idx) => (
+                            <div key={idx} className="grid grid-cols-6 gap-2 items-center border p-2 rounded-md bg-card">
+                              <Input placeholder="Stone Name" value={s.name} onChange={e => {
+                                const newStones = [...(draft.stones || [])];
+                                newStones[idx].name = e.target.value;
+                                setDraft({ ...draft, stones: newStones });
+                              }} className="text-xs h-8" />
+                              <Input type="number" placeholder="Pcs" value={s.pcs || ""} onChange={e => {
+                                const newStones = [...(draft.stones || [])];
+                                newStones[idx].pcs = parseInt(e.target.value) || 0;
+                                setDraft({ ...draft, stones: newStones });
+                              }} className="text-xs h-8" />
+                              <Input type="number" step="0.01" placeholder="Wt (ct/g)" value={s.weight || ""} onChange={e => {
+                                const newStones = [...(draft.stones || [])];
+                                newStones[idx].weight = parseFloat(e.target.value) || 0;
+                                newStones[idx].amount = newStones[idx].weight * newStones[idx].rate;
+                                setDraft({ ...draft, stones: newStones });
+                              }} className="text-xs h-8" />
+                              <Input type="number" placeholder="Rate" value={s.rate || ""} onChange={e => {
+                                const newStones = [...(draft.stones || [])];
+                                newStones[idx].rate = parseFloat(e.target.value) || 0;
+                                newStones[idx].amount = newStones[idx].weight * newStones[idx].rate;
+                                setDraft({ ...draft, stones: newStones });
+                              }} className="text-xs h-8" />
+                              <Input type="number" placeholder="Amount" value={s.amount || 0} readOnly className="text-xs h-8 bg-muted font-semibold" />
+                              <Button type="button" size="sm" variant="ghost" className="h-8 text-rose-600" onClick={() => removeStoneRow(idx)}>
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </div>
-              )}
+                  )}
 
-              {/* TAB 8: INVENTORY & LOCATION */}
-              {activeFormTab === "inventory-tab" && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Current Stock Qty *</Label>
-                    <Input type="number" value={draft.stock || ""} onChange={e => setDraft({ ...draft, stock: parseInt(e.target.value) || 0 })} placeholder="0" required />
-                  </div>
+                  {/* TAB 5: DIAMOND DETAILS */}
+                  {activeFormTab === "diamond" && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold">Certified Diamonds Embedded</Label>
+                        <Button type="button" size="sm" variant="outline" onClick={addDiamondRow}>
+                          <Plus className="w-3.5 h-3.5 mr-1" /> Add Diamond Row
+                        </Button>
+                      </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Reorder Alert Level</Label>
-                    <Input type="number" value={draft.reorderLevel || ""} onChange={e => setDraft({ ...draft, reorderLevel: parseInt(e.target.value) || 0 })} placeholder="0" />
-                  </div>
+                      {(draft.diamonds || []).length === 0 ? (
+                        <div className="py-6 text-center text-xs text-muted-foreground border rounded-lg">No diamonds added yet.</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {(draft.diamonds || []).map((d, idx) => (
+                            <div key={idx} className="grid grid-cols-7 gap-2 items-center border p-2 rounded-md bg-card">
+                              <Input placeholder="Shape (Round)" value={d.shape} onChange={e => {
+                                const arr = [...(draft.diamonds || [])];
+                                arr[idx].shape = e.target.value;
+                                setDraft({ ...draft, diamonds: arr });
+                              }} className="text-xs h-8" />
+                              <Input placeholder="Color/Clarity" value={`${d.color}/${d.clarity}`} onChange={e => {
+                                const parts = e.target.value.split("/");
+                                const arr = [...(draft.diamonds || [])];
+                                arr[idx].color = parts[0] || "G";
+                                arr[idx].clarity = parts[1] || "VS1";
+                                setDraft({ ...draft, diamonds: arr });
+                              }} className="text-xs h-8" />
+                              <Input type="number" step="0.01" placeholder="Carat Wt" value={d.weight || ""} onChange={e => {
+                                const arr = [...(draft.diamonds || [])];
+                                arr[idx].weight = parseFloat(e.target.value) || 0;
+                                arr[idx].amount = arr[idx].weight * arr[idx].rate;
+                                setDraft({ ...draft, diamonds: arr });
+                              }} className="text-xs h-8" />
+                              <Input type="number" placeholder="Rate/Ct" value={d.rate || ""} onChange={e => {
+                                const arr = [...(draft.diamonds || [])];
+                                arr[idx].rate = parseFloat(e.target.value) || 0;
+                                arr[idx].amount = arr[idx].weight * arr[idx].rate;
+                                setDraft({ ...draft, diamonds: arr });
+                              }} className="text-xs h-8" />
+                              <Input placeholder="Cert #" value={d.certNo || ""} onChange={e => {
+                                const arr = [...(draft.diamonds || [])];
+                                arr[idx].certNo = e.target.value;
+                                setDraft({ ...draft, diamonds: arr });
+                              }} className="text-xs h-8" />
+                              <Input type="number" placeholder="Amount" value={d.amount || 0} readOnly className="text-xs h-8 bg-muted font-semibold" />
+                              <Button type="button" size="sm" variant="ghost" className="h-8 text-rose-600" onClick={() => removeDiamondRow(idx)}>
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Store Branch</Label>
-                    <Input value={draft.branch || ""} onChange={e => setDraft({ ...draft, branch: e.target.value })} placeholder="e.g. Main Store" />
-                  </div>
+                  {/* TAB 6: PRICING & COST */}
+                  {activeFormTab === "pricing" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Metal Rate (₹/g)</Label>
+                        <Input type="number" value={draft.metalRate || ""} onChange={e => setDraft({ ...draft, metalRate: parseFloat(e.target.value) || 0 })} placeholder="0.00" />
+                      </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Godown / Vault Location</Label>
-                    <Input value={draft.godown || ""} onChange={e => setDraft({ ...draft, godown: e.target.value })} placeholder="e.g. Main Vault" />
-                  </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Making Charge Type</Label>
+                        <Select value={draft.makingChargeType || "fixed"} onValueChange={(v: any) => setDraft({ ...draft, makingChargeType: v })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="fixed">Fixed Amount (₹)</SelectItem>
+                            <SelectItem value="per_gram">Per Gram (₹/g)</SelectItem>
+                            <SelectItem value="percentage">Percentage (%)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Locker / Tray Number</Label>
-                    <Input value={draft.tray || ""} onChange={e => setDraft({ ...draft, tray: e.target.value })} placeholder="e.g. T-1 / Locker 4" />
-                  </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">
+                          {draft.makingChargeType === "percentage" ? "Making Charge (%)" : draft.makingChargeType === "per_gram" ? "Making Charge (₹/g)" : "Making Charge Value (₹)"}
+                        </Label>
+                        <Input type="number" step="0.01" value={draft.makingCharge || ""} onChange={e => setDraft({ ...draft, makingCharge: parseFloat(e.target.value) || 0 })} placeholder={draft.makingChargeType === "percentage" ? "e.g. 8 for 8%" : "0.00"} />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Wastage (%) (Optional)</Label>
+                        <Input type="number" step="0.01" value={draft.wastagePct || ""} onChange={e => setDraft({ ...draft, wastagePct: parseFloat(e.target.value) || 0 })} placeholder="e.g. 2.5" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Cost Price (₹)</Label>
+                        <Input type="number" value={draft.costPrice || ""} onChange={e => setDraft({ ...draft, costPrice: parseFloat(e.target.value) || 0 })} placeholder="0.00" className="font-bold text-blue-700" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Selling Price (₹) *</Label>
+                        <Input type="number" value={draft.sellingPrice || ""} onChange={e => setDraft({ ...draft, sellingPrice: parseFloat(e.target.value) || 0 })} placeholder="0.00" className="font-bold text-emerald-700" required />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Min Selling Price (₹)</Label>
+                        <Input type="number" value={draft.minSellingPrice || ""} onChange={e => setDraft({ ...draft, minSellingPrice: parseFloat(e.target.value) || 0 })} placeholder="0.00" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 7: GST */}
+                  {activeFormTab === "gst" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">HSN Code (Optional)</Label>
+                        <Input value={draft.hsnCode || ""} onChange={e => setDraft({ ...draft, hsnCode: e.target.value })} placeholder="e.g. 7113" />
+                      </div>
+
+                      <div className="space-y-1.5 col-span-2">
+                        <Label className="text-xs font-semibold">GST Rate (%) — Manual Entry &amp; Quick Presets</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={draft.gstPct !== undefined && draft.gstPct !== null ? draft.gstPct : ""}
+                            onChange={e => setDraft({ ...draft, gstPct: e.target.value === "" ? 0 : parseFloat(e.target.value) })}
+                            placeholder="Enter manual % (e.g. 3, 1.5, 18)"
+                            className="w-48 font-bold"
+                          />
+                          <span className="text-xs font-bold text-slate-500">%</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground mt-1.5">
+                          <span className="font-medium mr-1 text-slate-600">Quick Presets:</span>
+                          {[0, 0.25, 1.5, 3, 5, 12, 18].map(p => (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => setDraft({ ...draft, gstPct: p })}
+                              className={`px-2 py-0.5 rounded border text-xs font-medium transition-colors ${draft.gstPct === p ? "bg-amber-600 text-white border-amber-600" : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300"}`}
+                            >
+                              {p}%
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 8: INVENTORY & LOCATION */}
+                  {activeFormTab === "inventory-tab" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Current Stock Qty *</Label>
+                        <Input type="number" value={draft.stock || ""} onChange={e => setDraft({ ...draft, stock: parseInt(e.target.value) || 0 })} placeholder="0" required />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Reorder Alert Level</Label>
+                        <Input type="number" value={draft.reorderLevel || ""} onChange={e => setDraft({ ...draft, reorderLevel: parseInt(e.target.value) || 0 })} placeholder="0" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Store Branch</Label>
+                        <Input value={draft.branch || ""} onChange={e => setDraft({ ...draft, branch: e.target.value })} placeholder="e.g. Main Store" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Godown / Vault Location</Label>
+                        <Input value={draft.godown || ""} onChange={e => setDraft({ ...draft, godown: e.target.value })} placeholder="e.g. Main Vault" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Locker / Tray Number</Label>
+                        <Input value={draft.tray || ""} onChange={e => setDraft({ ...draft, tray: e.target.value })} placeholder="e.g. T-1 / Locker 4" />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            <DialogFooter className="p-4 border-t bg-muted/10 flex justify-between">
-              <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" className="bg-primary text-white">
-                {editingId ? "Update Item" : "Save Item to Inventory"}
-              </Button>
-            </DialogFooter>
+            {/* Footer Action Bar */}
+            {formViewMode !== "openstock" && (
+              <DialogFooter className="p-4 border-t bg-muted/10 flex items-center justify-between gap-3">
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
+                  Cancel
+                </Button>
+
+                <Button type="submit" className="bg-amber-800 hover:bg-amber-900 text-white font-bold px-6 shadow">
+                  {editingId ? "Update Item Master" : "Save Item to Inventory"}
+                </Button>
+              </DialogFooter>
+            )}
           </form>
         </DialogContent>
       </Dialog>
@@ -2018,6 +3431,170 @@ export default function InventoryPage() {
       </Dialog>
 
       <BarcodeTagModal product={selectedTagItem} open={tagModalOpen} onOpenChange={setTagModalOpen} />
+
+      {/* ======================================================== */}
+      {/* INDIVIDUAL ITEM AUDIT LEDGER MODAL                       */}
+      {/* ======================================================== */}
+      <Dialog open={!!ledgerSelectedItem} onOpenChange={(open) => !open && setLedgerSelectedItem(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-4 md:p-6">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-display flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <History className="w-5 h-5 text-purple-600" />
+                <span>Stock Audit Ledger: <strong className="text-foreground">{ledgerSelectedItem?.name}</strong></span>
+              </div>
+              <Badge variant="outline" className="font-mono text-xs bg-purple-50 text-purple-700 border-purple-200">
+                SKU: {ledgerSelectedItem?.sku || (ledgerSelectedItem as any)?.tagNo || ledgerSelectedItem?.barcode || "NO-SKU"}
+              </Badge>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Complete movement audit history, sales deductions, buyer details, and running stock balance for this item.
+            </DialogDescription>
+          </DialogHeader>
+
+          {ledgerSelectedItem && (
+            <div className="space-y-4 my-2">
+              {/* Item Details Ribbon */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-muted/30 p-3 rounded-lg border text-xs">
+                <div>
+                  <span className="text-muted-foreground block text-[10px] uppercase font-bold">Category & Metal</span>
+                  <span className="font-semibold">{ledgerSelectedItem.category || "Jewellery"} ({ledgerSelectedItem.metalType || "Gold"})</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px] uppercase font-bold">Purity & HUID</span>
+                  <span className="font-semibold">{ledgerSelectedItem.purity || "22K"} {ledgerSelectedItem.huid ? `• ${ledgerSelectedItem.huid}` : ""}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px] uppercase font-bold">Gross / Net Wt</span>
+                  <span className="font-semibold">{ledgerSelectedItem.grossWeight || 0}g / <span className="text-emerald-700">{ledgerSelectedItem.netWeight || 0}g</span></span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px] uppercase font-bold">Selling Price / Cost</span>
+                  <span className="font-semibold text-emerald-700">{inr(ledgerSelectedItem.sellingPrice || 0)} <span className="text-muted-foreground font-normal">({inr(ledgerSelectedItem.costPrice || 0)})</span></span>
+                </div>
+              </div>
+
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-emerald-50/70 border border-emerald-200 rounded-lg p-3">
+                  <div className="text-[11px] text-emerald-800 font-medium flex items-center gap-1">
+                    <ArrowDownRight className="w-3.5 h-3.5 text-emerald-600" /> Total Received / Inward
+                  </div>
+                  <div className="text-xl font-bold font-mono text-emerald-900 mt-1">
+                    +{itemLedgerSummary.totalInward} Pcs
+                  </div>
+                </div>
+
+                <div className="bg-rose-50/70 border border-rose-200 rounded-lg p-3">
+                  <div className="text-[11px] text-rose-800 font-medium flex items-center gap-1">
+                    <ArrowUpRight className="w-3.5 h-3.5 text-rose-600" /> Total Sold / Deducted
+                  </div>
+                  <div className="text-xl font-bold font-mono text-rose-900 mt-1">
+                    -{itemLedgerSummary.totalSold} Pcs
+                  </div>
+                </div>
+
+                <div className="bg-purple-50/70 border border-purple-200 rounded-lg p-3">
+                  <div className="text-[11px] text-purple-800 font-medium flex items-center gap-1">
+                    <DollarSign className="w-3.5 h-3.5 text-purple-600" /> Sales Revenue Generated
+                  </div>
+                  <div className="text-xl font-bold font-mono text-purple-900 mt-1">
+                    {inr(itemLedgerSummary.totalSalesRevenue)}
+                  </div>
+                </div>
+
+                <div className="bg-amber-50/70 border border-amber-200 rounded-lg p-3">
+                  <div className="text-[11px] text-amber-800 font-medium flex items-center gap-1">
+                    <Boxes className="w-3.5 h-3.5 text-amber-600" /> Current Available Stock
+                  </div>
+                  <div className="text-xl font-bold font-mono text-amber-900 mt-1">
+                    {itemLedgerSummary.currentStock} Pcs
+                  </div>
+                </div>
+              </div>
+
+              {/* Movement History Table */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-muted/40 p-3 border-b flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <History className="w-4 h-4 text-purple-600" /> Movement Audit & Buyer Log ({itemLedgerEntries.length} Transactions)
+                  </h4>
+                </div>
+
+                {itemLedgerEntries.length === 0 ? (
+                  <div className="py-8 text-center text-muted-foreground text-xs">
+                    No movement records found for this item yet. Movements auto-record on sales, purchases, or adjustments.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left border-collapse min-w-[700px]">
+                      <thead className="bg-muted/60 text-muted-foreground text-[10px] uppercase border-b">
+                        <tr>
+                          <th className="py-2.5 px-3">Date</th>
+                          <th>Transaction Type</th>
+                          <th>Ref #</th>
+                          <th>Buyer / Customer / Supplier</th>
+                          <th>Rate & Value</th>
+                          <th className="text-right">Qty Change</th>
+                          <th className="text-right px-3">Stock Balance</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {itemLedgerEntries.map((rec: any) => (
+                          <tr key={rec.id} className="hover:bg-muted/20 transition-colors">
+                            <td className="py-2.5 px-3 font-mono font-medium text-foreground">{rec.date}</td>
+                            <td>
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] px-1.5 py-0.5 font-semibold ${
+                                  rec.qtyChange < 0
+                                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                                    : rec.txnCategory === "PURCHASE"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-amber-50 text-amber-700 border-amber-200"
+                                }`}
+                              >
+                                {rec.transactionType}
+                              </Badge>
+                            </td>
+                            <td className="font-mono font-bold text-primary">{rec.referenceNo}</td>
+                            <td>
+                              <div className="font-semibold text-foreground">{rec.partyName}</div>
+                              {rec.partyMobile && (
+                                <div className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono">
+                                  <PhoneCall className="w-2.5 h-2.5 text-muted-foreground" /> {rec.partyMobile}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              <div className="font-medium">{inr(rec.unitPrice || 0)}/pc</div>
+                              {rec.totalAmount > 0 && (
+                                <div className="text-[10px] text-muted-foreground font-mono">Total: {inr(rec.totalAmount)}</div>
+                              )}
+                            </td>
+                            <td className={`text-right font-bold font-mono text-xs ${rec.qtyChange >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                              {rec.qtyChange >= 0 ? `+${rec.qtyChange}` : rec.qtyChange} Pcs
+                            </td>
+                            <td className="text-right px-3 font-bold font-mono text-xs text-foreground">
+                              {rec.balanceQty} Pcs
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setLedgerSelectedItem(null)}>
+              Close Audit View
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

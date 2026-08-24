@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { inr, type Repair, type Karigar } from "@/lib/storage";
 import { useDebounce, triggerPrint } from "@/lib/utils";
 import { useTenantAPI } from "@/lib/api";
-import { Plus, Trash2, Wrench, Pencil, Printer, Search, Scale, Image as ImageIcon } from "lucide-react";
+import { Plus, Trash2, Wrench, Pencil, Printer, Search, Image as ImageIcon } from "lucide-react";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -28,8 +28,6 @@ export default function RepairsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchCust, setSearchCust] = useState("");
   const debouncedSearchCust = useDebounce(searchCust, 300);
-  const [searchKar, setSearchKar] = useState("");
-  const debouncedSearchKar = useDebounce(searchKar, 300);
 
   const empty: Repair = {
     ticketNo: "",
@@ -213,193 +211,363 @@ export default function RepairsPage() {
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button size="lg" className="w-full sm:w-auto bg-primary text-white hover:bg-primary/90" onClick={() => { setForm(empty); setNewCust({ name: "", phone: "", phone2: "", address: "" }); setEditingId(null); setSearchCust(""); setSearchKar(""); }}>
+              <Button data-new-button="true" size="lg" className="w-full sm:w-auto bg-primary text-white hover:bg-primary/90" onClick={() => { setForm(empty); setNewCust({ name: "", phone: "", phone2: "", address: "" }); setEditingId(null); setSearchCust(""); }}>
                 <Plus className="w-4 h-4 mr-2" /> New Repair Ticket
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
-              <DialogHeader>
-                <DialogTitle className="font-display text-xl">{editingId ? "Edit Repair Ticket" : "New Repair Ticket"}</DialogTitle>
-              </DialogHeader>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-
-                {/* Customer Selection */}
-                <div className="col-span-1 sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs">Search Customer</Label>
+            <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-neutral-50 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
+              {/* HEADER BANNER */}
+              <DialogHeader className="flex flex-row items-center justify-between pb-3 border-b border-amber-200 dark:border-slate-800 shrink-0">
+                <div className="flex items-center gap-3">
+                  <DialogTitle className="font-black text-lg sm:text-xl uppercase tracking-wide text-amber-950 dark:text-white flex items-center gap-2">
+                    <Wrench className="w-5 h-5 text-amber-600" />
+                    {editingId ? "Edit Repair Ticket Master" : "New Repair Ticket Master"}
+                  </DialogTitle>
+                  <Badge variant="outline" className="bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-300 border-amber-400 font-mono font-bold text-xs px-2.5 py-0.5">
+                    {form.ticketNo || `REP-${(list.length + 1).toString().padStart(4, "0")}`}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-3 pr-8 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Intake Date:</span>
                     <Input
-                      placeholder="Search name, mobile, or address..."
-                      value={searchCust}
-                      onChange={(e) => {
-                        setSearchCust(e.target.value);
-                        const match = customers.find(c => c.mobile === e.target.value || (c as any).phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase() || (c.address || "").toLowerCase().includes(e.target.value.toLowerCase()));
-                        if (match) setForm({ ...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || "" });
-                      }}
-                      className="h-8 text-xs bg-background"
+                      type="date"
+                      value={form.date}
+                      onChange={e => setForm((f: any) => ({ ...f, date: e.target.value }))}
+                      className="h-8 text-xs sm:text-sm w-38 sm:w-44 bg-white dark:bg-slate-900 font-mono font-bold border border-amber-300 dark:border-slate-700 rounded-md px-2.5 text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 shadow-2xs cursor-pointer"
                     />
                   </div>
-                  <div>
-                    <Label className="text-xs">Customer *</Label>
-                    <Select value={form.customerMobile || form.customerName || ""} onValueChange={(val) => {
-                      if (val === "NEW") {
-                        setForm({ ...form, customerMobile: "NEW", customerName: "", customerAddress: "" });
-                      } else {
-                        const match = customers.find(c => (c.mobile || (c as any).phone || c.name) === val);
-                        if (match) setForm({ ...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || "" });
-                      }
-                    }}>
-                      <SelectTrigger className="h-8 text-xs bg-background"><SelectValue placeholder="Select customer" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Expected Delivery:</span>
+                    <Input
+                      type="date"
+                      value={form.deliveryDate || ""}
+                      onChange={e => setForm((f: any) => ({ ...f, deliveryDate: e.target.value }))}
+                      className="h-8 text-xs sm:text-sm w-38 sm:w-44 bg-white dark:bg-slate-900 font-mono font-bold border border-amber-300 dark:border-slate-700 rounded-md px-2.5 text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 shadow-2xs cursor-pointer"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Status:</span>
+                    <select
+                      value={form.status || "Received"}
+                      onChange={e => setForm((f: any) => ({ ...f, status: e.target.value as Repair["status"] }))}
+                      className="h-8 w-32 text-xs bg-white dark:bg-slate-900 border border-slate-300 font-bold rounded-md px-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="Received">Received</option>
+                      <option value="In Progress">In Progress</option>
+                      <option value="Ready">Ready</option>
+                      <option value="Delivered">Delivered</option>
+                    </select>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="p-3 sm:p-4 space-y-4 overflow-y-auto flex-1 bg-white dark:bg-slate-900">
+                {/* 1. TOP CONTROL PANEL: CUSTOMER & KARIGAR ASSIGNMENT */}
+                <div className="bg-amber-50/50 dark:bg-slate-800 border border-amber-200 dark:border-slate-700 p-3 rounded-lg flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm shadow-2xs">
+                  <div className="flex flex-wrap items-center gap-3 flex-1">
+                    {/* Search Customer Input */}
+                    <div className="flex items-center gap-1.5 min-w-[220px]">
+                      <span className="font-bold text-amber-950 dark:text-slate-200">Search Cust:</span>
+                      <Input
+                        placeholder="Name, phone, address..."
+                        value={searchCust}
+                        onChange={(e) => {
+                          setSearchCust(e.target.value);
+                          const match = customers.find(c => c.mobile === e.target.value || (c as any).phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase() || (c.address || "").toLowerCase().includes(e.target.value.toLowerCase()));
+                          if (match) setForm({ ...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || "" });
+                        }}
+                        className="h-8 text-xs bg-white dark:bg-slate-900 border-amber-300 flex-1 font-medium focus:ring-amber-500"
+                      />
+                    </div>
+
+                    {/* Customer Select Dropdown */}
+                    <div className="flex items-center gap-1.5 min-w-[240px]">
+                      <span className="font-bold text-amber-950 dark:text-slate-200">Customer *:</span>
+                      <select
+                        value={form.customerMobile || form.customerName || ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "NEW") {
+                            setForm({ ...form, customerMobile: "NEW", customerName: "", customerAddress: "" });
+                          } else {
+                            const match = customers.find(c => (c.mobile || (c as any).phone || c.name) === val);
+                            if (match) setForm({ ...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || "" });
+                          }
+                        }}
+                        className="h-8 w-60 text-xs bg-white dark:bg-slate-900 border border-amber-300 dark:border-slate-700 font-bold rounded-md px-2 text-slate-900 dark:text-white cursor-pointer focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="" disabled>Select Customer</option>
+                        <option value="NEW" className="font-bold text-amber-700">+ Create New Customer</option>
                         {customers.filter(c => c.name.toLowerCase().includes(debouncedSearchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(debouncedSearchCust) || (c.address || "").toLowerCase().includes(debouncedSearchCust.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
-                          <SelectItem key={c._id || c.id} value={c.mobile || (c as any).phone || c.name}>{c.name} {c.mobile || (c as any).phone ? `· ${c.mobile || (c as any).phone}` : ""}</SelectItem>
+                          <option key={c._id || c.id} value={c.mobile || (c as any).phone || c.name}>{c.name} {c.mobile || (c as any).phone ? `· ${c.mobile || (c as any).phone}` : ""}</option>
                         ))}
-                      </SelectContent>
-                    </Select>
+                      </select>
+                    </div>
+
+                    {/* Customer Info Preview */}
+                    {form.customerName && (
+                      <div className="bg-amber-100/60 dark:bg-slate-900 px-3 py-1 rounded border border-amber-300 text-xs">
+                        <span className="font-bold text-amber-950 dark:text-white">{form.customerName}</span>
+                        {form.customerMobile && <span className="text-amber-800 ml-2">Ph: {form.customerMobile}</span>}
+                        {form.customerAddress && <span className="text-amber-700 ml-2 truncate max-w-[200px] inline-block align-bottom">({form.customerAddress})</span>}
+                      </div>
+                    )}
+
+                    {/* Karigar Assignment */}
+                    <div className="flex items-center gap-1.5 ml-auto">
+                      <span className="font-bold text-amber-950 dark:text-slate-200">Karigar Assigned:</span>
+                      <select
+                        value={form.karigarId || "unassigned"}
+                        onChange={e => setForm({ ...form, karigarId: e.target.value })}
+                        className="h-8 w-44 text-xs bg-white dark:bg-slate-900 border border-amber-300 dark:border-slate-700 font-bold rounded-md px-2 text-slate-900 dark:text-white cursor-pointer focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="unassigned">Unassigned</option>
+                        {karigars.sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(k => (
+                          <option key={k._id || k.id} value={k._id || k.id}>{k.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
 
+                {/* Create New Customer Inline Form */}
                 {form.customerMobile === "NEW" && (
-                  <div className="p-3 rounded-md bg-primary/5 border border-primary/20 text-sm space-y-3 col-span-2">
-                    <div className="space-y-1.5"><Label className="text-xs">Full Name *</Label><Input value={newCust.name} onChange={e => setNewCust({ ...newCust, name: e.target.value })} className="h-8 bg-background" /></div>
-                    <div className="space-y-1.5"><Label className="text-xs">Mobile No (optional)</Label><Input value={newCust.phone} onChange={e => setNewCust({ ...newCust, phone: e.target.value })} className="h-8 bg-background" /></div>
-                    <div className="space-y-1.5"><Label className="text-xs">Mobile No 2 (optional)</Label><Input value={newCust.phone2} onChange={e => setNewCust({ ...newCust, phone2: e.target.value })} className="h-8 bg-background" /></div>
-                    <div className="space-y-1.5"><Label className="text-xs">Address *</Label><Input value={newCust.address} onChange={e => setNewCust({ ...newCust, address: e.target.value })} className="h-8 bg-background" /></div>
+                  <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 text-xs grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    <div><Label className="text-xs font-bold text-amber-900">Full Name *</Label><Input value={newCust.name} onChange={e => setNewCust({ ...newCust, name: e.target.value })} className="h-8 bg-white dark:bg-slate-900 border-amber-300" /></div>
+                    <div><Label className="text-xs font-bold text-amber-900">Mobile No</Label><Input value={newCust.phone} onChange={e => setNewCust({ ...newCust, phone: e.target.value })} className="h-8 bg-white dark:bg-slate-900 border-amber-300" /></div>
+                    <div><Label className="text-xs font-bold text-amber-900">Mobile No 2</Label><Input value={newCust.phone2} onChange={e => setNewCust({ ...newCust, phone2: e.target.value })} className="h-8 bg-white dark:bg-slate-900 border-amber-300" /></div>
+                    <div><Label className="text-xs font-bold text-amber-900">Address *</Label><Input value={newCust.address} onChange={e => setNewCust({ ...newCust, address: e.target.value })} className="h-8 bg-white dark:bg-slate-900 border-amber-300" /></div>
                   </div>
                 )}
 
-                <div className="col-span-2">
-                  <Field label="Customer Address" v={form.customerAddress || ""} on={(v) => setForm({ ...form, customerAddress: v })} />
-                </div>
-
-                {/* Metal & Purity */}
-                <div>
-                  <Label className="text-xs">Metal Type</Label>
-                  <Select value={form.metal || "Gold"} onValueChange={(val: any) => setForm({ ...form, metal: val })}>
-                    <SelectTrigger className="h-8 text-xs bg-background"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Gold">Gold</SelectItem>
-                      <SelectItem value="Silver">Silver</SelectItem>
-                      <SelectItem value="Diamond">Diamond</SelectItem>
-                      <SelectItem value="Platinum">Platinum</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Field label="Purity (e.g. 22K 916)" v={form.purity || "22K (916)"} on={(v) => setForm({ ...form, purity: v })} />
-
-                {/* Description & Problem */}
-                <div className="col-span-2">
-                  <Field label="Item Description / Title *" v={form.itemDescription} on={(v) => setForm({ ...form, itemDescription: v })} />
-                </div>
-
-                <div className="col-span-2">
-                  <Field label="Repair Problem / Work Required *" v={form.problem} on={(v) => setForm({ ...form, problem: v })} />
-                </div>
-
-                {/* WEIGHT AUDIT TRACKING */}
-                <div className="col-span-2 p-3 bg-amber-500/5 rounded-lg border border-amber-500/20 space-y-2">
-                  <Label className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                    <Scale className="w-3.5 h-3.5 text-amber-600" /> Jewellery Weight Audit (g)
-                  </Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <Field label="Received Wt (g) *" type="number" v={String(form.receivedWeight || form.itemWeight || 0)} on={(v) => setForm({ ...form, receivedWeight: +v, itemWeight: +v })} />
-                    <Field label="Delivered Wt (g)" type="number" v={String(form.deliveredWeight || 0)} on={(v) => setForm({ ...form, deliveredWeight: +v })} />
-                    <Field label="Gold Added Wt (g)" type="number" v={String(form.goldAddedWeight || 0)} on={(v) => setForm({ ...form, goldAddedWeight: +v })} />
+                {/* 2. SPREADSHEET MULTI-COLUMN REPAIR DETAILS TABLE */}
+                <div className="border border-amber-300 dark:border-slate-700 rounded-lg overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
+                  <div className="bg-amber-500/10 dark:bg-amber-950/40 px-3 py-1.5 font-black text-xs uppercase tracking-wider text-amber-950 dark:text-amber-200 border-b border-amber-300 dark:border-slate-700 flex items-center justify-between">
+                    <span>Repair Item &amp; Financial Master Spreadsheet</span>
+                    <span className="text-[11px] font-normal text-amber-800 dark:text-amber-400">Crisp 1px Desktop ERP Grid Layout</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse border-amber-200 dark:border-slate-700 text-xs">
+                      <thead className="bg-amber-100/70 dark:bg-slate-800 font-bold uppercase text-[11px] text-amber-950 dark:text-slate-200">
+                        <tr>
+                          <th className="p-2 border border-amber-200 dark:border-slate-700 text-left min-w-[180px]">Item Description / Title *</th>
+                          <th className="p-2 border border-amber-200 dark:border-slate-700 text-left w-28">Metal</th>
+                          <th className="p-2 border border-amber-200 dark:border-slate-700 text-left w-28">Purity</th>
+                          <th className="p-2 border border-amber-200 dark:border-slate-700 text-left min-w-[200px]">Problem / Work Required *</th>
+                          <th className="p-2 border border-amber-200 dark:border-slate-700 text-right w-24">Rec. Wt (g) *</th>
+                          <th className="p-2 border border-amber-200 dark:border-slate-700 text-right w-24">Del. Wt (g)</th>
+                          <th className="p-2 border border-amber-200 dark:border-slate-700 text-right w-24">Gold Added (g)</th>
+                          <th className="p-2 border border-amber-200 dark:border-slate-700 text-right w-28">Est. Cost ₹</th>
+                          <th className="p-2 border border-amber-200 dark:border-slate-700 text-right w-28">Actual Cost ₹</th>
+                          <th className="p-2 border border-amber-200 dark:border-slate-700 text-right w-28">Karigar Fee ₹</th>
+                          <th className="p-2 border border-amber-200 dark:border-slate-700 text-right w-28">Advance Paid ₹</th>
+                          <th className="p-2 border border-amber-200 dark:border-slate-700 text-right w-28 bg-amber-200/80 dark:bg-amber-950/80">Balance Due ₹</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="hover:bg-amber-50/40 dark:hover:bg-slate-850">
+                          <td className="p-0 border border-amber-200 dark:border-slate-700">
+                            <input
+                              placeholder="e.g. Gold Ring Repair / Chain Solder"
+                              value={form.itemDescription}
+                              onChange={e => setForm({ ...form, itemDescription: e.target.value })}
+                              className="w-full h-9 px-2 text-xs font-semibold border-0 rounded-none bg-transparent focus:ring-2 focus:ring-amber-500 focus:bg-amber-50 dark:focus:bg-amber-950/80 outline-none"
+                            />
+                          </td>
+                          <td className="p-0 border border-amber-200 dark:border-slate-700">
+                            <select
+                              value={form.metal || "Gold"}
+                              onChange={e => setForm({ ...form, metal: e.target.value as any })}
+                              className="w-full h-9 px-1 text-xs font-bold border-0 rounded-none bg-transparent focus:ring-2 focus:ring-amber-500 focus:bg-amber-50 dark:focus:bg-amber-950/80 cursor-pointer outline-none"
+                            >
+                              <option value="Gold">Gold</option>
+                              <option value="Silver">Silver</option>
+                              <option value="Diamond">Diamond</option>
+                              <option value="Platinum">Platinum</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </td>
+                          <td className="p-0 border border-amber-200 dark:border-slate-700">
+                            <input
+                              value={form.purity || "22K (916)"}
+                              onChange={e => setForm({ ...form, purity: e.target.value })}
+                              className="w-full h-9 px-2 text-xs font-bold border-0 rounded-none bg-transparent focus:ring-2 focus:ring-amber-500 focus:bg-amber-50 dark:focus:bg-amber-950/80 outline-none"
+                            />
+                          </td>
+                          <td className="p-0 border border-amber-200 dark:border-slate-700">
+                            <input
+                              placeholder="Describe work required..."
+                              value={form.problem}
+                              onChange={e => setForm({ ...form, problem: e.target.value })}
+                              className="w-full h-9 px-2 text-xs border-0 rounded-none bg-transparent focus:ring-2 focus:ring-amber-500 focus:bg-amber-50 dark:focus:bg-amber-950/80 outline-none"
+                            />
+                          </td>
+                          <td className="p-0 border border-amber-200 dark:border-slate-700">
+                            <input
+                              type="number"
+                              value={form.receivedWeight || form.itemWeight || ""}
+                              onChange={e => setForm({ ...form, receivedWeight: +e.target.value, itemWeight: +e.target.value })}
+                              className="w-full h-9 px-2 text-xs font-mono font-bold text-right border-0 rounded-none bg-transparent focus:ring-2 focus:ring-amber-500 focus:bg-amber-50 dark:focus:bg-amber-950/80 outline-none"
+                            />
+                          </td>
+                          <td className="p-0 border border-amber-200 dark:border-slate-700">
+                            <input
+                              type="number"
+                              value={form.deliveredWeight || ""}
+                              onChange={e => setForm({ ...form, deliveredWeight: +e.target.value })}
+                              className="w-full h-9 px-2 text-xs font-mono font-bold text-right border-0 rounded-none bg-transparent focus:ring-2 focus:ring-amber-500 focus:bg-amber-50 dark:focus:bg-amber-950/80 outline-none"
+                            />
+                          </td>
+                          <td className="p-0 border border-amber-200 dark:border-slate-700">
+                            <input
+                              type="number"
+                              value={form.goldAddedWeight || ""}
+                              onChange={e => setForm({ ...form, goldAddedWeight: +e.target.value })}
+                              className="w-full h-9 px-2 text-xs font-mono font-bold text-right border-0 rounded-none bg-transparent focus:ring-2 focus:ring-amber-500 focus:bg-amber-50 dark:focus:bg-amber-950/80 outline-none"
+                            />
+                          </td>
+                          <td className="p-0 border border-amber-200 dark:border-slate-700">
+                            <input
+                              type="number"
+                              value={form.estimatedCost || form.estimate || ""}
+                              onChange={e => setForm({ ...form, estimatedCost: +e.target.value, estimate: +e.target.value })}
+                              className="w-full h-9 px-2 text-xs font-mono font-bold text-right border-0 rounded-none bg-transparent text-amber-800 dark:text-amber-400 focus:ring-2 focus:ring-amber-500 focus:bg-amber-50 dark:focus:bg-amber-950/80 outline-none"
+                            />
+                          </td>
+                          <td className="p-0 border border-amber-200 dark:border-slate-700">
+                            <input
+                              type="number"
+                              value={form.actualCost || ""}
+                              onChange={e => setForm({ ...form, actualCost: +e.target.value })}
+                              className="w-full h-9 px-2 text-xs font-mono font-bold text-right border-0 rounded-none bg-transparent text-emerald-700 dark:text-emerald-400 focus:ring-2 focus:ring-amber-500 focus:bg-amber-50 dark:focus:bg-amber-950/80 outline-none"
+                            />
+                          </td>
+                          <td className="p-0 border border-amber-200 dark:border-slate-700">
+                            <input
+                              type="number"
+                              value={form.karigarLabourCharge || ""}
+                              onChange={e => setForm({ ...form, karigarLabourCharge: +e.target.value })}
+                              className="w-full h-9 px-2 text-xs font-mono font-bold text-right border-0 rounded-none bg-transparent focus:ring-2 focus:ring-amber-500 focus:bg-amber-50 dark:focus:bg-amber-950/80 outline-none"
+                            />
+                          </td>
+                          <td className="p-0 border border-amber-200 dark:border-slate-700">
+                            <input
+                              type="number"
+                              value={form.advance || ""}
+                              onChange={e => setForm({ ...form, advance: +e.target.value })}
+                              className="w-full h-9 px-2 text-xs font-mono font-bold text-right border-0 rounded-none bg-transparent text-emerald-600 focus:ring-2 focus:ring-amber-500 focus:bg-amber-50 dark:focus:bg-amber-950/80 outline-none"
+                            />
+                          </td>
+                          <td className="p-2 border border-amber-200 dark:border-slate-700 text-right font-mono font-black text-red-600 text-sm bg-amber-100/60 dark:bg-amber-950/40">
+                            {inr(Math.max(0, ((form.actualCost || form.estimatedCost || 0) - (form.advance || 0))))}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 </div>
 
-                {/* FINANCIALS */}
-                <Field label="Estimated Cost ₹" type="number" v={String(form.estimatedCost || form.estimate || 0)} on={(v) => setForm({ ...form, estimatedCost: +v, estimate: +v })} />
-                <Field label="Actual Repair Cost ₹" type="number" v={String(form.actualCost || form.estimatedCost || 0)} on={(v) => setForm({ ...form, actualCost: +v })} />
-                <Field label="Advance Paid ₹" type="number" v={String(form.advance || 0)} on={(v) => setForm({ ...form, advance: +v })} />
-                <Field label="Karigar Labour Fee ₹" type="number" v={String(form.karigarLabourCharge || 0)} on={(v) => setForm({ ...form, karigarLabourCharge: +v })} />
-
-                <Field label="Intake Date" type="date" v={form.date} on={(v) => setForm({ ...form, date: v })} />
-                <Field label="Expected Delivery Date" type="date" v={form.deliveryDate || ""} on={(v) => setForm({ ...form, deliveryDate: v })} />
-
-                {/* KARIGAR SELECTION */}
-                <div className="col-span-2 grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs">Search Karigar</Label>
-                    <Input placeholder="Search name, mobile, address..." value={searchKar} onChange={e => {
-                      setSearchKar(e.target.value);
-                      const match = karigars.find(k => k.name.toLowerCase() === e.target.value.toLowerCase() || (k.mobile || "").includes(e.target.value) || (k.address || "").toLowerCase().includes(e.target.value.toLowerCase()));
-                      if (match) setForm({ ...form, karigarId: match._id || match.id });
-                    }} className="h-8 text-xs bg-background" />
+                {/* 3. MEDIA & NOTES PANEL (PHOTO, SIGNATURES, REPAIR NOTES) */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  {/* Damage Photo */}
+                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-300 dark:border-slate-700 space-y-2">
+                    <Label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <ImageIcon className="w-4 h-4 text-amber-600" /> Item Damage Photo (Initial Condition)
+                    </Label>
+                    <Input type="file" accept="image/*" className="bg-slate-50 dark:bg-slate-900 h-8 text-xs" onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = () => setForm({ ...form, beforePhotoUrl: reader.result as string });
+                        reader.readAsDataURL(file);
+                      }
+                    }} />
+                    {form.beforePhotoUrl && <img src={form.beforePhotoUrl} alt="Damaged Item" className="h-20 rounded border object-contain" />}
                   </div>
-                  <div>
-                    <Label className="text-xs">Karigar Assigned</Label>
-                    <Select value={form.karigarId || ""} onValueChange={val => setForm({ ...form, karigarId: val })}>
-                      <SelectTrigger className="h-8 text-xs bg-background"><SelectValue placeholder="Unassigned" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="unassigned">Unassigned</SelectItem>
-                        {karigars.filter(k => k.name.toLowerCase().includes(debouncedSearchKar.toLowerCase()) || (k.mobile || "").includes(debouncedSearchKar) || (k.address || "").toLowerCase().includes(debouncedSearchKar.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(k => (
-                          <SelectItem key={k._id || k.id} value={k._id || k.id}>{k.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
 
-                {/* ITEM DAMAGE REFERENCE PHOTO */}
-                <div className="col-span-2 p-3 bg-muted/40 rounded-lg border space-y-2">
-                  <Label className="text-xs font-semibold flex items-center gap-1.5">
-                    <ImageIcon className="w-3.5 h-3.5 text-primary" /> Item Damage Photo (Initial Condition)
-                  </Label>
-                  <Input type="file" accept="image/*" className="bg-background h-8 text-xs" onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onload = () => setForm({ ...form, beforePhotoUrl: reader.result as string });
-                      reader.readAsDataURL(file);
-                    }
-                  }} />
-                  {form.beforePhotoUrl && <img src={form.beforePhotoUrl} alt="Damaged Item" className="h-20 rounded border object-contain" />}
-                </div>
-
-                <div className="col-span-2">
-                  <Field label="Special Repair Notes" v={form.note || ""} on={(v) => setForm({ ...form, note: v })} />
-                </div>
-
-                {/* SIGNATURES */}
-                <div className="col-span-2 bg-muted/40 p-3 rounded-lg border border-border">
-                  <Label className="text-muted-foreground font-normal block mb-2 text-xs">Signatures (Optional)</Label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs">Customer Signature</Label>
-                      <Input type="file" accept="image/*" className="bg-background h-8 text-xs mt-1" onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = () => setForm({ ...form, customerSignature: reader.result as string });
-                          reader.readAsDataURL(file);
-                        }
-                      }} />
-                      {form.customerSignature && <img src={form.customerSignature} alt="Customer Signature" className="mt-1 h-12 object-contain" />}
+                  {/* Signatures */}
+                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-300 dark:border-slate-700 space-y-2">
+                    <Label className="text-xs font-bold text-slate-800 dark:text-slate-200">Signatures (Optional)</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-[11px] text-slate-500">Customer Sig</Label>
+                        <Input type="file" accept="image/*" className="bg-slate-50 dark:bg-slate-900 h-7 text-[11px]" onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = () => setForm({ ...form, customerSignature: reader.result as string });
+                            reader.readAsDataURL(file);
+                          }
+                        }} />
+                        {form.customerSignature && <img src={form.customerSignature} alt="Customer Signature" className="mt-1 h-10 object-contain" />}
+                      </div>
+                      <div>
+                        <Label className="text-[11px] text-slate-500">Authorized Sig</Label>
+                        <Input type="file" accept="image/*" className="bg-slate-50 dark:bg-slate-900 h-7 text-[11px]" onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = () => setForm({ ...form, authorizedSignatory: reader.result as string });
+                            reader.readAsDataURL(file);
+                          }
+                        }} />
+                        {form.authorizedSignatory && <img src={form.authorizedSignatory} alt="Authorized Signatory" className="mt-1 h-10 object-contain" />}
+                      </div>
                     </div>
-                    <div>
-                      <Label className="text-xs">Authorized Signatory</Label>
-                      <Input type="file" accept="image/*" className="bg-background h-8 text-xs mt-1" onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = () => setForm({ ...form, authorizedSignatory: reader.result as string });
-                          reader.readAsDataURL(file);
-                        }
-                      }} />
-                      {form.authorizedSignatory && <img src={form.authorizedSignatory} alt="Authorized Signatory" className="mt-1 h-12 object-contain" />}
-                    </div>
+                  </div>
+
+                  {/* Repair Notes */}
+                  <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-300 dark:border-slate-700 space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-800 dark:text-slate-200">Special Repair Notes</Label>
+                    <Input
+                      placeholder="Add special repair instructions..."
+                      value={form.note || ""}
+                      onChange={e => setForm({ ...form, note: e.target.value })}
+                      className="h-16 text-xs bg-slate-50 dark:bg-slate-900"
+                    />
                   </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
-                <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button onClick={save} className="bg-primary text-white">
-                  {editingId ? "Update Repair Ticket" : "Create Repair Ticket"}
-                </Button>
+              {/* 4. BOTTOM DESKTOP ACTION FOOTER BAR */}
+              <div className="border-t border-slate-300 dark:border-slate-800 p-3 bg-slate-200/90 dark:bg-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    type="button"
+                    onClick={save}
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                    className="bg-amber-600 hover:bg-amber-700 text-white font-black text-xs sm:text-sm uppercase px-6 h-8.5 shadow-sm"
+                  >
+                    {createMutation.isPending || updateMutation.isPending ? "Saving..." : (editingId ? "Update Repair Ticket" : "Create Repair Ticket")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setOpen(false)}
+                    className="h-8.5 text-xs sm:text-sm font-bold uppercase border-slate-300 bg-white"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      if (form.customerName || form.itemDescription) window.print();
+                    }}
+                    className="h-8.5 text-xs sm:text-sm font-bold uppercase border-slate-300 bg-white"
+                  >
+                    Print Ticket
+                  </Button>
+                </div>
+
+                <div className="flex items-center gap-3 bg-white dark:bg-slate-900 px-4 py-1.5 rounded-lg border-2 border-amber-500 font-mono font-black text-xs sm:text-sm text-slate-900 dark:text-white">
+                  <span>Est. Cost: <strong>{inr(form.estimatedCost || form.actualCost || 0)}</strong></span>
+                  <span className="text-slate-300">|</span>
+                  <span>Advance: <strong className="text-emerald-600">{inr(form.advance || 0)}</strong></span>
+                  <span className="text-slate-300">|</span>
+                  <span>Balance Due: <strong className="text-red-600 text-sm sm:text-lg">{inr(Math.max(0, ((form.actualCost || form.estimatedCost || 0) - (form.advance || 0))))}</strong></span>
+                </div>
               </div>
             </DialogContent>
           </Dialog>
@@ -628,29 +796,6 @@ function Stat({ label, value }: { label: string; value: string | number }) {
         <div className="text-2xl font-display font-bold mt-1 text-foreground">{value}</div>
       </CardContent>
     </Card>
-  );
-}
-
-function Field({ label, v, on, type = "text" }: { label: string; v: string; on: (v: string) => void; type?: string }) {
-  const [focused, setFocused] = useState(false);
-  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    setFocused(true);
-    if (type === "number") e.target.select();
-  };
-  const handleBlur = () => setFocused(false);
-
-  return (
-    <div>
-      <Label className="text-xs">{label}</Label>
-      <Input
-        type={type}
-        value={type === "number" && v === "0" && !focused ? "" : v}
-        onChange={(e) => on(e.target.value)}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        className="mt-1 h-8 text-xs bg-background"
-      />
-    </div>
   );
 }
 

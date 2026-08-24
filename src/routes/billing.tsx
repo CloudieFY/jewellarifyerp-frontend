@@ -1,5 +1,5 @@
 import { Layout } from "@/components/Layout";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,8 +20,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useFormKeyboardNav } from "@/lib/useFormKeyboardNav";
-import { Plus, Trash2, Printer, Receipt, Pencil, Search, Calendar, Calculator, Scale, Palette, AlertCircle, NotebookPen, Send, ScanBarcode } from "lucide-react";
+import { handleGridArrowNav } from "@/hooks/useGlobalKeyboard";
+import { Plus, Trash2, Printer, Receipt, Pencil, Search, Calendar, Calculator, Scale, Palette, AlertCircle, NotebookPen, Send, ScanBarcode, Coins } from "lucide-react";
 import { WhatsAppIcon } from "@/components/WhatsAppIcon";
 import {
   inr,
@@ -33,6 +33,7 @@ import {
   defaultInvoiceSettings,
   type InvoiceSettings,
   getCleanInvoiceTitle,
+  isInvoiceGst,
 } from "@/lib/storage";
 
 type EditableInvoiceItem = InvoiceItem & { huid?: string; hmc?: number };
@@ -188,13 +189,56 @@ export default function BillingPage() {
     setWaInvModalOpen(true);
   };
 
-  const [type, setType] = useState<"GST" | "NON-GST">("GST");
+  const createDefaultBlankItem = (): EditableInvoiceItem => ({
+    productId: "manual-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+    name: "",
+    purity: "22K",
+    netWeight: 0,
+    grossWeight: 0,
+    stoneWeight: 0,
+    ratePerGram: 0,
+    makingCharge: 0,
+    makingChargePct: 0,
+    makingChargeType: "PERCENTAGE",
+    makingChargeValue: 0,
+    stoneCharge: 0,
+    gstPct: 3,
+    qty: 1,
+    huid: "",
+    hmc: 0,
+    itemType: "S",
+    tagNo: "",
+    remarks: "",
+    tunch: 91.6,
+  } as any);
+
+  const createDefaultBlankItems = (): EditableInvoiceItem[] => [
+    createDefaultBlankItem(),
+  ];
+
+  const { tenantSession } = useAuth();
+  const authUser = tenantSession?.user;
+  const isOperator = authUser?.role === "operator" || (authUser as any)?.billingMode === "NON-GST" || (authUser as any)?.accountType === "non_gst";
+
+  const location = useLocation();
+  const isEstimateRoute = location.pathname.includes("/estimate") || location.search.includes("type=estimate") || isOperator;
+  const [type, setType] = useState<"GST" | "NON-GST">(isEstimateRoute ? "NON-GST" : "GST");
+
+  useEffect(() => {
+    const isEstimate = location.pathname.includes("/estimate") || location.search.includes("type=estimate") || isOperator;
+    if (isEstimate) {
+      setType("NON-GST");
+    } else {
+      setType("GST");
+    }
+  }, [location.pathname, location.search, isOperator]);
   const [customerId, setCustomerId] = useState<string>("");
+  const [customerGstin, setCustomerGstin] = useState<string>("");
   const [searchCust, setSearchCust] = useState("");
   const debouncedSearchCust = useDebounce(searchCust, 300);
   const [searchProd, setSearchProd] = useState("");
   const debouncedSearchProd = useDebounce(searchProd, 300);
-  const [items, setItems] = useState<EditableInvoiceItem[]>([]);
+  const [items, setItems] = useState<EditableInvoiceItem[]>(createDefaultBlankItems());
 
   // POS Barcode Scanner State & Handler
   const [posBarcodeInput, setPosBarcodeInput] = useState("");
@@ -256,39 +300,7 @@ export default function BillingPage() {
   // Global Hardware USB POS Barcode Scanner Listener
   const barcodeBuffer = useRef<string>("");
   const lastKeyTime = useRef<number>(0);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "F2") {
-        e.preventDefault();
-        posScanRef.current?.focus();
-        toast.info("POS Barcode Scanner input focused!");
-        return;
-      }
-
-      const now = Date.now();
-      const timeDiff = now - lastKeyTime.current;
-      lastKeyTime.current = now;
-
-      if (timeDiff > 100) {
-        barcodeBuffer.current = "";
-      }
-
-      if (e.key === "Enter") {
-        if (barcodeBuffer.current.trim().length >= 3) {
-          e.preventDefault();
-          const scanned = barcodeBuffer.current.trim();
-          barcodeBuffer.current = "";
-          handleScanBarcode(scanned);
-        }
-      } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        barcodeBuffer.current += e.key;
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [products]);
+  const firstItemInputRef = useRef<HTMLInputElement | null>(null);
   const [discount, setDiscount] = useState<number | "">("");
   const [billMetal, setBillMetal] = useState<"Gold" | "Silver">("Gold");
   const [oldMetalType, setOldMetalType] = useState<"Gold" | "Silver" | "Mixed">("Mixed");
@@ -305,7 +317,7 @@ export default function BillingPage() {
   const [date, setDate] = useState<string>(formatDDMMYYYY(new Date()));
   const [showCalendar, setShowCalendar] = useState(false);
   const calendarRef = useRef<HTMLDivElement | null>(null);
-
+  const [oldExchangeType, setOldExchangeType] = useState<"None" | "Gold" | "Silver" | "Both">("None");
   const [openOldGoldCalc, setOpenOldGoldCalc] = useState(false);
   const [oldCalcMetal, setOldCalcMetal] = useState<"Gold" | "Silver" | "Mixed">("Gold");
   const [oldGoldForm, setOldGoldForm] = useState({
@@ -322,6 +334,7 @@ export default function BillingPage() {
   });
 
   const [manualDueOpen, setManualDueOpen] = useState(false);
+  const [showCustSuggestions, setShowCustSuggestions] = useState(false);
   const [manualDue, setManualDue] = useState({
     customerId: "NEW",
     customerName: "",
@@ -389,17 +402,18 @@ export default function BillingPage() {
       payments: [initialPayment],
       items: [
         {
-          productId: "manual-due",
-          name: manualDue.itemName.trim() || "Manual Due",
+          productId: "MANUAL_DUE_ENTRY",
+          name: manualDue.itemName?.trim() || "Manual Due Balance",
           purity: "22K",
           netWeight: 0,
           grossWeight: 0,
+          stoneWeight: 0,
           ratePerGram: 0,
-          totalPrice: amount,
           makingCharge: 0,
           stoneCharge: 0,
           gstPct: 0,
           qty: 1,
+          totalPrice: amount,
         },
       ],
     };
@@ -440,18 +454,55 @@ export default function BillingPage() {
   useEffect(() => {
     console.log("Billing: date state changed", date);
   }, [date]);
+  // Traditional Desktop ERP Billing Mode & Voucher Action Modules
+  const [erpViewMode, setErpViewMode] = useState<boolean>(true);
+  const [groupType, setGroupType] = useState<string>("CUSTOMER");
+  const [goodsDelivered, setGoodsDelivered] = useState<boolean>(true);
+  const [finalVoucher, setFinalVoucher] = useState<boolean>(true);
+
+  // Voucher Modules (Receipt, Payment, Adjust, Metal Rcpt, Metal Paid, Gold Bhav, Silver Bhav, Transfer, Bal Adjust, Commission)
+  const [voucherModal, setVoucherModal] = useState<string | null>(null);
+  const [voucherForm, setVoucherForm] = useState({
+    type: "Naam", // Naam (Debit) or Jama (Credit)
+    accountName: "",
+    goldWt: 0,
+    silverWt: 0,
+    amount: 0,
+    narration: "",
+  });
+
+  const [vouchersList, setVouchersList] = useState<Array<{
+    type: string;
+    mode: string;
+    description: string;
+    goldWt: number;
+    silverWt: number;
+    amount: number;
+  }>>([]);
+
+  const handleSaveVoucher = () => {
+    if (!voucherModal) return;
+    const newVoucher = {
+      type: voucherModal.toUpperCase(),
+      mode: voucherForm.type,
+      description: voucherForm.narration || `${voucherModal} Voucher Entry`,
+      goldWt: Number(voucherForm.goldWt) || 0,
+      silverWt: Number(voucherForm.silverWt) || 0,
+      amount: voucherForm.type === "Naam" ? -(Number(voucherForm.amount) || 0) : (Number(voucherForm.amount) || 0),
+    };
+    setVouchersList(prev => [...prev, newVoucher]);
+    toast.success(`${voucherModal} Voucher Saved Successfully!`);
+    setVoucherModal(null);
+    setVoucherForm({ type: "Naam", accountName: "", goldWt: 0, silverWt: 0, amount: 0, narration: "" });
+  };
+
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   
-  const [newCust, setNewCust] = useState({ name: "", phone: "", address: "" });
+  const [newCust, setNewCust] = useState({ name: "", phone: "", address: "", gstNumber: "" });
   const [openCustomItemDialog, setOpenCustomItemDialog] = useState(false);
   const [customItemSearch, setCustomItemSearch] = useState("");
   const debouncedCustomItemSearch = useDebounce(customItemSearch, 300);
-
-  const { tenantSession } = useAuth();
-  const authUser = tenantSession?.user;
-
-  const isOperator = authUser?.role === 'operator';
   const isGst = type === "GST";
 
   const addProduct = (pid: string) => {
@@ -556,45 +607,72 @@ export default function BillingPage() {
       const item = updated[idx];
       if (!item) return prev;
 
-      // If this is a manual custom item and name is being changed, try to fetch from inventory
-      if (patch.name !== undefined && item.productId.startsWith("manual-")) {
-        const nameToSearch = patch.name.toLowerCase().trim();
-        if (nameToSearch !== "") {
-          const matchedProduct = products.find(
-            (p) =>
-              p.name.toLowerCase() === nameToSearch ||
-              (p.barcode || "").toLowerCase() === nameToSearch ||
-              (p.huid || "").toLowerCase() === nameToSearch
-          );
+      // Check if name or tagNo matches an inventory product
+      const searchName = patch.name !== undefined ? patch.name.toLowerCase().trim() : "";
+      const searchTag = (patch as any).tagNo !== undefined ? (patch as any).tagNo.toLowerCase().trim() : "";
 
-          if (matchedProduct) {
-            let currentRate = matchedProduct.ratePerGram;
-            if (latestRates && matchedProduct.category !== "Diamond" && matchedProduct.category !== "Other") {
-              const purityUpper = (matchedProduct.purity || "").toUpperCase();
-              if (purityUpper.includes("24K") && latestRates.gold24) currentRate = latestRates.gold24;
-              else if (purityUpper.includes("22K") && latestRates.gold22) currentRate = latestRates.gold22;
-              else if (purityUpper.includes("20K") && latestRates.gold20) currentRate = latestRates.gold20;
-              else if (purityUpper.includes("18K") && latestRates.gold18) currentRate = latestRates.gold18;
-              else if ((matchedProduct.category === "Silver" || purityUpper.includes("SILVER") || purityUpper.includes("925")) && latestRates.silver) currentRate = latestRates.silver;
-            }
+      if (searchName !== "" || searchTag !== "") {
+        const matchedProduct = products.find((p) => {
+          const pName = (p.name || "").toLowerCase().trim();
+          const pBc = (p.barcode || "").toLowerCase().trim();
+          const pSku = (p.sku || "").toLowerCase().trim();
+          const pHuid = (p.huid || "").toLowerCase().trim();
+          const pId = (p._id || p.id || "").toLowerCase().trim();
 
-            // Update item with inventory data
-            updated[idx] = {
-              ...item,
-              name: matchedProduct.name,
-              purity: matchedProduct.purity,
-              netWeight: matchedProduct.netWeight,
-              grossWeight: matchedProduct.grossWeight !== undefined ? matchedProduct.grossWeight : matchedProduct.netWeight,
-              stoneWeight: matchedProduct.stoneWeight || 0,
-              ratePerGram: currentRate,
-              gstPct: matchedProduct.gstPct,
-            };
-            return updated;
+          if (searchTag !== "") {
+            return pBc === searchTag || pSku === searchTag || pHuid === searchTag || pId.endsWith(searchTag) || pId === searchTag;
           }
+          if (searchName !== "") {
+            return pName === searchName || pBc === searchName || pHuid === searchName || (pName.length >= 3 && searchName.length >= 3 && pName.includes(searchName));
+          }
+          return false;
+        });
+
+        if (matchedProduct) {
+          let currentRate = matchedProduct.ratePerGram || 0;
+          if (latestRates && matchedProduct.category !== "Diamond" && matchedProduct.category !== "Other") {
+            const purityUpper = (matchedProduct.purity || "").toUpperCase();
+            if (purityUpper.includes("24K") && latestRates.gold24) currentRate = latestRates.gold24;
+            else if (purityUpper.includes("22K") && latestRates.gold22) currentRate = latestRates.gold22;
+            else if (purityUpper.includes("20K") && latestRates.gold20) currentRate = latestRates.gold20;
+            else if (purityUpper.includes("18K") && latestRates.gold18) currentRate = latestRates.gold18;
+            else if ((matchedProduct.category === "Silver" || purityUpper.includes("SILVER") || purityUpper.includes("925")) && latestRates.silver) currentRate = latestRates.silver;
+          }
+
+          const purityUpper = (matchedProduct.purity || "").toUpperCase();
+          let tunchPct = 91.6;
+          if (purityUpper.includes("24K")) tunchPct = 99.9;
+          else if (purityUpper.includes("22K")) tunchPct = 91.6;
+          else if (purityUpper.includes("20K")) tunchPct = 83.3;
+          else if (purityUpper.includes("18K")) tunchPct = 75.0;
+          else if (purityUpper.includes("SILVER") || matchedProduct.category === "Silver") tunchPct = 80.0;
+
+          const grWt = matchedProduct.grossWeight !== undefined ? matchedProduct.grossWeight : matchedProduct.netWeight;
+          const stWt = matchedProduct.stoneWeight || 0;
+          const netWt = matchedProduct.netWeight;
+
+          updated[idx] = {
+            ...item,
+            ...patch,
+            productId: matchedProduct._id || matchedProduct.id,
+            name: matchedProduct.name,
+            tagNo: matchedProduct.barcode || matchedProduct.sku || matchedProduct.huid || (matchedProduct._id || matchedProduct.id).slice(-6),
+            purity: matchedProduct.purity || "22K",
+            grossWeight: grWt,
+            stoneWeight: stWt,
+            netWeight: netWt,
+            tunch: tunchPct,
+            ratePerGram: currentRate || item.ratePerGram,
+            makingChargeValue: (matchedProduct as any).makingChargeValue ?? (matchedProduct as any).makingChargePct ?? item.makingChargeValue ?? 0,
+            makingChargeType: (matchedProduct as any).makingChargeType || item.makingChargeType || "PERCENTAGE",
+            gstPct: matchedProduct.gstPct || (type === "GST" ? 3 : 0),
+            huid: matchedProduct.huid || "",
+          } as any;
+          return updated;
         }
       }
 
-      // Default: just apply the patch
+      // Default patch
       updated[idx] = { ...item, ...patch };
       return updated;
     });
@@ -604,20 +682,27 @@ export default function BillingPage() {
   // whenever a field it depends on (netWeight, ratePerGram, qty, type, value) changes.
   const recalcMaking = (item: EditableInvoiceItem, patch: Partial<InvoiceItem>) => {
     const merged = { ...item, ...patch } as any;
+    const mcType = (merged.makingChargeType || "PERCENTAGE").toString().toUpperCase();
     const value = merged.makingChargeValue ?? merged.makingChargePct ?? 0;
     const makingCharge = computeMakingCharge({
-      type: merged.makingChargeType,
+      type: mcType as any,
       value,
       netWeight: merged.netWeight,
       ratePerGram: merged.ratePerGram,
       qty: merged.qty,
     });
-    return { ...patch, makingCharge } as Partial<InvoiceItem>;
+    return { ...patch, makingChargeType: (mcType === "PER_GRAM" ? "PER_GRAM" : mcType === "FIXED" ? "FIXED" : "PERCENTAGE") as any, makingCharge } as Partial<InvoiceItem>;
   };
 
   const removeItem = (idx: number) => {
     console.log("Billing: removeItem", idx);
-    setItems((prev) => prev.filter((_, i) => i !== idx));
+    setItems((prev) => {
+      const updated = prev.filter((_, i) => i !== idx);
+      if (updated.length === 0) {
+        return createDefaultBlankItems();
+      }
+      return updated;
+    });
   };
 
   const totals = useMemo(() => {
@@ -631,15 +716,21 @@ export default function BillingPage() {
     });
 
     const totalOldExchange = (Number(oldGoldAmount) || 0) + (Number(oldSilverAmount) || 0);
+    const paidCash = Number(cashAmount) || 0;
+    const paidOnline = Number(onlineAmount) || 0;
+    const totalPaid = paidCash + paidOnline;
+
     const afterAdj = subtotal - (Number(discount) || 0) - totalOldExchange;
     const preRound = Math.round((afterAdj + gst) * 100) / 100;
-    const gTotal = Math.floor(preRound);
+    const gTotal = Math.max(0, Math.floor(preRound));
     const roundOff = Math.round((gTotal - preRound) * 100) / 100;
     const cgst = gst / 2;
     const sgst = gst / 2;
 
-    return { subtotal, gst, cgst, sgst, preRound, roundOff, gTotal, totalOldExchange };
-  }, [items, discount, oldGoldAmount, oldSilverAmount, isGst]);
+    const netBalanceDue = Math.max(0, gTotal - totalPaid);
+
+    return { subtotal, gst, cgst, sgst, preRound, roundOff, gTotal, totalOldExchange, paidCash, paidOnline, totalPaid, netBalanceDue };
+  }, [items, discount, oldGoldAmount, oldSilverAmount, cashAmount, onlineAmount, isGst]);
 
   const selectedCust = useMemo(() => customers.find((c) => (c._id || c.id) === customerId), [customers, customerId]);
 
@@ -647,7 +738,13 @@ export default function BillingPage() {
     console.log("Billing: handleCustomerSelect", val);
     setCustomerId(val);
     if (val !== "NEW") {
-      setNewCust({ name: "", phone: "", address: "" });
+      setNewCust({ name: "", phone: "", address: "", gstNumber: "" });
+      const found = customers.find((c) => (c._id || c.id) === val);
+      if (found) {
+        setCustomerGstin(found.gstNumber || "");
+      }
+    } else {
+      setCustomerGstin("");
     }
     setLinkedOrderId("");
   };
@@ -671,13 +768,17 @@ export default function BillingPage() {
   const reset = () => {
     console.log("Billing: reset new invoice");
     setEditingId(null);
-    setItems([]);
+    setType(location.pathname.includes("/estimate") || isOperator ? "NON-GST" : "GST");
+    setItems(createDefaultBlankItems());
     setDiscount("");
+    setOldExchangeType("None");
     setOldGoldAmount("");
     setOldSilverAmount("");
+    setVouchersList([]);
     setOldMetalType("Mixed");
     setBillMetal("Gold");
     setCustomerId("");
+    setCustomerGstin("");
     setCashAmount("");
     setOnlineAmount("");
     setOnlineMode("UPI");
@@ -686,24 +787,163 @@ export default function BillingPage() {
     setLinkedOrderId("");
     setSearchCust("");
     setSearchProd("");
-    setNewCust({ name: "", phone: "", address: "" });
+    setNewCust({ name: "", phone: "", address: "", gstNumber: "" });
     setCustomItemSearch("");
     setOpenCustomItemDialog(false);
   };
 
+  const handlePrintDraftBill = () => {
+    const activeCustomer = customers.find((c) => (c._id || c.id) === customerId);
+    const draftInv: any = {
+      id: editingId || `DRAFT-${Date.now()}`,
+      number: editingId
+        ? (invoices.find((i) => (i._id || i.id) === editingId)?.number || "BILL-101")
+        : `EST-${Date.now().toString().slice(-4)}`,
+      date: date || formatDDMMYYYY(new Date()),
+      type: isGst ? "GST" : "Estimate",
+      seriesType: isGst ? "TAX INVOICE" : "ESTIMATE",
+      customerName: activeCustomer?.name || (customerId === "NEW" ? (manualDue.customerName || "Walk-in Customer") : "Cash Customer"),
+      customerMobile: activeCustomer?.mobile || (activeCustomer as any)?.phone || manualDue.phone || "",
+      customerAddress: activeCustomer?.address || "",
+      items: items.map((it) => {
+        const c = calcItem(it, isGst);
+        return {
+          ...it,
+          lineTotal: c.line,
+        };
+      }),
+      grossTotal: totals.subtotal,
+      discountAmount: Number(discount) || 0,
+      oldGoldAmount: Number(oldGoldAmount) || 0,
+      oldSilverAmount: Number(oldSilverAmount) || 0,
+      gstAmount: totals.gst,
+      netAmount: totals.gTotal,
+      cashAmount: Number(cashAmount) || 0,
+      onlineAmount: Number(onlineAmount) || 0,
+      onlineMode,
+    };
+
+    setViewing(draftInv);
+    setTimeout(() => {
+      triggerPrint();
+    }, 250);
+  };
+
   useEffect(() => {
-    if (isOperator) {
-      setType("NON-GST");
-    } else {
-      setType("GST");
-    }
-  }, [isOperator]);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Shortcut to Save & Post Bill: Ctrl+S, Ctrl+Enter, Alt+S, F12
+      if (
+        (e.ctrlKey && e.key.toLowerCase() === "s") ||
+        (e.ctrlKey && e.key === "Enter") ||
+        (e.altKey && e.key.toLowerCase() === "s") ||
+        e.key === "F12"
+      ) {
+        e.preventDefault();
+        save();
+        return;
+      }
+
+      // 2. Shortcut to Print Bill: Ctrl+P, Alt+P, F8
+      if (
+        (e.ctrlKey && e.key.toLowerCase() === "p") ||
+        (e.altKey && e.key.toLowerCase() === "p") ||
+        e.key === "F8"
+      ) {
+        e.preventDefault();
+        if (viewing) {
+          triggerPrint();
+        } else {
+          handlePrintDraftBill();
+        }
+        return;
+      }
+
+      // 3. Shortcut to add new item row: Insert, F3, Alt+N, Alt+A
+      if (
+        e.key === "Insert" ||
+        e.key === "F3" ||
+        (e.altKey && (e.key.toLowerCase() === "n" || e.key.toLowerCase() === "a"))
+      ) {
+        e.preventDefault();
+        setItems((prev) => [...prev, createDefaultBlankItem()]);
+        toast.info("➕ New item row added (Shortcut)");
+        return;
+      }
+
+      // 4. Shortcut for Barcode Scanner focus: F2
+      if (e.key === "F2") {
+        e.preventDefault();
+        posScanRef.current?.focus();
+        toast.info("POS Barcode Scanner input focused!");
+        return;
+      }
+
+      // 5. Shortcut to jump cursor directly to Item Table on Billing page: Alt+I or F4
+      if (
+        e.key === "F4" ||
+        (e.altKey && e.key.toLowerCase() === "i")
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (firstItemInputRef.current) {
+          firstItemInputRef.current.focus();
+          firstItemInputRef.current.select?.();
+        } else {
+          const firstInput = document.querySelector("#erp-item-table-container input, #erp-item-table-container select") as HTMLElement;
+          firstInput?.focus();
+        }
+        toast.info("🎯 Cursor focused directly on Item Table (Alt+I / F4)");
+        return;
+      }
+
+      const now = Date.now();
+      const timeDiff = now - lastKeyTime.current;
+      lastKeyTime.current = now;
+
+      if (timeDiff > 100) {
+        barcodeBuffer.current = "";
+      }
+
+      if (e.key === "Enter") {
+        if (barcodeBuffer.current.trim().length >= 3) {
+          e.preventDefault();
+          const scanned = barcodeBuffer.current.trim();
+          barcodeBuffer.current = "";
+          handleScanBarcode(scanned);
+        }
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        barcodeBuffer.current += e.key;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [
+    products,
+    items,
+    customerId,
+    newCust,
+    isGst,
+    date,
+    discount,
+    oldGoldAmount,
+    oldSilverAmount,
+    cashAmount,
+    onlineAmount,
+    onlineMode,
+    viewing,
+    editingId,
+    invoices,
+    customers,
+  ]);
 
   const editInvoice = (inv: any) => {
     console.log("Billing: editInvoice start", inv && (inv.number || inv._id || inv.id));
     setEditingId(inv._id || inv.id);
     setType(inv.type);
     setCustomerId(inv.customerId);
+    setCustomerGstin(inv.customerGstin || (customers.find(c => (c._id || c.id) === inv.customerId)?.gstNumber) || "");
     setSearchCust(inv.customerName || "");
     const parsedItems = (inv.items || []).map((it: any) => {
       let pid = it.productId;
@@ -723,6 +963,9 @@ export default function BillingPage() {
     setDiscount(inv.discount || "");
     setOldGoldAmount(inv.oldGoldAmount || "");
     setOldSilverAmount(inv.oldSilverAmount || "");
+    setOldExchangeType(inv.oldExchangeType || (inv.oldGoldAmount && inv.oldSilverAmount ? "Both" : inv.oldGoldAmount ? "Gold" : inv.oldSilverAmount ? "Silver" : "None"));
+    if (inv.oldGoldDetails) setOldGoldForm(inv.oldGoldDetails);
+    if (inv.oldSilverDetails) setOldSilverForm(inv.oldSilverDetails);
     setOldMetalType(inv.oldMetalType || (inv.oldSilverAmount && inv.oldGoldAmount ? "Mixed" : inv.oldSilverAmount ? "Silver" : "Gold"));
     setBillMetal(inv.billMetal || "Gold");
     
@@ -881,15 +1124,36 @@ export default function BillingPage() {
       customerName: custName,
       customerMobile: custMobile,
       customerAddress: custAddress,
+      customerGstin: customerGstin ? customerGstin.trim().toUpperCase() : undefined,
       items: cleanItems,
       discount: Number(discount) || 0,
+      oldExchangeType: oldExchangeType,
       oldGoldAmount: Number(oldGoldAmount) || 0,
       oldSilverAmount: Number(oldSilverAmount) || 0,
+      oldGoldDetails: (oldExchangeType === "Gold" || oldExchangeType === "Both") && Number(oldGoldAmount) > 0 ? {
+        grossWeight: oldGoldForm.grossWeight || 0,
+        lossWeight: oldGoldForm.lossWeight || 0,
+        netWeight: Math.max(0, (oldGoldForm.grossWeight || 0) - (oldGoldForm.lossWeight || 0)),
+        purityPct: oldGoldForm.purityPct || 91.6,
+        scrapRate: oldGoldForm.scrapRate || 0,
+        amount: Number(oldGoldAmount) || 0,
+      } : undefined,
+      oldSilverDetails: (oldExchangeType === "Silver" || oldExchangeType === "Both") && Number(oldSilverAmount) > 0 ? {
+        grossWeight: oldSilverForm.grossWeight || 0,
+        lossWeight: oldSilverForm.lossWeight || 0,
+        netWeight: Math.max(0, (oldSilverForm.grossWeight || 0) - (oldSilverForm.lossWeight || 0)),
+        purityPct: oldSilverForm.purityPct || 80.0,
+        scrapRate: oldSilverForm.scrapRate || 0,
+        amount: Number(oldSilverAmount) || 0,
+      } : undefined,
       oldMetalType: oldMetalType,
       billMetal: billMetal,
       paymentMode: finalPaymentMode,
       subtotal: totals.subtotal,
       gstAmount: totals.gst,
+      cgstAmount: totals.cgst,
+      sgstAmount: totals.sgst,
+      igstAmount: 0,
       total: totals.gTotal,
       amountPaid: safeActualPaid,
       balanceDue,
@@ -942,6 +1206,77 @@ export default function BillingPage() {
         
         // Inventory deduction is handled atomically by the backend POST /invoices transaction.
         // createMutation already invalidates ["invoices", "inventory"] so the UI will refresh.
+        
+        // Auto-create Old Gold / Silver Purchase record linked to this Sales Bill if Old Metal Exchange was performed
+        if (totals.totalOldExchange > 0) {
+          try {
+            const ogBillNo = `OG-${Date.now().toString().slice(-4)}`;
+            const ogItems: any[] = [];
+            if (Number(oldGoldAmount) > 0) {
+              const gw = oldGoldForm.grossWeight || 0;
+              const lw = oldGoldForm.lossWeight || 0;
+              const nw = Math.max(0, gw - lw);
+              const tunch = oldGoldForm.purityPct || 91.6;
+              const fine = (nw * tunch) / 100;
+              ogItems.push({
+                itemDescription: "Old Gold Exchange (Sales Trade-in)",
+                metal: "Gold",
+                purity: `${tunch}% Tunch`,
+                grossWeight: gw,
+                lessWeight: lw,
+                netWeight: nw,
+                tunchPct: tunch,
+                deductionPct: 0,
+                fineWeight: Number(fine.toFixed(3)),
+                ratePerGram: oldGoldForm.scrapRate || 0,
+                amount: Number(oldGoldAmount),
+              });
+            }
+            if (Number(oldSilverAmount) > 0) {
+              const gw = oldSilverForm.grossWeight || 0;
+              const lw = oldSilverForm.lossWeight || 0;
+              const nw = Math.max(0, gw - lw);
+              const tunch = oldSilverForm.purityPct || 80;
+              const fine = (nw * tunch) / 100;
+              ogItems.push({
+                itemDescription: "Old Silver Exchange (Sales Trade-in)",
+                metal: "Silver",
+                purity: `${tunch}% Tunch`,
+                grossWeight: gw,
+                lessWeight: lw,
+                netWeight: nw,
+                tunchPct: tunch,
+                deductionPct: 0,
+                fineWeight: Number(fine.toFixed(3)),
+                ratePerGram: oldSilverForm.scrapRate || 0,
+                amount: Number(oldSilverAmount),
+              });
+            }
+
+            await api.purchases.create({
+              billNo: ogBillNo,
+              date: parsedIso.slice(0, 10),
+              customerId: custId,
+              customerName: custName,
+              metal: Number(oldGoldAmount) > 0 && Number(oldSilverAmount) > 0 ? "Mix" : Number(oldGoldAmount) > 0 ? "Gold" : "Silver",
+              purity: ogItems[0]?.purity || "22K",
+              weight: ogItems.reduce((s, i) => s + i.netWeight, 0),
+              ratePerGram: ogItems[0]?.ratePerGram || 0,
+              taxableValue: totals.totalOldExchange,
+              total: totals.totalOldExchange,
+              paymentMode: "Adjusted in Bill",
+              linkedBillNo: newNumber,
+              docType: "OldGold",
+              status: "Completed",
+              items: ogItems,
+              note: `Trade-in against Sales Invoice ${newNumber}`,
+            } as any);
+            queryClient.invalidateQueries({ queryKey: ["purchases"] });
+          } catch (err) {
+            console.error("Failed to auto-create Old Gold purchase record:", err);
+          }
+        }
+
         setViewing(saved);
         toast.success("Invoice generated successfully");
       }
@@ -973,17 +1308,25 @@ export default function BillingPage() {
       } catch (e) { toast.error("Failed to delete invoice."); }
     }
   };
-
-  const handleKeyNav = useFormKeyboardNav(save);
   const productSearchRef = useRef<HTMLInputElement>(null);
 
+  const isManualInvoiceEntry = (i: any) => {
+    if (!i) return false;
+    if (typeof i.number === "string" && i.number.toUpperCase().startsWith("MAN-")) return true;
+    if (Array.isArray(i.items) && i.items.some((it: any) => 
+      it.productId === "MANUAL_DUE_ENTRY" || 
+      (typeof it.productId === "string" && it.productId.toLowerCase().startsWith("manual"))
+    )) return true;
+    return false;
+  };
+
   const today = new Date().toDateString();
-  const roleInvoices = dedupeInvoices(invoices.filter(i => i.type === type));
+  const roleInvoices = useMemo(() => dedupeInvoices(invoices.filter(i => isGst ? isInvoiceGst(i) : !isInvoiceGst(i))), [invoices, isGst]);
   const todayInvoices = roleInvoices.filter(i => new Date(i.createdAt).toDateString() === today);
   const todayRevenue = todayInvoices.reduce((s, i) => s + i.total, 0);
 
   const gstInvoices = useMemo(() => {
-    let list = dedupeInvoices(invoices.filter((i) => i.type === "GST"));
+    let list = dedupeInvoices(invoices.filter((i) => isInvoiceGst(i)));
     if (debouncedSearchQuery) {
       const q = debouncedSearchQuery.toLowerCase().trim();
       list = list.filter((i) => (i.number || "").toLowerCase().includes(q) || (i.customerName || "").toLowerCase().includes(q) || (i.customerMobile || "").includes(q) || (i.customerAddress || "").toLowerCase().includes(q));
@@ -992,11 +1335,11 @@ export default function BillingPage() {
   }, [invoices, debouncedSearchQuery]);
 
   const nonGstInvoices = useMemo(() => {
-    let list = dedupeInvoices(invoices.filter((i) => i.type === "NON-GST"));
+    let list = dedupeInvoices(invoices.filter((i) => !isInvoiceGst(i)));
     if (nonGstFilter === "INV") {
-      list = list.filter((i) => !i.number?.startsWith("MAN-"));
+      list = list.filter((i) => !isManualInvoiceEntry(i));
     } else if (nonGstFilter === "MAN") {
-      list = list.filter((i) => i.number?.startsWith("MAN-"));
+      list = list.filter((i) => isManualInvoiceEntry(i));
     }
     if (debouncedSearchQuery) {
       const q = debouncedSearchQuery.toLowerCase().trim();
@@ -1007,7 +1350,7 @@ export default function BillingPage() {
 
   return (
     <Layout>
-      <div className="print:hidden">
+      <div className="print:hidden" data-billing-container="true">
       {/* ═══════════════════════════════════════════════════════════
            HERO HEADER
       ═══════════════════════════════════════════════════════════ */}
@@ -1025,8 +1368,12 @@ export default function BillingPage() {
               </span>
               <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-widest text-amber-400/80">Point of Sale</span>
             </div>
-            <h1 className="text-xl sm:text-3xl font-display font-bold text-white tracking-tight">Billing &amp; Invoices</h1>
-            <p className="text-amber-200/60 text-[11px] sm:text-xs mt-0.5">Tax Invoices · Trade-ins · HUID Scanning · GST · Manual Dues</p>
+            <h1 className="text-xl sm:text-3xl font-display font-bold text-white tracking-tight">
+              {isGst ? "📜 GST Tax Invoices" : "📄 Estimate Bills"}
+            </h1>
+            <p className="text-amber-200/60 text-[11px] sm:text-xs mt-0.5">
+              {isGst ? "Official Tax Invoices · 3% GST · Party GSTIN · HUID Scanning" : "Non-GST Estimate Billing · Quotations · Rough Bills"}
+            </p>
           </div>
 
           {/* Live rates ticker (4-col grid on mobile, flex on desktop) */}
@@ -1091,17 +1438,877 @@ export default function BillingPage() {
             </Link>
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="h-9 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold shadow-lg shadow-amber-900/30 transition-all" onClick={() => reset()}>
+                <Button data-new-button="true" size="sm" className="h-9 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold shadow-lg shadow-amber-900/30 transition-all" onClick={() => reset()}>
                   <Plus className="w-4 h-4 mr-1" /> New Invoice
                 </Button>
               </DialogTrigger>
-          <DialogContent className="w-[98vw] max-w-6xl max-h-[96vh] overflow-y-auto overflow-x-hidden p-3.5 sm:p-5" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
-            <DialogHeader>
-              <DialogTitle className="text-2xl font-display">{editingId ? "Edit Invoice" : "Create Invoice"}</DialogTitle>
+          <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-slate-100 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
+            <DialogHeader className="flex flex-row items-center justify-between pb-2 border-b bg-white dark:bg-slate-900 p-3 border-slate-300 dark:border-slate-800">
+              <DialogTitle className="text-xl font-display font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                <span>{editingId ? (isGst ? "Edit GST Tax Invoice" : "Edit Estimate Bill") : (isGst ? "GST TAX INVOICE FORM" : "ESTIMATE BILL FORM")}</span>
+                <span className={`text-xs px-2 py-0.5 rounded font-mono uppercase font-bold border ${isGst ? "bg-blue-100 text-blue-900 border-blue-300 dark:bg-blue-950/80 dark:text-blue-200" : "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/80 dark:text-amber-200"}`}>
+                  {isGst ? "📜 Tax Invoice Form (3%)" : "📄 Estimate Form"}
+                </span>
+              </DialogTitle>
+              <div className="flex items-center gap-2">
+                <Button type="button" size="sm" variant={erpViewMode ? "default" : "outline"} className="h-7 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white" onClick={() => setErpViewMode(!erpViewMode)}>
+                  {erpViewMode ? "🖥️ Desktop ERP View" : "📱 Modern POS View"}
+                </Button>
+              </div>
             </DialogHeader>
-            <form className="space-y-4 mt-3" onSubmit={(e) => { e.preventDefault(); save(); }} onKeyDown={handleKeyNav}>
-              
-              {/* 1. Invoice Details */}
+
+            <form className="space-y-3 mt-2" onSubmit={(e) => { e.preventDefault(); save(); }} onKeyDown={handleGridArrowNav}>
+              {erpViewMode ? (
+                /* ═══════════════════════════════════════════════════════════
+                     TRADITIONAL DESKTOP ERP SALE & BILLING INTERFACE (IMAGE MATCH)
+                ═══════════════════════════════════════════════════════════ */
+                <div className="bg-neutral-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl p-3 space-y-3 shadow-md">
+                
+                {/* 1. TOP HEADER ACCOUNT & BILL SERIES PANEL */}
+                <div className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 p-3 rounded-lg flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm">
+                  {/* Account & Party Details */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" size="sm" variant="outline" className="h-8 text-xs bg-white dark:bg-slate-900 border-slate-300 font-bold px-3" onClick={() => setCustomerId("NEW")}>
+                      New A/c
+                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-800 dark:text-slate-200 text-xs sm:text-sm">Account:</span>
+                      <select
+                        value={customerId}
+                        onChange={(e) => handleCustomerSelect(e.target.value)}
+                        className="h-8 w-52 bg-white dark:bg-slate-900 text-xs sm:text-sm border border-slate-300 dark:border-slate-700 rounded-md font-bold px-2 text-slate-900 dark:text-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      >
+                        <option value="" disabled>Select Party / Customer</option>
+                        <option value="NEW" className="font-bold text-amber-600">+ Create New Customer</option>
+                        {customers.map((c) => (
+                          <option key={c._id || c.id} value={c._id || c.id}>
+                            {c.name} · {c.mobile || (c as any).phone}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {isGst && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-blue-900 dark:text-blue-300 text-xs sm:text-sm">GSTIN:</span>
+                        <Input
+                          value={customerGstin}
+                          onChange={(e) => setCustomerGstin(e.target.value.toUpperCase())}
+                          placeholder="Party GSTIN"
+                          className="h-8 w-36 bg-white dark:bg-slate-900 text-xs font-mono font-bold uppercase border border-blue-300 dark:border-blue-700 rounded-md focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-800 dark:text-rose-200 text-xs sm:text-sm">Group#:</span>
+                      <select
+                        value={groupType}
+                        onChange={(e) => setGroupType(e.target.value)}
+                        className="h-8 w-28 bg-white dark:bg-slate-900 text-xs sm:text-sm border border-rose-300 dark:border-slate-700 rounded-md font-bold uppercase px-2 text-slate-900 dark:text-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      >
+                        <option value="CUSTOMER">CUSTOMER</option>
+                        <option value="SUPPLIER">SUPPLIER</option>
+                        <option value="KARIGAR">KARIGAR</option>
+                        <option value="GIRVI">GIRVI</option>
+                        <option value="GENERAL">GENERAL</option>
+                      </select>
+                    </div>
+
+                    <Button type="button" size="sm" variant="outline" className="h-8 text-xs font-bold px-3 bg-white dark:bg-slate-900 border-rose-300">Search</Button>
+                  </div>
+
+                  {/* Series, Date & Bill Controls */}
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {isGst ? (
+                      <div className="flex items-center gap-2">
+                        <span className="bg-blue-600 text-white px-3 py-1 rounded-md text-xs font-bold font-mono shadow-xs flex items-center gap-1.5">
+                          📜 TAX INVOICE (GST 3%)
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="bg-amber-600 text-white px-3 py-1 rounded-md text-xs font-bold font-mono shadow-xs flex items-center gap-1.5">
+                          📄 ESTIMATE BILL
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-800 dark:text-rose-200 text-xs sm:text-sm">Date:</span>
+                      <Input value={date} onChange={(e) => setDate(e.target.value)} className="h-8 w-28 bg-white dark:bg-slate-900 text-xs sm:text-sm border-rose-300 font-mono text-center font-bold" />
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-800 dark:text-rose-200 text-xs sm:text-sm">Bill No.:</span>
+                      <Input value={editingId ? editingId.slice(-4) : "3"} readOnly className="h-8 w-20 bg-white dark:bg-slate-900 text-xs sm:text-sm border-rose-300 font-mono text-center font-bold" />
+                    </div>
+
+                    <label className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-800 dark:text-rose-200 cursor-pointer">
+                      <input type="checkbox" checked={goodsDelivered} onChange={(e) => setGoodsDelivered(e.target.checked)} className="w-4 h-4 rounded text-amber-600" />
+                      Goods Deliver
+                    </label>
+
+                    <label className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-800 dark:text-rose-200 cursor-pointer">
+                      <input type="checkbox" checked={finalVoucher} onChange={(e) => setFinalVoucher(e.target.checked)} className="w-4 h-4 rounded text-amber-600" />
+                      Final Voucher
+                    </label>
+                  </div>
+                </div>
+
+                {/* 2. MAIN 20-COLUMN ITEMS GRID TABLE (ENHANCED TEXT & DATA VISIBILITY) */}
+                <div id="erp-item-table-container" className="overflow-x-auto border-2 border-slate-400 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-md">
+                  <table className="w-full text-xs sm:text-sm border-collapse min-w-[1500px]">
+                    <thead className="bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-slate-100 uppercase font-black border-b-2 border-slate-400 dark:border-slate-700">
+                      <tr>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-14 text-center">Type</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-28 text-left">Tag.No.</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-left min-w-44">Item Name</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-20 text-center">Stamp</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-left w-28">Remarks</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-16 text-center">Unit</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-14 text-right">Pc</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-right">Gr.Wt.</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-20 text-right">Less</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-right">Net.Wt.</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-20 text-right">Tunch</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-right">Rate</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-20 text-right">Dia.Wt.</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-20 text-right">Stn.Wt.</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-right">Lbr.</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-16 text-center">On</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-20 text-right">Other</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-16 text-right">Dis.%</th>
+                        {isGst && (
+                          <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-16 text-right bg-blue-100 dark:bg-blue-950/80 font-bold text-blue-900 dark:text-blue-200">GST %</th>
+                        )}
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-right bg-amber-100 dark:bg-amber-950/80 font-bold">Fine Wt</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-28 text-right bg-amber-200 dark:bg-amber-900/90 font-black">Total</th>
+                        <th className="w-10 text-center border border-slate-300 dark:border-slate-700" />
+                      </tr>
+                    </thead>
+                    <tbody className="font-mono text-xs sm:text-sm">
+                      {items.map((it, i) => {
+                        const c = calcItem(it, isGst);
+                        const itemType = (it as any).itemType || (it.netWeight < 0 ? "P" : "S");
+                        const grWt = (it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight;
+                        const stoneWt = (it as any).stoneWeight || 0;
+                        const tunchPct = (it as any).tunch || ((it.purity || "").includes("22K") ? 91.6 : (it.purity || "").includes("18K") ? 75.0 : 100);
+                        const fineWt = (it.netWeight * tunchPct) / 100;
+
+                        return (
+                          <tr key={i} className="hover:bg-sky-50/50 dark:hover:bg-slate-800/60 border-b border-slate-300 dark:border-slate-700">
+                            <td className="p-0 border border-slate-300 dark:border-slate-700 text-center">
+                              <select
+                                value={itemType}
+                                onChange={(e) => updateItem(i, { itemType: e.target.value } as any)}
+                                className="w-full h-8.5 px-0.5 text-xs sm:text-sm font-black text-center bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 cursor-pointer text-slate-900 dark:text-white"
+                              >
+                                <option value="S" className="font-bold text-blue-600">S (Sale)</option>
+                                <option value="P" className="font-bold text-purple-600">P (Purchase)</option>
+                                <option value="R" className="font-bold text-amber-600">R (Repair)</option>
+                                <option value="O" className="font-bold text-emerald-600">O (Order)</option>
+                              </select>
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input ref={i === 0 ? firstItemInputRef : undefined} list="erp-inventory-tags" value={(it as any).tagNo || (it.productId.toLowerCase().startsWith("manual") ? "" : it.productId.slice(-6))} onChange={(e) => updateItem(i, { tagNo: e.target.value } as any)} className="w-full h-8.5 px-2 text-xs sm:text-sm font-bold font-mono uppercase bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" placeholder="TAG#" />
+                              <datalist id="erp-inventory-tags">
+                                {products.map((p) => (
+                                  <option key={p._id || p.id} value={p.barcode || p.sku || p.huid || (p._id || p.id).slice(-6)}>
+                                    {p.name} · {p.purity} · Wt: {p.netWeight}g
+                                  </option>
+                                ))}
+                              </datalist>
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input list="erp-inventory-names" value={it.name} onChange={(e) => updateItem(i, { name: e.target.value })} className="w-full h-8.5 px-2 text-xs sm:text-sm font-bold font-sans bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" placeholder="Item Name" />
+                              <datalist id="erp-inventory-names">
+                                {products.map((p) => (
+                                  <option key={p._id || p.id} value={p.name}>
+                                    {p.barcode || p.huid ? `${p.name} [${p.barcode || p.huid}]` : p.name} · {p.purity} · Wt: {p.netWeight}g
+                                  </option>
+                                ))}
+                              </datalist>
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <select
+                                value={it.purity || "22K"}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  let tunchVal = (it as any).tunch || 91.6;
+                                  if (val.includes("24K")) tunchVal = 99.9;
+                                  else if (val.includes("22K")) tunchVal = 91.6;
+                                  else if (val.includes("20K")) tunchVal = 83.3;
+                                  else if (val.includes("18K")) tunchVal = 75.0;
+                                  else if (val.includes("14K")) tunchVal = 58.5;
+                                  else if (val.includes("925")) tunchVal = 92.5;
+                                  else if (val.includes("Fine")) tunchVal = 99.9;
+                                  updateItem(i, { purity: val, tunch: tunchVal } as any);
+                                }}
+                                className="w-full h-8.5 px-0.5 text-xs sm:text-sm font-bold text-center bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 cursor-pointer text-slate-900 dark:text-white"
+                              >
+                                <option value="22K">22K</option>
+                                <option value="24K">24K</option>
+                                <option value="20K">20K</option>
+                                <option value="18K">18K</option>
+                                <option value="14K">14K</option>
+                                <option value="925 Silver">925 Silver</option>
+                                <option value="Fine Silver">Fine Silver</option>
+                                <option value="Hallmark">Hallmark</option>
+                              </select>
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input value={(it as any).remarks || ""} onChange={(e) => updateItem(i, { remarks: e.target.value } as any)} className="w-full h-8.5 px-1.5 text-xs font-sans font-semibold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" placeholder="Remarks" />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700 text-center">
+                              <select
+                                value={(it as any).unit || "Gm"}
+                                onChange={(e) => updateItem(i, { unit: e.target.value } as any)}
+                                className="w-full h-8.5 px-0.5 text-xs sm:text-sm font-bold text-center bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 cursor-pointer text-slate-900 dark:text-white"
+                              >
+                                <option value="Gm">Gm</option>
+                                <option value="Mg">Mg</option>
+                                <option value="Kg">Kg</option>
+                                <option value="Pc">Pc</option>
+                                <option value="Ct">Ct</option>
+                                <option value="Tola">Tola</option>
+                              </select>
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input type="number" value={it.qty || ""} onChange={(e) => updateItem(i, recalcMaking(it, { qty: Number(e.target.value) || 1 }))} className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input type="number" step="0.001" value={grWt || ""} onChange={(e) => { const v = Number(e.target.value) || 0; updateItem(i, recalcMaking(it, { grossWeight: v, netWeight: Math.max(0, v - stoneWt) })); }} className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-black bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input type="number" step="0.001" value={stoneWt || ""} onChange={(e) => { const v = Number(e.target.value) || 0; updateItem(i, recalcMaking(it, { stoneWeight: v, netWeight: Math.max(0, grWt - v) })); }} className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input type="number" step="0.001" value={it.netWeight || ""} onChange={(e) => { const v = Number(e.target.value) || 0; updateItem(i, recalcMaking(it, { netWeight: v, grossWeight: v + stoneWt })); }} className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-black bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input type="number" step="0.01" value={tunchPct || ""} onChange={(e) => updateItem(i, { tunch: Number(e.target.value) || 0 } as any)} className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-black text-amber-700 dark:text-amber-400 bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input type="number" step="0.01" value={it.ratePerGram || ""} onChange={(e) => updateItem(i, recalcMaking(it, { ratePerGram: Number(e.target.value) || 0 }))} className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input type="number" step="0.001" value={(it as any).diaWt || ""} onChange={(e) => updateItem(i, { diaWt: Number(e.target.value) || 0 } as any)} className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input type="number" step="0.001" value={(it as any).stnWt || ""} onChange={(e) => updateItem(i, { stnWt: Number(e.target.value) || 0 } as any)} className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input type="number" step="0.01" value={it.makingChargeValue ?? it.makingChargePct ?? ""} onChange={(e) => updateItem(i, recalcMaking(it, { makingChargeValue: Number(e.target.value) || 0 }))} className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700 text-center">
+                              <select
+                                value={it.makingChargeType || "PERCENTAGE"}
+                                onChange={(e) => updateItem(i, recalcMaking(it, { makingChargeType: e.target.value as any }))}
+                                className="w-full h-8.5 text-xs sm:text-sm font-bold text-center bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 cursor-pointer text-slate-900 dark:text-white"
+                              >
+                                <option value="PERCENTAGE">%</option>
+                                <option value="PER_GRAM">Wt</option>
+                                <option value="FIXED">Rs</option>
+                              </select>
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input type="number" step="0.01" value={it.hmc || ""} onChange={(e) => updateItem(i, { hmc: Number(e.target.value) || 0 })} className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={(it as any).discountPct || ""}
+                                onChange={(e) => updateItem(i, { discountPct: Number(e.target.value) || 0 } as any)}
+                                onKeyDown={(e) => {
+                                  if (!isGst && e.key === "Enter" && i === items.length - 1) {
+                                    e.preventDefault();
+                                    setItems((prev) => [...prev, createDefaultBlankItem()]);
+                                  }
+                                }}
+                                className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                              />
+                            </td>
+                            {isGst && (
+                              <td className="p-0 border border-slate-300 dark:border-slate-700">
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  value={it.gstPct !== undefined ? it.gstPct : 3}
+                                  onChange={(e) => updateItem(i, { gstPct: Number(e.target.value) || 0 })}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" && i === items.length - 1) {
+                                      e.preventDefault();
+                                      setItems((prev) => [...prev, createDefaultBlankItem()]);
+                                    }
+                                  }}
+                                  className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold text-blue-700 dark:text-blue-300 bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                                  placeholder="3%"
+                                />
+                              </td>
+                            )}
+                            <td className="p-2 border border-slate-300 dark:border-slate-700 text-right bg-amber-100/80 dark:bg-amber-950/40 font-black text-xs sm:text-sm text-slate-950 dark:text-amber-200">
+                              {fineWt.toFixed(3)}
+                            </td>
+                            <td className="p-2 border border-slate-300 dark:border-slate-700 text-right bg-amber-200/80 dark:bg-amber-900/70 font-black text-sm sm:text-base text-slate-950 dark:text-white">
+                              {c.line.toFixed(2)}
+                            </td>
+                            <td className="p-1 border border-slate-300 dark:border-slate-700 text-center">
+                              <button type="button" onClick={() => removeItem(i)} className="text-rose-600 hover:text-rose-800 font-black text-sm px-2 py-0.5 rounded hover:bg-rose-100">✕</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* ADD NEW ITEM ROW ACTION TOOLBAR */}
+                <div className="flex justify-between items-center my-2 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 p-2 rounded-lg">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs bg-white dark:bg-slate-950 border-amber-500 font-bold hover:bg-amber-50 text-amber-950 dark:text-amber-100 shadow-2xs gap-1.5"
+                    onClick={() => setItems((prev) => [...prev, createDefaultBlankItem()])}
+                  >
+                    <Plus className="w-4 h-4 text-amber-600" /> + Add New Item Row
+                    <kbd className="ml-1.5 px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded font-mono font-bold">
+                      Alt+N / Insert / F3
+                    </kbd>
+                  </Button>
+                  <span className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300 px-2">Total Item Rows: {items.length}</span>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+                  {/* Left 4 Cols: 10 Voucher Action Modules (SIDE PANEL) */}
+                  <div className="lg:col-span-4 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 p-2.5 rounded-lg space-y-2">
+                    <h4 className="text-xs font-bold text-slate-950 dark:text-slate-200 uppercase tracking-wider flex items-center justify-between">
+                      <span>⚡ Voucher Action Modules</span>
+                      <span className="text-[10px] bg-slate-300 text-slate-900 px-1.5 rounded font-mono">10 Modules</span>
+                    </h4>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { id: "Receipt", key: "1-Receipt", label: "1-Receipt" },
+                        { id: "Payment", key: "2-Payment", label: "2-Payment" },
+                        { id: "Adjust", key: "3-Adjust", label: "3-Adjust" },
+                        { id: "Metal Rcpt.", key: "4-Metal Rcpt.", label: "4-Metal Rcpt." },
+                        { id: "Metal Paid", key: "5-Metal Paid", label: "5-Metal Paid" },
+                        { id: "Gold Bhav", key: "6-Gold Bhav", label: "6-Gold Bhav" },
+                        { id: "Silv Bhav", key: "7-Silv Bhav", label: "7-Silv Bhav" },
+                        { id: "Transfer", key: "8-Transfer", label: "8-Transfer" },
+                        { id: "Bal. Adjust", key: "9-Bal. Adjust", label: "9-Bal. Adjust" },
+                        { id: "Commision", key: "0-Commision", label: "0-Commision" },
+                      ].map((mod) => (
+                        <Button
+                          key={mod.id}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs font-bold justify-start bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-800 dark:text-white hover:bg-amber-50 hover:border-amber-500 shadow-2xs"
+                          onClick={() => setVoucherModal(mod.id)}
+                        >
+                          {mod.label}
+                        </Button>
+                      ))}
+                    </div>
+
+                    {/* In-place Voucher Action Form Panel */}
+                    {voucherModal && (
+                      <div className="bg-white dark:bg-slate-900 border-2 border-amber-500 rounded-lg p-3 shadow-lg space-y-3 mt-2 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="flex items-center justify-between border-b pb-1.5 border-amber-200 dark:border-amber-900/50">
+                          <h5 className="font-bold text-xs text-amber-800 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1">
+                            <span>⚡ {voucherModal} Voucher Entry</span>
+                          </h5>
+                          <button type="button" onClick={() => setVoucherModal(null)} className="text-slate-500 hover:text-slate-900 dark:hover:text-white text-xs font-bold px-1.5 py-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800">✕</button>
+                        </div>
+
+                        <div className="flex items-center gap-3 text-xs font-bold text-slate-800 dark:text-slate-200">
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input type="radio" name="vType" checked={voucherForm.type === "Naam"} onChange={() => setVoucherForm({ ...voucherForm, type: "Naam" })} className="accent-amber-600" />
+                            <span>Naam (Debit)</span>
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input type="radio" name="vType" checked={voucherForm.type === "Jama"} onChange={() => setVoucherForm({ ...voucherForm, type: "Jama" })} className="accent-amber-600" />
+                            <span>Jama (Credit)</span>
+                          </label>
+                        </div>
+
+                        <div className="space-y-2 text-xs">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="font-bold text-slate-700 dark:text-slate-300 text-[10px]">Fine Gold (g)</label>
+                              <input type="number" step="0.001" placeholder="0.000" value={voucherForm.goldWt || ""} onChange={(e) => setVoucherForm({ ...voucherForm, goldWt: Number(e.target.value) })} className="w-full h-8 px-2 border border-slate-300 dark:border-slate-700 rounded font-mono text-xs text-right bg-slate-50 dark:bg-slate-800" />
+                            </div>
+                            <div>
+                              <label className="font-bold text-slate-700 dark:text-slate-300 text-[10px]">Fine Silver (g)</label>
+                              <input type="number" step="0.001" placeholder="0.000" value={voucherForm.silverWt || ""} onChange={(e) => setVoucherForm({ ...voucherForm, silverWt: Number(e.target.value) })} className="w-full h-8 px-2 border border-slate-300 dark:border-slate-700 rounded font-mono text-xs text-right bg-slate-50 dark:bg-slate-800" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="font-bold text-slate-700 dark:text-slate-300 text-[10px]">Cash Amount (₹)</label>
+                            <input type="number" step="0.01" placeholder="0.00" value={voucherForm.amount || ""} onChange={(e) => setVoucherForm({ ...voucherForm, amount: Number(e.target.value) })} className="w-full h-8 px-2 border border-slate-300 dark:border-slate-700 rounded font-mono text-xs text-right bg-slate-50 dark:bg-slate-800" />
+                          </div>
+                          <div>
+                            <label className="font-bold text-slate-700 dark:text-slate-300 text-[10px]">Remarks / Particulars</label>
+                            <input type="text" placeholder="Enter transaction note..." value={voucherForm.narration} onChange={(e) => setVoucherForm({ ...voucherForm, narration: e.target.value })} className="w-full h-8 px-2 border border-slate-300 dark:border-slate-700 rounded text-xs bg-slate-50 dark:bg-slate-800" />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200 dark:border-slate-800">
+                          <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setVoucherModal(null)}>Cancel</Button>
+                          <Button type="button" size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold" onClick={handleSaveVoucher}>Save Voucher</Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right 8 Cols: Old Metal Exchange Form, Settlement Ledger & Summary Cards */}
+                  <div className="lg:col-span-8 space-y-3">
+                    {/* Old Gold & Silver Item Exchange Card (Dropdown Controlled & Deducted from Sales Total) */}
+                    <div className="bg-amber-500/10 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-900 p-3 rounded-lg space-y-2.5">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <Scale className="w-4 h-4 text-amber-600" />
+                          <span className="text-xs font-bold font-sans text-amber-950 dark:text-amber-100 uppercase tracking-wider">Old Metal Exchange:</span>
+                          <select
+                            value={oldExchangeType}
+                            onChange={(e) => {
+                              const val = e.target.value as any;
+                              setOldExchangeType(val);
+                              if (val === "None") {
+                                setOldGoldAmount("");
+                                setOldSilverAmount("");
+                              }
+                            }}
+                            className="h-7.5 text-xs font-bold bg-white dark:bg-slate-900 border border-amber-400 dark:border-amber-700 rounded px-2 text-amber-950 dark:text-amber-100 cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                          >
+                            <option value="None">None (No Metal Exchange)</option>
+                            <option value="Gold">🥇 Old Gold Exchange</option>
+                            <option value="Silver">🥈 Old Silver Exchange</option>
+                            <option value="Both">✨ Both (Gold & Silver Exchange)</option>
+                          </select>
+                          {customerId && customerId !== "NEW" && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs font-bold bg-amber-100 hover:bg-amber-200 border-amber-400 text-amber-900 gap-1"
+                              onClick={async () => {
+                                try {
+                                  const purchasesRes: any = await api.purchases.getAll();
+                                  const allPur = Array.isArray(purchasesRes) ? purchasesRes : (purchasesRes?.data || []);
+                                  const custOg = allPur.filter((p: any) => p.docType === "OldGold" && p.customerId === customerId && p.paymentMode !== "Adjusted in Bill");
+                                  if (custOg.length === 0) {
+                                    toast.info("No unadjusted Old Gold/Silver buyback entries found for this customer.");
+                                    return;
+                                  }
+                                  const picked = custOg[0];
+                                  const isGold = (picked.metal || "Gold") === "Gold";
+                                  if (isGold) {
+                                    setOldExchangeType(prev => prev === "Silver" ? "Both" : "Gold");
+                                    setOldGoldForm({
+                                      grossWeight: picked.grossWeight || picked.weight || 0,
+                                      lossWeight: picked.lessWeight || 0,
+                                      purityPct: picked.tunchPct || 91.6,
+                                      scrapRate: picked.ratePerGram || 0,
+                                    });
+                                    setOldGoldAmount(picked.total || picked.taxableValue || 0);
+                                  } else {
+                                    setOldExchangeType(prev => prev === "Gold" ? "Both" : "Silver");
+                                    setOldSilverForm({
+                                      grossWeight: picked.grossWeight || picked.weight || 0,
+                                      lossWeight: picked.lessWeight || 0,
+                                      purityPct: picked.tunchPct || 80.0,
+                                      scrapRate: picked.ratePerGram || 0,
+                                    });
+                                    setOldSilverAmount(picked.total || picked.taxableValue || 0);
+                                  }
+                                  toast.success(`Imported Old Metal Buyback ${picked.billNo} (${inr(picked.total)})!`);
+                                } catch (err) {
+                                  console.error(err);
+                                  toast.error("Failed to fetch customer old gold entries.");
+                                }
+                              }}
+                            >
+                              <Coins className="w-3.5 h-3.5 text-amber-700" /> Import Buyback
+                            </Button>
+                          )}
+                        </div>
+                        <span className="text-xs font-mono font-extrabold text-amber-900 dark:text-amber-200 bg-amber-200 dark:bg-amber-900/80 px-2.5 py-1 rounded border border-amber-300">
+                          Exchange Total: -{inr(totals.totalOldExchange)}
+                        </span>
+                      </div>
+
+                      {oldExchangeType !== "None" && (
+                        <div className="grid grid-cols-1 gap-2.5 pt-1 animate-in fade-in duration-150">
+                          {/* Old Gold Item Entry */}
+                          {(oldExchangeType === "Gold" || oldExchangeType === "Both") && (
+                            <div className="bg-white dark:bg-slate-900 border border-amber-300 dark:border-slate-800 p-2.5 rounded-md space-y-2">
+                              <div className="text-xs font-bold text-amber-900 dark:text-amber-300 flex items-center justify-between">
+                                <span>🥇 Old Gold Item Exchange</span>
+                                <span className="font-mono text-[11px] text-emerald-700 font-extrabold">-{inr(Number(oldGoldAmount || 0))}</span>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-xs">
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Gross Wt (g)</label>
+                                  <input type="number" step="0.001" placeholder="0.000" value={oldGoldForm.grossWeight || ""} onChange={(e) => {
+                                    const gw = Number(e.target.value) || 0;
+                                    const nw = Math.max(0, gw - (oldGoldForm.lossWeight || 0));
+                                    const fine = (nw * (oldGoldForm.purityPct || 0)) / 100;
+                                    const amt = Math.round(fine * (oldGoldForm.scrapRate || 0));
+                                    setOldGoldForm({ ...oldGoldForm, grossWeight: gw });
+                                    setOldGoldAmount(amt || "");
+                                  }} className="w-full h-7 px-1 border border-slate-300 dark:border-slate-700 rounded font-mono text-xs text-right" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Less Wt (g)</label>
+                                  <input type="number" step="0.001" placeholder="0.000" value={oldGoldForm.lossWeight || ""} onChange={(e) => {
+                                    const lw = Number(e.target.value) || 0;
+                                    const nw = Math.max(0, (oldGoldForm.grossWeight || 0) - lw);
+                                    const fine = (nw * (oldGoldForm.purityPct || 0)) / 100;
+                                    const amt = Math.round(fine * (oldGoldForm.scrapRate || 0));
+                                    setOldGoldForm({ ...oldGoldForm, lossWeight: lw });
+                                    setOldGoldAmount(amt || "");
+                                  }} className="w-full h-7 px-1 border border-slate-300 dark:border-slate-700 rounded font-mono text-xs text-right" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Net Wt (g)</label>
+                                  <input type="number" step="0.001" readOnly value={Math.max(0, (oldGoldForm.grossWeight || 0) - (oldGoldForm.lossWeight || 0)).toFixed(3)} className="w-full h-7 px-1 border border-amber-300 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/60 font-mono text-xs font-bold text-amber-900 dark:text-amber-200 text-right rounded" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Touch %</label>
+                                  <input type="number" step="0.1" placeholder="91.6" value={oldGoldForm.purityPct || ""} onChange={(e) => {
+                                    const pur = Number(e.target.value) || 0;
+                                    const nw = Math.max(0, (oldGoldForm.grossWeight || 0) - (oldGoldForm.lossWeight || 0));
+                                    const fine = (nw * pur) / 100;
+                                    const amt = Math.round(fine * (oldGoldForm.scrapRate || 0));
+                                    setOldGoldForm({ ...oldGoldForm, purityPct: pur });
+                                    setOldGoldAmount(amt || "");
+                                  }} className="w-full h-7 px-1 border border-slate-300 dark:border-slate-700 rounded font-mono text-xs text-right" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Rate / g (₹)</label>
+                                  <input type="number" step="10" placeholder="7100" value={oldGoldForm.scrapRate || ""} onChange={(e) => {
+                                    const r = Number(e.target.value) || 0;
+                                    const nw = Math.max(0, (oldGoldForm.grossWeight || 0) - (oldGoldForm.lossWeight || 0));
+                                    const fine = (nw * (oldGoldForm.purityPct || 0)) / 100;
+                                    const amt = Math.round(fine * r);
+                                    setOldGoldForm({ ...oldGoldForm, scrapRate: r });
+                                    setOldGoldAmount(amt || "");
+                                  }} className="w-full h-7 px-1 border border-slate-300 dark:border-slate-700 rounded font-mono text-xs text-right" />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Direct Old Gold Value (₹)</label>
+                                <input type="number" step="1" placeholder="0.00" value={oldGoldAmount} onChange={(e) => setOldGoldAmount(e.target.value ? Number(e.target.value) : "")} className="w-full h-7 px-2 border border-amber-300 dark:border-slate-700 rounded font-mono text-xs font-bold text-right bg-amber-50 dark:bg-slate-800" />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Old Silver Item Entry */}
+                          {(oldExchangeType === "Silver" || oldExchangeType === "Both") && (
+                            <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 p-2.5 rounded-md space-y-2">
+                              <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                                <span>🥈 Old Silver Item Exchange</span>
+                                <span className="font-mono text-[11px] text-emerald-700 font-extrabold">-{inr(Number(oldSilverAmount || 0))}</span>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-xs">
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Gross Wt (g)</label>
+                                  <input type="number" step="0.001" placeholder="0.000" value={oldSilverForm.grossWeight || ""} onChange={(e) => {
+                                    const gw = Number(e.target.value) || 0;
+                                    const nw = Math.max(0, gw - (oldSilverForm.lossWeight || 0));
+                                    const fine = (nw * (oldSilverForm.purityPct || 0)) / 100;
+                                    const amt = Math.round(fine * (oldSilverForm.scrapRate || 0));
+                                    setOldSilverForm({ ...oldSilverForm, grossWeight: gw });
+                                    setOldSilverAmount(amt || "");
+                                  }} className="w-full h-7 px-1 border border-slate-300 dark:border-slate-700 rounded font-mono text-xs text-right" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Less Wt (g)</label>
+                                  <input type="number" step="0.001" placeholder="0.000" value={oldSilverForm.lossWeight || ""} onChange={(e) => {
+                                    const lw = Number(e.target.value) || 0;
+                                    const nw = Math.max(0, (oldSilverForm.grossWeight || 0) - lw);
+                                    const fine = (nw * (oldSilverForm.purityPct || 0)) / 100;
+                                    const amt = Math.round(fine * (oldSilverForm.scrapRate || 0));
+                                    setOldSilverForm({ ...oldSilverForm, lossWeight: lw });
+                                    setOldSilverAmount(amt || "");
+                                  }} className="w-full h-7 px-1 border border-slate-300 dark:border-slate-700 rounded font-mono text-xs text-right" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Net Wt (g)</label>
+                                  <input type="number" step="0.001" readOnly value={Math.max(0, (oldSilverForm.grossWeight || 0) - (oldSilverForm.lossWeight || 0)).toFixed(3)} className="w-full h-7 px-1 border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 font-mono text-xs font-bold text-slate-900 dark:text-white text-right rounded" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Touch %</label>
+                                  <input type="number" step="0.1" placeholder="80.0" value={oldSilverForm.purityPct || ""} onChange={(e) => {
+                                    const pur = Number(e.target.value) || 0;
+                                    const nw = Math.max(0, (oldSilverForm.grossWeight || 0) - (oldSilverForm.lossWeight || 0));
+                                    const fine = (nw * pur) / 100;
+                                    const amt = Math.round(fine * (oldSilverForm.scrapRate || 0));
+                                    setOldSilverForm({ ...oldSilverForm, purityPct: pur });
+                                    setOldSilverAmount(amt || "");
+                                  }} className="w-full h-7 px-1 border border-slate-300 dark:border-slate-700 rounded font-mono text-xs text-right" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Rate / g (₹)</label>
+                                  <input type="number" step="1" placeholder="85" value={oldSilverForm.scrapRate || ""} onChange={(e) => {
+                                    const r = Number(e.target.value) || 0;
+                                    const nw = Math.max(0, (oldSilverForm.grossWeight || 0) - (oldSilverForm.lossWeight || 0));
+                                    const fine = (nw * (oldSilverForm.purityPct || 0)) / 100;
+                                    const amt = Math.round(fine * r);
+                                    setOldSilverForm({ ...oldSilverForm, scrapRate: r });
+                                    setOldSilverAmount(amt || "");
+                                  }} className="w-full h-7 px-1 border border-slate-300 dark:border-slate-700 rounded font-mono text-xs text-right" />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Direct Old Silver Value (₹)</label>
+                                <input type="number" step="1" placeholder="0.00" value={oldSilverAmount} onChange={(e) => setOldSilverAmount(e.target.value ? Number(e.target.value) : "")} className="w-full h-7 px-2 border border-slate-300 dark:border-slate-700 rounded font-mono text-xs font-bold text-right bg-slate-50 dark:bg-slate-800" />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Payment Settlement Card (Cash Payment & Online Mode: UPI, Bank, Card, Cheque) */}
+                    <div className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 p-3 rounded-lg space-y-2.5">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <h5 className="text-xs font-bold font-sans text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
+                          <span>💳 Cash & Online Payment Settlement</span>
+                        </h5>
+                        <span className="text-xs font-mono font-extrabold text-amber-900 dark:text-amber-200 bg-amber-200 dark:bg-amber-900/80 px-2.5 py-1 rounded border border-amber-300">
+                          Balance Due: {inr(Math.max(0, totals.gTotal - (Number(cashAmount) || 0) - (Number(onlineAmount) || 0)))}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                        {/* Cash Payment Field */}
+                        <div className="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 p-2 rounded-md space-y-1">
+                          <label className="font-bold text-slate-700 dark:text-slate-300 text-[10px] uppercase">Cash Amount (₹)</label>
+                          <input
+                            type="number"
+                            step="1"
+                            placeholder="0.00"
+                            value={cashAmount}
+                            onChange={(e) => setCashAmount(e.target.value ? Number(e.target.value) : "")}
+                            className="w-full h-8 px-2 border border-slate-300 dark:border-slate-700 rounded font-mono font-bold text-xs text-right bg-slate-50 dark:bg-slate-900"
+                          />
+                        </div>
+
+                        {/* Online Amount Field */}
+                        <div className="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 p-2 rounded-md space-y-1">
+                          <label className="font-bold text-slate-700 dark:text-slate-300 text-[10px] uppercase">Online / Bank Amt (₹)</label>
+                          <input
+                            type="number"
+                            step="1"
+                            placeholder="0.00"
+                            value={onlineAmount}
+                            onChange={(e) => setOnlineAmount(e.target.value ? Number(e.target.value) : "")}
+                            className="w-full h-8 px-2 border border-slate-300 dark:border-slate-700 rounded font-mono font-bold text-xs text-right bg-slate-50 dark:bg-slate-900"
+                          />
+                        </div>
+
+                        {/* Online Payment Mode Dropdown */}
+                        <div className="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 p-2 rounded-md space-y-1">
+                          <label className="font-bold text-slate-700 dark:text-slate-300 text-[10px] uppercase">Online Mode / Method</label>
+                          <select
+                            value={onlineMode}
+                            onChange={(e) => setOnlineMode(e.target.value)}
+                            className="w-full h-8 px-2 border border-slate-300 dark:border-slate-700 rounded font-bold text-xs bg-slate-50 dark:bg-slate-900 cursor-pointer"
+                          >
+                            <option value="UPI">📱 UPI / GPay / PhonePe</option>
+                            <option value="BANK">🏦 Bank Transfer (NEFT/RTGS)</option>
+                            <option value="CARD">💳 Card / POS Machine</option>
+                            <option value="CHEQUE">📝 Cheque</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Live Summary Chips */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                      <div className="bg-amber-100 dark:bg-amber-950/40 border border-amber-300 p-2 rounded-md">
+                        <div className="text-[10px] text-amber-900 dark:text-amber-300 uppercase font-bold">Gross Amt</div>
+                        <div className="text-sm font-mono font-bold text-amber-900 dark:text-amber-200 mt-0.5">{inr(totals.subtotal)}</div>
+                      </div>
+                      <div className="bg-blue-100 dark:bg-blue-950/40 border border-blue-300 p-2 rounded-md">
+                        {isGst ? (
+                          <>
+                            <div className="text-[10px] text-blue-900 dark:text-blue-200 uppercase font-bold">GST Tax (3%) & Discount</div>
+                            <div className="text-xs font-mono font-bold text-blue-950 dark:text-blue-100 mt-0.5">
+                              GST (3%): +{inr(totals.gst)}
+                            </div>
+                            <div className="text-[9.5px] font-mono font-semibold text-blue-800 dark:text-blue-300 mt-0.5">
+                              CGST (1.5%): +{inr(totals.cgst)} | SGST (1.5%): +{inr(totals.sgst)}
+                            </div>
+                            {Number(discount) > 0 && (
+                              <div className="text-[10px] font-mono text-rose-600 dark:text-rose-400 mt-0.5 font-bold">
+                                Disc: -{inr(Number(discount))}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-[10px] text-blue-700 dark:text-blue-300 uppercase font-bold">Discount</div>
+                            <div className="text-sm font-mono font-bold text-slate-900 dark:text-white mt-0.5">
+                              {Number(discount) > 0 ? `-${inr(Number(discount))}` : "₹0.00"}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <div className="bg-purple-100 dark:bg-purple-950/40 border border-purple-300 p-2 rounded-md">
+                        <div className="text-[10px] text-purple-700 dark:text-purple-300 uppercase font-bold">Return / Old Exchange</div>
+                        <div className="text-sm font-mono font-bold text-purple-800 dark:text-purple-300 mt-0.5">-{inr(totals.totalOldExchange)}</div>
+                      </div>
+                      <div className="bg-amber-100 dark:bg-amber-950/40 border border-amber-300 p-2 rounded-md">
+                        <div className="text-[10px] text-amber-900 dark:text-amber-300 uppercase font-bold">Net Balance Due</div>
+                        <div className="text-sm font-mono font-bold text-amber-900 dark:text-amber-300 mt-0.5">
+                          {inr(Math.max(0, totals.gTotal - (Number(cashAmount) || 0) - (Number(onlineAmount) || 0)))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Settlement Ledger Table */}
+                    <div className="border border-slate-300 dark:border-slate-800 rounded-lg overflow-hidden bg-white dark:bg-slate-900">
+                      <table className="w-full text-[11px] text-left">
+                        <thead className="bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-200 uppercase font-bold border-b border-slate-300">
+                          <tr>
+                            <th className="p-1.5 border-r border-slate-300">RECEIPT / VOUCHER TYPE</th>
+                            <th className="p-1.5 border-r border-slate-300">DESCRIPTION</th>
+                            <th className="p-1.5 border-r border-slate-300 text-right">FINE GOLD (g)</th>
+                            <th className="p-1.5 border-r border-slate-300 text-right">FINE SILVER (g)</th>
+                            <th className="p-1.5 text-right">CASH AMOUNT (₹)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-mono">
+                          {vouchersList.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="p-3 text-center text-slate-500 font-sans text-xs font-medium bg-slate-50/50 dark:bg-slate-950/50">
+                                ℹ️ No extra voucher entries added. Use the 10 Voucher Action Modules on the left to post receipts or metal entries.
+                              </td>
+                            </tr>
+                          ) : (
+                            vouchersList.map((v, idx) => (
+                              <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                                <td className="p-1.5 border-r border-slate-200 font-bold text-slate-800 dark:text-slate-200">{v.type}</td>
+                                <td className="p-1.5 border-r border-slate-200 text-slate-600 dark:text-slate-300 font-sans">{v.description}</td>
+                                <td className="p-1.5 border-r border-slate-200 text-right font-bold text-amber-700">{v.goldWt ? v.goldWt.toFixed(3) : "—"}</td>
+                                <td className="p-1.5 border-r border-slate-200 text-right font-bold text-slate-600">{v.silverWt ? v.silverWt.toFixed(3) : "—"}</td>
+                                <td className="p-1.5 text-right font-bold">{v.amount ? inr(v.amount) : "—"}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                        <tfoot className="bg-slate-100 dark:bg-slate-800 font-bold text-xs border-t-2 border-slate-300">
+                          <tr>
+                            <td colSpan={2} className="p-2 text-slate-900 dark:text-slate-200 uppercase font-extrabold">Adjustments &amp; Net Balance:</td>
+                            <td className="p-2 text-right font-mono text-amber-800 font-black">
+                              {vouchersList.reduce((acc, v) => acc + (v.goldWt || 0), 0).toFixed(3)} g
+                            </td>
+                            <td className="p-2 text-right font-mono text-slate-700 font-black">
+                              {vouchersList.reduce((acc, v) => acc + (v.silverWt || 0), 0).toFixed(3)} g
+                            </td>
+                            <td className="p-2 text-right font-mono text-emerald-700 font-black text-sm">
+                              {inr(totals.gTotal + vouchersList.reduce((acc, v) => acc + (v.amount || 0), 0))}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. BOTTOM ACTION CONTROL TOOLBAR (DESKTOP ERP) */}
+                <div className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 p-3 rounded-lg flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 px-3 text-xs font-bold bg-white dark:bg-slate-900 border-slate-300 text-slate-700 dark:text-slate-200 hover:bg-slate-200"
+                      onClick={reset}
+                    >
+                      ➕ New Bill
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 px-3 text-xs font-bold bg-white dark:bg-slate-900 border-slate-300 text-slate-700 dark:text-slate-200 hover:bg-slate-200 gap-1.5"
+                      onClick={handlePrintDraftBill}
+                    >
+                      🖨️ Print Bill
+                      <kbd className="ml-1 px-1.5 py-0.5 text-[10px] bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded font-mono font-bold">
+                        Ctrl+P / F8
+                      </kbd>
+                    </Button>
+                    {editingId && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        className="h-9 px-3 text-xs font-bold"
+                        onClick={() => {
+                          if (confirm("Are you sure you want to delete this invoice?")) deleteMutation.mutate(editingId);
+                        }}
+                      >
+                        🗑️ Delete Bill
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 px-3 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                      onClick={() => setOpen(false)}
+                    >
+                      ✕ Close / Cancel
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Net Bill Payable / Balance Due Amt Badge */}
+                    <div className="bg-white dark:bg-slate-900 border-2 border-amber-500 dark:border-amber-600 rounded-lg px-3.5 py-1 flex flex-col items-end justify-center shadow-2xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Net Due Amt:</span>
+                        <span className="text-sm sm:text-base font-mono font-black text-amber-600 dark:text-amber-400">{inr(totals.netBalanceDue)}</span>
+                      </div>
+                      {totals.totalPaid > 0 && (
+                        <span className="text-[10px] font-mono font-semibold text-slate-500">
+                          Bill Total: {inr(totals.gTotal)} | Paid: -{inr(totals.totalPaid)}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* PROMINENT SAVE & POST BILL BUTTON */}
+                    <Button
+                      type="submit"
+                      size="default"
+                      className={`h-10 px-5 text-sm font-black text-white rounded-lg shadow-md cursor-pointer tracking-wide uppercase transition-all flex items-center gap-2 ${
+                        isGst ? "bg-blue-600 hover:bg-blue-700 shadow-blue-900/30" : "bg-amber-600 hover:bg-amber-700 shadow-amber-900/30"
+                      }`}
+                    >
+                      <span>{isGst ? "💾 Save & Post GST Tax Invoice" : "💾 Save & Post Estimate Bill"}</span>
+                      <kbd className={`px-1.5 py-0.5 text-[10px] rounded font-mono font-bold lowercase ${
+                        isGst ? "bg-blue-800 text-blue-100 border border-blue-400" : "bg-amber-800 text-amber-100 border border-amber-500"
+                      }`}>
+                        Ctrl+S / F12
+                      </kbd>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              ) : (
+                /* ═══════════════════════════════════════════════════════════
+                     MODERN POS BILLING VIEW
+                ═══════════════════════════════════════════════════════════ */
+                <div className="space-y-4">
+                  {/* 1. Invoice Details */}
               <div className="p-4 border rounded-lg bg-muted/10 space-y-3">
                 <h3 className="font-semibold text-primary flex items-center gap-2">
                   <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">1</span>
@@ -1220,6 +2427,7 @@ export default function BillingPage() {
                         <h4 className="text-xs font-bold text-primary uppercase">New Customer Details</h4>
                         <div className="space-y-1.5"><Label className="text-xs">Full Name *</Label><Input value={newCust.name} onChange={e => setNewCust({...newCust, name: e.target.value})} className="h-8 bg-background" /></div>
                         <div className="space-y-1.5"><Label className="text-xs">Mobile No (optional)</Label><Input value={newCust.phone} onChange={e => setNewCust({...newCust, phone: e.target.value})} className="h-8 bg-background" /></div>
+                        <div className="space-y-1.5"><Label className="text-xs">GSTIN (B2B optional)</Label><Input value={newCust.gstNumber || ""} onChange={e => { const val = e.target.value.toUpperCase(); setNewCust({...newCust, gstNumber: val}); setCustomerGstin(val); }} placeholder="22AAAAA0000A1Z5" className="h-8 bg-background font-mono text-xs uppercase" /></div>
                         <div className="space-y-1.5"><Label className="text-xs">Address *</Label><Input value={newCust.address} onChange={e => setNewCust({...newCust, address: e.target.value})} className="h-8 bg-background" /></div>
                       </div>
                     )}
@@ -1236,6 +2444,10 @@ export default function BillingPage() {
                               <div>
                                 <strong className="text-foreground">Mobile:</strong>{" "}
                                 {selectedCust.mobile || selectedCust.phone}
+                              </div>
+                              <div>
+                                <strong className="text-foreground">GSTIN:</strong>{" "}
+                                {selectedCust.gstNumber || customerGstin || "—"}
                               </div>
                               <div className="col-span-2">
                                 <strong className="text-foreground">Address:</strong>{" "}
@@ -1337,27 +2549,43 @@ export default function BillingPage() {
                     <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">2</span>
                     Items
                   </h3>
-                  <div className="flex items-center gap-2 bg-background px-3 py-1 rounded-lg border border-border/80 shadow-2xs">
-                    <span className="text-xs font-semibold text-muted-foreground">Bill Type:</span>
-                    <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-md">
-                      <button
-                        type="button"
-                        onClick={() => setBillMetal("Gold")}
-                        className={`px-3 py-0.5 rounded text-xs font-bold transition-all cursor-pointer ${
-                          billMetal === "Gold" ? "bg-amber-600 text-white shadow-2xs" : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        Gold / General Bill
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setBillMetal("Silver")}
-                        className={`px-3 py-0.5 rounded text-xs font-bold transition-all cursor-pointer ${
-                          billMetal === "Silver" ? "bg-slate-800 text-white shadow-2xs" : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        Silver Bill
-                      </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isGst ? (
+                      <div className="flex items-center gap-2 bg-background px-3 py-1 rounded-lg border border-border/80 shadow-2xs">
+                        <span className="px-3 py-0.5 rounded text-xs font-bold bg-blue-600 text-white shadow-2xs">
+                          📜 GST Tax Invoice
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 bg-background px-3 py-1 rounded-lg border border-border/80 shadow-2xs">
+                        <span className="px-3 py-0.5 rounded text-xs font-bold bg-amber-600 text-white shadow-2xs">
+                          📄 Estimate Bill
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 bg-background px-3 py-1 rounded-lg border border-border/80 shadow-2xs">
+                      <span className="text-xs font-semibold text-muted-foreground">Metal:</span>
+                      <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-md">
+                        <button
+                          type="button"
+                          onClick={() => setBillMetal("Gold")}
+                          className={`px-3 py-0.5 rounded text-xs font-bold transition-all cursor-pointer ${
+                            billMetal === "Gold" ? "bg-amber-600 text-white shadow-2xs" : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          Gold / General
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBillMetal("Silver")}
+                          className={`px-3 py-0.5 rounded text-xs font-bold transition-all cursor-pointer ${
+                            billMetal === "Silver" ? "bg-slate-800 text-white shadow-2xs" : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          Silver
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1882,6 +3110,21 @@ export default function BillingPage() {
                           </tbody>
                         </table>
                       </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs font-bold border-amber-500 text-amber-900 dark:text-amber-100 hover:bg-amber-50 gap-1.5"
+                          onClick={() => setItems((prev) => [...prev, createDefaultBlankItem()])}
+                        >
+                          <Plus className="w-4 h-4 text-amber-600" /> + Add Blank Item Row
+                          <kbd className="ml-1 px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200 border border-amber-300 rounded font-mono font-bold">
+                            Alt+N / Insert / F3
+                          </kbd>
+                        </Button>
+                        <span className="text-xs font-mono text-muted-foreground font-semibold">Total Item Rows: {items.length}</span>
+                      </div>
                     </>
                   )}
               </div>
@@ -2116,16 +3359,17 @@ export default function BillingPage() {
                     <Button type="submit" className="w-full mt-2" size="lg" disabled={items.length === 0 || !customerId}>
                       <Plus className="w-4 h-4 mr-2" /> {editingId ? "Save Changes" : "Generate Invoice"}
                     </Button>
+                  </div>
+                </div>
               </div>
             </div>
-              </div>
-            </form>
-          </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      </div>
+          )}
+        </form>
+      </DialogContent>
+    </Dialog>
+  </div>
+</div>
+</div>
 
       {/* ═══════════════════════════════════════════════════════════
            KPI CARDS
@@ -2173,8 +3417,8 @@ export default function BillingPage() {
         )}
       </div>
 
-      {(isOperator ? [{ title: "Estimate Order History", data: nonGstInvoices }] : [
-        { title: "GST Invoice History", data: gstInvoices }
+      {(!isGst ? [{ title: "Estimate Bill History", data: nonGstInvoices }] : [
+        { title: "GST Tax Invoice History", data: gstInvoices }
       ]).map(({ title, data }, index) => {
         const returnedInvoiceIds = new Set(salesReturns.map((r: any) => r.invoiceId));
         let tableData = data;
@@ -2192,7 +3436,7 @@ export default function BillingPage() {
               {title}
               <span className="ml-1 text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{tableData.length}</span>
             </CardTitle>
-            {title === "Estimate Order History" && (
+            {!isGst && (
               <div className="flex bg-background p-1 rounded-lg border border-border shadow-sm">
                 {(["All", "INV", "MAN"] as const).map((f) => (
                   <button
@@ -2250,7 +3494,7 @@ export default function BillingPage() {
                         </td>
                         {title === "Estimate Order History" && (
                           <td className="py-3 px-4 whitespace-nowrap">
-                            {i.number?.startsWith("MAN-") ? (
+                            {isManualInvoiceEntry(i) ? (
                               <span className="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase">Manual Due</span>
                             ) : (
                               <span className="bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase">Invoice</span>
@@ -2570,48 +3814,60 @@ export default function BillingPage() {
           </DialogHeader>
 
           <form onSubmit={(e) => { e.preventDefault(); saveManualDue(); }} className="space-y-3 py-2 text-sm">
-            <div>
-              <Label className="text-xs font-semibold text-muted-foreground uppercase">Customer *</Label>
-              <Select
-                value={manualDue.customerId}
-                onValueChange={(val) => {
-                  if (val === "NEW") {
-                    setManualDue(prev => ({ ...prev, customerId: "NEW" }));
-                  } else {
-                    const c = customers.find(x => (x._id || x.id) === val);
-                    if (c) {
-                      setManualDue(prev => ({
-                        ...prev,
-                        customerId: val,
-                        customerName: c.name,
-                        phone: c.mobile || c.phone || "",
-                      }));
-                    }
-                  }
-                }}
-              >
-                <SelectTrigger className="bg-background mt-1">
-                  <SelectValue placeholder="Select or create new customer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="NEW" className="font-semibold text-primary">+ New Customer</SelectItem>
-                  {customers.map((c) => (
-                    <SelectItem key={c._id || c.id} value={c._id || c.id}>
-                      {c.name} · {c.mobile || c.phone}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
+            <div className="relative">
               <Label className="text-xs font-semibold text-muted-foreground uppercase">Customer Name *</Label>
               <Input
                 value={manualDue.customerName}
-                onChange={(e) => setManualDue({ ...manualDue, customerName: e.target.value })}
-                placeholder="Enter customer name"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setManualDue(prev => ({ ...prev, customerName: val }));
+                  setShowCustSuggestions(true);
+                }}
+                onFocus={() => setShowCustSuggestions(true)}
+                placeholder="Search or enter customer name..."
                 className="mt-1 bg-background"
+                required
               />
+
+              {showCustSuggestions && manualDue.customerName.trim().length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-popover text-popover-foreground border border-border rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto divide-y divide-border">
+                  {customers
+                    .filter((c: any) =>
+                      (c.name || "").toLowerCase().includes(manualDue.customerName.toLowerCase()) ||
+                      (c.mobile || c.phone || "").includes(manualDue.customerName)
+                    )
+                    .slice(0, 8)
+                    .map((c: any) => (
+                      <button
+                        type="button"
+                        key={c._id || c.id}
+                        onClick={() => {
+                          setManualDue(prev => ({
+                            ...prev,
+                            customerId: c._id || c.id,
+                            customerName: c.name,
+                            phone: c.mobile || c.phone || prev.phone,
+                          }));
+                          setShowCustSuggestions(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-muted/80 flex items-center justify-between transition-colors cursor-pointer"
+                      >
+                        <div>
+                          <div className="font-bold text-foreground">{c.name}</div>
+                          {c.city && <div className="text-[10px] text-muted-foreground">{c.city}</div>}
+                        </div>
+                        <span className="text-muted-foreground font-mono text-[11px] bg-muted/60 px-1.5 py-0.5 rounded border">
+                          {c.mobile || c.phone || "No Mobile"}
+                        </span>
+                      </button>
+                    ))}
+                  {customers.filter((c: any) => (c.name || "").toLowerCase().includes(manualDue.customerName.toLowerCase()) || (c.mobile || c.phone || "").includes(manualDue.customerName)).length === 0 && (
+                    <div className="px-3 py-2 text-xs text-muted-foreground italic">
+                      No matching customer found — will create new: <strong className="text-foreground font-semibold">"{manualDue.customerName}"</strong>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
@@ -2619,17 +3875,7 @@ export default function BillingPage() {
               <Input
                 value={manualDue.phone}
                 onChange={(e) => setManualDue({ ...manualDue, phone: e.target.value })}
-                placeholder="Enter mobile number"
-                className="mt-1 bg-background"
-              />
-            </div>
-
-            <div>
-              <Label className="text-xs font-semibold text-muted-foreground uppercase">Item Name / Reason</Label>
-              <Input
-                value={manualDue.itemName}
-                onChange={(e) => setManualDue({ ...manualDue, itemName: e.target.value })}
-                placeholder="e.g. Old Bahi-Khata Pending Balance"
+                placeholder="Enter mobile number (optional)"
                 className="mt-1 bg-background"
               />
             </div>
@@ -2642,6 +3888,7 @@ export default function BillingPage() {
                 onChange={(e) => setManualDue({ ...manualDue, dueAmount: e.target.value ? Number(e.target.value) : "" })}
                 placeholder="e.g. 15000"
                 className="mt-1 font-mono font-bold bg-background"
+                required
               />
             </div>
 
@@ -2809,7 +4056,7 @@ function NumI({ v, on, className = "w-24 h-8", onKeyDown }: { v: number; on: (n:
 
 
 
-function InvoiceModal({ inv, onClose, isReturned }: { inv: any; onClose: () => void; isReturned?: boolean }) {
+export function InvoiceModal({ inv, onClose, isReturned }: { inv: any; onClose: () => void; isReturned?: boolean }) {
   const { tenantSession } = useAuth();
   const invSettings: InvoiceSettings = { ...defaultInvoiceSettings, ...((tenantSession?.shop as any)?.invoiceSettings || {}) };
 
@@ -3010,6 +4257,53 @@ function InvoiceModal({ inv, onClose, isReturned }: { inv: any; onClose: () => v
               </div>
             );
           })()}
+
+          {/* OLD METAL ITEM EXCHANGE BREAKDOWN TABLE ON PRINTABLE INVOICE */}
+          {((inv.oldGoldAmount > 0) || (inv.oldSilverAmount > 0)) && (
+            <div className="mt-3 border border-amber-300 bg-amber-50/40 rounded-md overflow-hidden text-xs print:break-inside-avoid">
+              <div className="bg-amber-100/90 px-2.5 py-1 border-b border-amber-300 font-bold text-amber-950 flex items-center justify-between text-[11px] uppercase tracking-wider">
+                <span>🥇 Old Metal Item Exchange Details</span>
+                <span className="font-mono text-amber-900 font-extrabold">Total Deduction: -{inr((inv.oldGoldAmount || 0) + (inv.oldSilverAmount || 0))}</span>
+              </div>
+              <table className="w-full text-left text-[10.5px]">
+                <thead className="bg-amber-200/50 font-bold text-amber-950 uppercase border-b border-amber-200">
+                  <tr>
+                    <th className="p-1.5 border-r border-amber-200">Exchange Item</th>
+                    <th className="p-1.5 border-r border-amber-200 text-right">Gross Wt</th>
+                    <th className="p-1.5 border-r border-amber-200 text-right">Less Wt</th>
+                    <th className="p-1.5 border-r border-amber-200 text-right">Net Wt</th>
+                    <th className="p-1.5 border-r border-amber-200 text-right">Touch %</th>
+                    <th className="p-1.5 border-r border-amber-200 text-right">Rate / g</th>
+                    <th className="p-1.5 text-right">Exch. Value (₹)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-amber-200/60 font-mono font-medium text-slate-800">
+                  {inv.oldGoldAmount > 0 && (
+                    <tr>
+                      <td className="p-1.5 border-r border-amber-200 font-bold text-amber-900 font-sans">Old Gold Item</td>
+                      <td className="p-1.5 border-r border-amber-200 text-right">{inv.oldGoldDetails?.grossWeight ? `${inv.oldGoldDetails.grossWeight.toFixed(3)} g` : "—"}</td>
+                      <td className="p-1.5 border-r border-amber-200 text-right">{inv.oldGoldDetails?.lossWeight !== undefined && inv.oldGoldDetails?.grossWeight ? `${inv.oldGoldDetails.lossWeight.toFixed(3)} g` : "—"}</td>
+                      <td className="p-1.5 border-r border-amber-200 text-right font-bold">{inv.oldGoldDetails?.netWeight ? `${inv.oldGoldDetails.netWeight.toFixed(3)} g` : "—"}</td>
+                      <td className="p-1.5 border-r border-amber-200 text-right">{inv.oldGoldDetails?.purityPct ? `${inv.oldGoldDetails.purityPct}%` : "—"}</td>
+                      <td className="p-1.5 border-r border-amber-200 text-right">{inv.oldGoldDetails?.scrapRate ? `₹${inv.oldGoldDetails.scrapRate}` : "—"}</td>
+                      <td className="p-1.5 text-right font-bold text-emerald-700">-{inr(inv.oldGoldAmount)}</td>
+                    </tr>
+                  )}
+                  {inv.oldSilverAmount > 0 && (
+                    <tr>
+                      <td className="p-1.5 border-r border-amber-200 font-bold text-slate-900 font-sans">Old Silver Item</td>
+                      <td className="p-1.5 border-r border-amber-200 text-right">{inv.oldSilverDetails?.grossWeight ? `${inv.oldSilverDetails.grossWeight.toFixed(3)} g` : "—"}</td>
+                      <td className="p-1.5 border-r border-amber-200 text-right">{inv.oldSilverDetails?.lossWeight !== undefined && inv.oldSilverDetails?.grossWeight ? `${inv.oldSilverDetails.lossWeight.toFixed(3)} g` : "—"}</td>
+                      <td className="p-1.5 border-r border-amber-200 text-right font-bold">{inv.oldSilverDetails?.netWeight ? `${inv.oldSilverDetails.netWeight.toFixed(3)} g` : "—"}</td>
+                      <td className="p-1.5 border-r border-amber-200 text-right">{inv.oldSilverDetails?.purityPct ? `${inv.oldSilverDetails.purityPct}%` : "—"}</td>
+                      <td className="p-1.5 border-r border-amber-200 text-right">{inv.oldSilverDetails?.scrapRate ? `₹${inv.oldSilverDetails.scrapRate}` : "—"}</td>
+                      <td className="p-1.5 text-right font-bold text-emerald-700">-{inr(inv.oldSilverAmount)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Calculations & Totals */}
           <div className="flex flex-col sm:flex-row justify-between items-start text-xs gap-4 border-t border-slate-200 pt-3">

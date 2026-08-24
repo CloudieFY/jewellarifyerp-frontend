@@ -295,7 +295,7 @@ export default function ExpensesPage() {
 
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild>
-                <Button size="lg" className="w-full sm:w-auto bg-primary text-white font-semibold h-10 text-xs">
+                <Button data-new-button="true" size="lg" className="w-full sm:w-auto bg-primary text-white font-semibold h-10 text-xs">
                   <Plus className="w-4 h-4 mr-2" /> Add Expense Voucher
                 </Button>
               </DialogTrigger>

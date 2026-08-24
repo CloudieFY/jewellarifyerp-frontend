@@ -94,6 +94,7 @@ export type Invoice = {
   customerName: string;
   customerMobile: string;
   customerAddress?: string;
+  customerGstin?: string;
   items: InvoiceItem[];
   discount: number;
   oldGoldAmount: number;
@@ -103,6 +104,9 @@ export type Invoice = {
   paymentMode: "Cash" | "UPI" | "Card" | "EMI";
   subtotal: number;
   gstAmount: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
   total: number;
   amountPaid?: number;
   balanceDue?: number;
@@ -198,12 +202,16 @@ export type SupplierTransaction = {
   _id?: string;
   date: string;
   type: "Credit" | "Debit";
-  kind?: "Weight" | "Payment";
-  metal?: "Gold" | "Silver";
+  kind?: "Weight" | "Payment" | "Dual";
+  metal?: "Gold" | "Silver" | "Both";
   purity?: string;
   weight?: number;
+  goldWeight?: number;
+  silverWeight?: number;
   amount?: number;
+  ratePerGram?: number;
   paymentMode?: string;
+  refNo?: string;
   note?: string;
 };
 
@@ -211,14 +219,40 @@ export type Supplier = {
   _id?: string;
   id: string;
   name: string;
+  acNo?: string;
+  group?: string;
   company?: string;
   mobile: string;
+  phone?: string;
   email?: string;
   category?: string;
   gstNumber?: string;
+  pan?: string;
   address?: string;
+  location?: string;
+  city?: string;
+  state?: string;
+  pin?: string;
+  country?: string;
+  occupation?: string;
+  refBy?: string;
+  website?: string;
+  dob?: string;
+  anniversary?: string;
   companyNo?: string;
+  taxNo?: string;
+  tcs?: number;
+  tds?: number;
+  uidNo?: string;
+  cstNo?: string;
   note?: string;
+  openingBalanceGold?: number;
+  openingBalanceGoldType?: "Dr" | "Cr";
+  openingBalanceSilver?: number;
+  openingBalanceSilverType?: "Dr" | "Cr";
+  openingBalanceAmount?: number;
+  openingBalanceAmountType?: "Dr" | "Cr";
+  openingBalanceDate?: string;
   outstanding: number;
   balanceGold?: number;
   balanceSilver?: number;
@@ -372,18 +406,16 @@ export function computeMakingCharge(params: {
   qty: number;
 }) {
   const { type = "PERCENTAGE", value, netWeight, ratePerGram, qty } = params;
-  switch (type) {
-    case "PER_GRAM":
-      return netWeight * value;
-    case "PER_PIECE":
-      return value;
-    case "FIXED":
-      return value / (qty || 1);
-    case "WASTAGE":
-      return (netWeight * (value / 100)) * ratePerGram;
-    case "PERCENTAGE":
-    default:
-      return (netWeight * ratePerGram * value) / 100;
+  const normalizedType = (type || "PERCENTAGE").toString().toUpperCase();
+  if (normalizedType === "PER_GRAM" || normalizedType === "WT") {
+    return netWeight * value;
+  } else if (normalizedType === "PER_PIECE" || normalizedType === "FIXED" || normalizedType === "RS") {
+    return value / (qty || 1);
+  } else if (normalizedType === "WASTAGE") {
+    return (netWeight * (value / 100)) * ratePerGram;
+  } else {
+    // Default to PERCENTAGE (%)
+    return (netWeight * ratePerGram * value) / 100;
   }
 }
 
@@ -466,11 +498,22 @@ export const defaultInvoiceSettings: InvoiceSettings = {
   qrCodeUrl: "",
 };
 
-export function getCleanInvoiceTitle(title?: string): string {
-  if (!title || title.trim().toUpperCase() === "TAX INVOICE") {
-    return "INVOICE";
+export function isInvoiceGst(i: any): boolean {
+  if (!i) return false;
+  if (i.type === "GST" || (typeof i.number === "string" && i.number.toUpperCase().startsWith("GST-"))) {
+    return true;
   }
-  return title;
+  if (i.type === "NON-GST" || i.type === "NON_GST" || (typeof i.number === "string" && (i.number.toUpperCase().startsWith("INV-") || i.number.toUpperCase().startsWith("MAN-")))) {
+    return false;
+  }
+  return (i.gstAmount || 0) > 0;
+}
+
+export function getCleanInvoiceTitle(title?: string, isGst?: boolean): string {
+  if (isGst || title === "GST" || title === "TAX INVOICE") {
+    return "TAX INVOICE";
+  }
+  return "ESTIMATE INVOICE";
 }
 
 export function getUpiQrCodeUrl(params: {

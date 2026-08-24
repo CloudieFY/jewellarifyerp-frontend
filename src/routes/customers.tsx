@@ -119,6 +119,7 @@ export default function CustomersPage() {
   const [crmNoteModalOpen, setCrmNoteModalOpen] = useState(false);
   const [newCrmNoteText, setNewCrmNoteText] = useState("");
   const [crmNotesList, setCrmNotesList] = useState<{ [key: string]: Array<{ date: string; note: string }> }>({});
+  const [showCustSuggestions, setShowCustSuggestions] = useState(false);
 
   // Payment Collection & History States
   const [payModalInvoice, setPayModalInvoice] = useState<Invoice | null>(null);
@@ -212,7 +213,7 @@ export default function CustomersPage() {
   const totalSales = useMemo(() => Math.max(0, rawTotalSales - custReturnsTotal), [rawTotalSales, custReturnsTotal]);
   const totalPaid = useMemo(() => Math.max(0, rawTotalPaid - custReturnsTotal), [rawTotalPaid, custReturnsTotal]);
 
-  const totalDue = useMemo(() => custInvoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0), [custInvoices]);
+  const totalDue = useMemo(() => Math.max(0, custInvoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0) - custReturnsTotal), [custInvoices, custReturnsTotal]);
   const activeLoans = useMemo(() => custGirvis.filter((g) => g.status === "Active" || (g.status as any) === "ACTIVE").length, [custGirvis]);
   const totalLoanAmount = useMemo(
     () => custGirvis.filter((g) => g.status === "Active" || (g.status as any) === "ACTIVE").reduce((sum, g) => sum + (g.loanAmount || 0), 0),
@@ -234,7 +235,7 @@ export default function CustomersPage() {
         .reduce((s: number, r: any) => s + (r.totalRefund || 0), 0);
 
       const ltv = Math.max(0, cInvoices.reduce((s, i) => s + (i.total || 0), 0) - cReturns);
-      const due = cInvoices.reduce((s, i) => s + (i.balanceDue || 0), 0);
+      const due = Math.max(0, cInvoices.reduce((s, i) => s + (i.balanceDue || 0), 0) - cReturns);
 
 
       totalLtv += ltv;
@@ -248,7 +249,7 @@ export default function CustomersPage() {
     });
 
     return { totalLtv, totalDues, vipCount, regularCount, totalCustomers: customers.length };
-  }, [customers, invoices]);
+  }, [customers, invoices, salesReturns]);
 
   // Filtering
   const filtered = useMemo(() => {
@@ -282,8 +283,14 @@ export default function CustomersPage() {
     return filtered.slice(start, start + pageSize);
   }, [filtered, currentPage]);
 
-  const startCreate = () => {
-    setDraft(empty);
+  const startCreate = (prefill?: string) => {
+    const term = (typeof prefill === "string" ? prefill : q || "").trim();
+    const isPhone = /^\+?\d[\d\s\-]{3,}$/.test(term);
+    setDraft({
+      ...empty,
+      phone: isPhone ? term : "",
+      name: !isPhone ? term : "",
+    });
     setEditingId(null);
     setOpen(true);
   };
@@ -324,12 +331,13 @@ export default function CustomersPage() {
   };
 
   const saveManualDue = async () => {
-    if (!manualDue.customerName || !manualDue.itemName || !manualDue.dueAmount || Number(manualDue.dueAmount) <= 0) {
-      toast.error("Please enter Customer Name, Item Name, and a valid Due Amount.");
+    if (!manualDue.customerName?.trim() || !manualDue.dueAmount || Number(manualDue.dueAmount) <= 0) {
+      toast.error("Please enter Customer Name and a valid Due Amount.");
       return;
     }
     try {
       const amount = Number(manualDue.dueAmount);
+      const finalItemName = manualDue.itemName?.trim() || "Old Pending Balance";
       const initialPayment: InvoicePayment = {
         date: manualDue.date || new Date().toISOString().slice(0, 10),
         amount: 0,
@@ -341,8 +349,8 @@ export default function CustomersPage() {
         number: `MAN-${Date.now().toString().slice(-6)}`,
         createdAt: manualDue.date || new Date().toISOString().slice(0, 10),
         customerId: manualDue.customerId !== "NEW" ? manualDue.customerId : undefined,
-        customerName: manualDue.customerName,
-        customerMobile: manualDue.phone,
+        customerName: manualDue.customerName.trim(),
+        customerMobile: manualDue.phone?.trim() || "",
         type: "NON-GST",
         subtotal: amount,
         discount: 0,
@@ -355,17 +363,18 @@ export default function CustomersPage() {
         payments: [initialPayment],
         items: [
           {
-            productId: "manual-due",
-            name: manualDue.itemName,
+            productId: "MANUAL_DUE_ENTRY",
+            name: finalItemName,
             purity: "22K",
             netWeight: 0,
             grossWeight: 0,
+            stoneWeight: 0,
             ratePerGram: 0,
-            totalPrice: amount,
             makingCharge: 0,
             stoneCharge: 0,
             gstPct: 0,
             qty: 1,
+            totalPrice: amount,
           },
         ],
       };
@@ -671,7 +680,7 @@ export default function CustomersPage() {
               >
                 <FileSpreadsheet className="w-4 h-4 mr-2" /> Export Excel
               </Button>
-              <Button onClick={startCreate} className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs h-10 shadow-md">
+              <Button data-new-button="true" onClick={() => startCreate()} className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs h-10 shadow-md">
                 <Plus className="w-4 h-4 mr-2" /> New Customer
               </Button>
             </div>
@@ -754,9 +763,20 @@ export default function CustomersPage() {
             ) : error ? (
               <p className="text-sm text-red-500 py-12 text-center">Failed to load customer data</p>
             ) : filtered.length === 0 ? (
-              <div className="py-16 text-center text-muted-foreground space-y-2">
+              <div className="py-14 text-center text-muted-foreground space-y-3">
                 <UserCheck className="w-10 h-10 mx-auto opacity-40 text-amber-600" />
-                <p className="text-base font-semibold">No customers match your search.</p>
+                <p className="text-base font-semibold">
+                  {q ? `No customers match "${q}".` : "No customers found."}
+                </p>
+                {q && (
+                  <Button
+                    data-new-button="true"
+                    onClick={() => startCreate(q)}
+                    className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs h-9 shadow-md mt-1"
+                  >
+                    <Plus className="w-4 h-4 mr-1.5" /> Add Customer "{q}"
+                  </Button>
+                )}
               </div>
             ) : (
               <div>
@@ -783,7 +803,7 @@ export default function CustomersPage() {
                           .filter((r: any) => r.customerId === c._id || r.customerId === c.id || cInvIds.has(r.invoiceId))
                           .reduce((s: number, r: any) => s + (r.totalRefund || 0), 0);
                         const custLtv = Math.max(0, cInvoices.reduce((sum, i) => sum + (i.total || 0), 0) - cReturns);
-                        const custDue = cInvoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0);
+                        const custDue = Math.max(0, cInvoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0) - cReturns);
                         const isVip = custLtv >= 100000 || (c as any).tier === "VIP";
 
 
@@ -859,7 +879,7 @@ export default function CustomersPage() {
                       .filter((r: any) => r.customerId === c._id || r.customerId === c.id || cInvIds.has(r.invoiceId))
                       .reduce((s: number, r: any) => s + (r.totalRefund || 0), 0);
                     const custLtv = Math.max(0, cInvoices.reduce((sum, i) => sum + (i.total || 0), 0) - cReturns);
-                    const custDue = cInvoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0);
+                    const custDue = Math.max(0, cInvoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0) - cReturns);
 
 
                     return (
@@ -904,58 +924,57 @@ export default function CustomersPage() {
 
       {/* NEW / EDIT CUSTOMER DIALOG */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto p-4 sm:p-6" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleNewCustKeyNav}>
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl flex items-center gap-2">
-              <UserCheck className="w-6 h-6 text-amber-700" />
-              {editingId ? "Edit Customer CRM Details" : "Create New Customer Account"}
+        <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-neutral-50 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleNewCustKeyNav}>
+          <DialogHeader className="p-3.5 sm:p-4 bg-amber-500/10 dark:bg-amber-950/40 border-b border-amber-200 dark:border-slate-800 flex items-center justify-between">
+            <DialogTitle className="text-base sm:text-lg font-bold font-sans text-amber-950 dark:text-amber-100 uppercase tracking-wide flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+              <span>{editingId ? "Edit Customer CRM Details" : "Create New Customer Account"}</span>
             </DialogTitle>
           </DialogHeader>
-
-          <div className="space-y-4 py-2">
+          <div className="p-4 sm:p-6 space-y-4 bg-white dark:bg-slate-900">
             <div>
-              <Label className="text-xs font-semibold text-muted-foreground uppercase">Customer Full Name *</Label>
-              <Input value={draft.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Ramesh Chandra Sharma" className="mt-1" />
+              <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase">Customer Full Name *</Label>
+              <Input value={draft.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Ramesh Chandra Sharma" className="mt-1 border-slate-300 dark:border-slate-700 focus:ring-amber-500" />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs font-semibold text-muted-foreground uppercase">Primary Mobile No *</Label>
-                <Input value={draft.phone || ""} onChange={(e) => set("phone", e.target.value)} placeholder="9876543210" className="mt-1" />
+                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase">Primary Mobile No *</Label>
+                <Input value={draft.phone || ""} onChange={(e) => set("phone", e.target.value)} placeholder="9876543210" className="mt-1 border-slate-300 dark:border-slate-700 focus:ring-amber-500" />
               </div>
               <div>
-                <Label className="text-xs font-semibold text-muted-foreground uppercase">Secondary / WhatsApp No</Label>
-                <Input value={draft.phone2 || ""} onChange={(e) => set("phone2", e.target.value)} placeholder="Alternate number" className="mt-1" />
+                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase">Secondary / WhatsApp No</Label>
+                <Input value={draft.phone2 || ""} onChange={(e) => set("phone2", e.target.value)} placeholder="Alternate number" className="mt-1 border-slate-300 dark:border-slate-700 focus:ring-amber-500" />
               </div>
             </div>
 
             <div>
-              <Label className="text-xs font-semibold text-muted-foreground uppercase">Full Address &amp; City</Label>
-              <Input value={draft.address || ""} onChange={(e) => set("address", e.target.value)} placeholder="Shop / House No, Street, City, Pincode" className="mt-1" />
+              <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase">Full Address &amp; City</Label>
+              <Input value={draft.address || ""} onChange={(e) => set("address", e.target.value)} placeholder="Shop / House No, Street, City, Pincode" className="mt-1 border-slate-300 dark:border-slate-700 focus:ring-amber-500" />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs font-semibold text-muted-foreground uppercase">GSTIN (B2B)</Label>
-                <Input value={draft.gstNumber || ""} onChange={(e) => set("gstNumber", e.target.value.toUpperCase())} placeholder="22AAAAA0000A1Z5" className="mt-1 font-mono text-xs uppercase" />
+                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase">GSTIN (B2B)</Label>
+                <Input value={draft.gstNumber || ""} onChange={(e) => set("gstNumber", e.target.value.toUpperCase())} placeholder="22AAAAA0000A1Z5" className="mt-1 font-mono text-xs uppercase border-slate-300 dark:border-slate-700 focus:ring-amber-500" />
               </div>
               <div>
-                <Label className="text-xs font-semibold text-muted-foreground uppercase">PAN No (Bullion HUID)</Label>
-                <Input value={draft.pan || ""} onChange={(e) => set("pan", e.target.value.toUpperCase())} placeholder="ABCDE1234F" className="mt-1 font-mono text-xs uppercase" />
+                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase">PAN No (Bullion HUID)</Label>
+                <Input value={draft.pan || ""} onChange={(e) => set("pan", e.target.value.toUpperCase())} placeholder="ABCDE1234F" className="mt-1 font-mono text-xs uppercase border-slate-300 dark:border-slate-700 focus:ring-amber-500" />
               </div>
             </div>
 
             <div>
-              <Label className="text-xs font-semibold text-muted-foreground uppercase">Customer Preferences / Notes</Label>
-              <Input value={draft.notes || ""} onChange={(e) => set("notes", e.target.value)} placeholder="e.g. Prefers 22K Antique Bangle sets & Bridal Kundan" className="mt-1" />
+              <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase">Customer Preferences / Notes</Label>
+              <Input value={draft.notes || ""} onChange={(e) => set("notes", e.target.value)} placeholder="e.g. Prefers 22K Antique Bangle sets &amp; Bridal Kundan" className="mt-1 border-slate-300 dark:border-slate-700 focus:ring-amber-500" />
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading_UI}>
+          <DialogFooter className="p-3.5 bg-slate-100 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading_UI} className="bg-white border-slate-300">
               Cancel
             </Button>
-            <Button onClick={save} disabled={isLoading_UI || !draft.name} className="bg-amber-700 hover:bg-amber-800 text-white font-medium">
+            <Button onClick={save} disabled={isLoading_UI || !draft.name} className="bg-amber-600 hover:bg-amber-700 text-white font-bold uppercase shadow-sm">
               {isLoading_UI ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "Save Customer"}
             </Button>
           </DialogFooter>
@@ -2011,30 +2030,81 @@ export default function CustomersPage() {
 
       {/* MANUAL DUE ENTRY DIALOG */}
       <Dialog open={manualDueOpen} onOpenChange={setManualDueOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-md p-4 sm:p-6">
+        <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-neutral-50 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold font-display">Add Manual Due Record</DialogTitle>
+            <DialogTitle className="text-xl font-bold font-display flex items-center gap-2">
+              <NotebookPen className="w-5 h-5 text-amber-600" />
+              Add Manual Due Record
+            </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3 py-2 text-sm">
-            <div>
+          <form onSubmit={(e) => { e.preventDefault(); saveManualDue(); }} className="space-y-3 py-2 text-sm">
+            <div className="relative">
               <Label className="text-xs font-semibold text-muted-foreground uppercase">Customer Name *</Label>
               <Input
                 value={manualDue.customerName}
-                onChange={(e) => setManualDue({ ...manualDue, customerName: e.target.value })}
-                placeholder="Enter customer name"
-                className="mt-1"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setManualDue((prev: any) => ({ ...prev, customerName: val }));
+                  setShowCustSuggestions(true);
+                }}
+                onFocus={() => setShowCustSuggestions(true)}
+                placeholder="Search or enter customer name..."
+                className="mt-1 bg-background"
+                required
               />
+
+              {showCustSuggestions && manualDue.customerName.trim().length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-popover text-popover-foreground border border-border rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto divide-y divide-border">
+                  {customers
+                    .filter((c: any) =>
+                      (c.name || "").toLowerCase().includes(manualDue.customerName.toLowerCase()) ||
+                      (c.mobile || c.phone || "").includes(manualDue.customerName)
+                    )
+                    .slice(0, 8)
+                    .map((c: any) => (
+                      <button
+                        type="button"
+                        key={c._id || c.id}
+                        onClick={() => {
+                          setManualDue((prev: any) => ({
+                            ...prev,
+                            customerId: c._id || c.id,
+                            customerName: c.name,
+                            phone: c.mobile || c.phone || prev.phone,
+                          }));
+                          setShowCustSuggestions(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-muted/80 flex items-center justify-between transition-colors cursor-pointer"
+                      >
+                        <div>
+                          <div className="font-bold text-foreground">{c.name}</div>
+                          {c.city && <div className="text-[10px] text-muted-foreground">{c.city}</div>}
+                        </div>
+                        <span className="text-muted-foreground font-mono text-[11px] bg-muted/60 px-1.5 py-0.5 rounded border">
+                          {c.mobile || c.phone || "No Mobile"}
+                        </span>
+                      </button>
+                    ))}
+                  {customers.filter((c: any) => (c.name || "").toLowerCase().includes(manualDue.customerName.toLowerCase()) || (c.mobile || c.phone || "").includes(manualDue.customerName)).length === 0 && (
+                    <div className="px-3 py-2 text-xs text-muted-foreground italic">
+                      No matching customer found — will create new: <strong className="text-foreground font-semibold">"{manualDue.customerName}"</strong>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+
             <div>
-              <Label className="text-xs font-semibold text-muted-foreground uppercase">Item Name / Reason *</Label>
+              <Label className="text-xs font-semibold text-muted-foreground uppercase">Mobile Number</Label>
               <Input
-                value={manualDue.itemName}
-                onChange={(e) => setManualDue({ ...manualDue, itemName: e.target.value })}
-                placeholder="e.g. Old Bahi-Khata Pending Balance"
+                value={manualDue.phone}
+                onChange={(e) => setManualDue({ ...manualDue, phone: e.target.value })}
+                placeholder="Enter mobile number (optional)"
                 className="mt-1"
               />
             </div>
+
             <div>
               <Label className="text-xs font-semibold text-muted-foreground uppercase">Due Amount (₹) *</Label>
               <Input
@@ -2043,18 +2113,30 @@ export default function CustomersPage() {
                 onChange={(e) => setManualDue({ ...manualDue, dueAmount: e.target.value ? Number(e.target.value) : "" })}
                 placeholder="e.g. 15000"
                 className="mt-1 font-mono font-bold"
+                required
               />
             </div>
-          </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setManualDueOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={saveManualDue} className="bg-amber-700 text-white">
-              Save Manual Due
-            </Button>
-          </DialogFooter>
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground uppercase">Date (DD/MM/YYYY)</Label>
+              <Input
+                type="text"
+                value={manualDue.date}
+                onChange={(e) => setManualDue({ ...manualDue, date: e.target.value })}
+                placeholder="DD/MM/YYYY"
+                className="mt-1"
+              />
+            </div>
+
+            <DialogFooter className="mt-4 pt-2">
+              <Button type="button" variant="outline" onClick={() => setManualDueOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-amber-700 hover:bg-amber-800 text-white font-bold">
+                Save Manual Due
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </Layout>

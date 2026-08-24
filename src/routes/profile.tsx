@@ -25,12 +25,16 @@ import {
   ShieldCheck,
   Zap,
   ChevronRight,
+  Search,
+  RotateCcw,
+  Edit2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useTenantAPI } from "@/lib/api";
 import { useFormKeyboardNav } from "@/lib/useFormKeyboardNav";
-import { GLOBAL_SHORTCUTS } from "@/hooks/useGlobalKeyboard";
+import { useActiveShortcuts, resetCustomShortcuts } from "@/hooks/useGlobalKeyboard";
+import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 
 type ShopProfile = Omit<TenantShopInfo, "id" | "slug" | "plan" | "subscriptionEndDate"> & {
   numberOfShopOwner?: string;
@@ -85,6 +89,9 @@ export default function ProfilePage() {
   const api = useTenantAPI();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"shop" | "social" | "invoice" | "shortcuts">("shop");
+  const [showEditDialog, setShowEditDialog] = useState(false);
+
+  const activeShortcuts = useActiveShortcuts();
 
   const { data, isLoading, error } = useQuery<ProfileApiResponse>({
     queryKey: ["tenantProfile"],
@@ -176,6 +183,8 @@ export default function ProfilePage() {
 
   const initials = form.shopName.slice(0, 2).toUpperCase() || "SH";
 
+  const [shortcutSearch, setShortcutSearch] = useState("");
+
   const tabs = [
     { key: "shop",      label: "Shop Details",  icon: Building2 },
     { key: "social",    label: "Social & GST",  icon: Instagram },
@@ -183,8 +192,19 @@ export default function ProfilePage() {
     { key: "shortcuts", label: "Keyboard Shortcuts", icon: Keyboard },
   ] as const;
 
+  // Filter global shortcuts by search query
+  const filteredShortcuts = activeShortcuts.filter((s) => {
+    if (!shortcutSearch.trim()) return true;
+    const q = shortcutSearch.toLowerCase();
+    return (
+      s.description.toLowerCase().includes(q) ||
+      s.group.toLowerCase().includes(q) ||
+      s.key.toLowerCase().includes(q)
+    );
+  });
+
   // Group global shortcuts by group
-  const shortcutGroups = GLOBAL_SHORTCUTS.reduce<Record<string, typeof GLOBAL_SHORTCUTS>>((acc, s) => {
+  const shortcutGroups = filteredShortcuts.reduce<Record<string, typeof activeShortcuts>>((acc, s) => {
     if (!acc[s.group]) acc[s.group] = [];
     acc[s.group].push(s);
     return acc;
@@ -411,60 +431,106 @@ export default function ProfilePage() {
         <div className="space-y-6">
           {/* Hero card */}
           <Card className="shadow-sm border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
-            <CardContent className="flex items-center gap-4 pt-6">
-              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                <Keyboard className="w-6 h-6 text-primary" />
+            <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <Keyboard className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold">Work faster with single-key shortcuts</h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Press single keys like <Kbd>F2</Kbd> for Billing, <Kbd>F3</Kbd> for Ledger, <Kbd>F4</Kbd> for Purchases, or customize keys!
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-lg font-semibold">Work faster with keyboard shortcuts</h2>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Navigate the entire software without touching the mouse. Press <Kbd>?</Kbd> from any page to open this panel instantly.
-                </p>
+
+              {/* Actions & Search box */}
+              <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => setShowEditDialog(true)}
+                  className="gap-2 text-xs h-9 w-full sm:w-auto"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  Customize Keys
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    resetCustomShortcuts();
+                    toast.success("Shortcuts reset to defaults!");
+                  }}
+                  className="gap-1.5 text-xs h-9 w-full sm:w-auto"
+                  title="Reset to defaults"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Reset
+                </Button>
+                <div className="relative w-full sm:w-56">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Filter keys or pages..."
+                    value={shortcutSearch}
+                    onChange={(e) => setShortcutSearch(e.target.value)}
+                    className="pl-9 h-9 text-xs"
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {Object.entries(shortcutGroups).map(([group, shortcuts]) => {
-              const icons: Record<string, typeof Zap> = {
-                Navigation: ArrowRight,
-                "Page Actions": Zap,
-                Forms: Save,
-                Tables: ChevronRight,
-                Help: Keyboard,
-              };
-              const GroupIcon = icons[group] || Keyboard;
+          {Object.keys(shortcutGroups).length === 0 ? (
+            <Card className="shadow-sm p-8 text-center text-sm text-muted-foreground">
+              No keyboard shortcuts matching &quot;{shortcutSearch}&quot;.
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {Object.entries(shortcutGroups).map(([group, shortcuts]) => {
+                const icons: Record<string, typeof Zap> = {
+                  "Quick Actions": Zap,
+                  "Quick Launch": Zap,
+                  Navigation: ArrowRight,
+                  "Extended Navigation": ChevronRight,
+                  Ledgers: FileText,
+                  Forms: Save,
+                  "Form Navigation": Save,
+                  Help: Keyboard,
+                };
+                const GroupIcon = icons[group] || Keyboard;
 
-              return (
-                <Card key={group} className="shadow-sm">
-                  <CardHeader className="pb-3 pt-4">
-                    <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                      <GroupIcon className="w-4 h-4 text-primary" />
-                      {group}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-0 space-y-0.5">
-                    {shortcuts.map((s, i) => {
-                      const parts: string[] = [];
-                      if (s.ctrl) parts.push("Ctrl");
-                      if (s.alt) parts.push("Alt");
-                      if (s.shift) parts.push("Shift");
-                      parts.push(s.key);
-                      const isForm = s.ctrl && s.key === "Enter";
-                      return (
-                        <ShortcutRow
-                          key={i}
-                          keys={parts}
-                          label={s.description}
-                          highlight={isForm}
-                        />
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+                return (
+                  <Card key={group} className="shadow-sm">
+                    <CardHeader className="pb-3 pt-4">
+                      <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                        <GroupIcon className="w-4 h-4 text-primary" />
+                        {group}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0 space-y-0.5">
+                      {shortcuts.map((s, i) => {
+                        const parts: string[] = [];
+                        if (s.ctrl) parts.push("Ctrl");
+                        if (s.alt) parts.push("Alt");
+                        if (s.shift) parts.push("Shift");
+                        parts.push(s.key);
+                        const isQuick = s.group === "Quick Actions";
+                        return (
+                          <ShortcutRow
+                            key={i}
+                            keys={parts}
+                            label={s.description}
+                            highlight={isQuick}
+                          />
+                        );
+                      })}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
 
           {/* Quick tip banner */}
           <Card className="shadow-sm border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20">
@@ -472,7 +538,7 @@ export default function ProfilePage() {
               <Zap className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
               <div className="text-sm text-amber-800 dark:text-amber-200">
                 <span className="font-semibold">Pro tip — </span>
-                Use <Kbd>Alt+2</Kbd> to jump straight to Billing/POS, <Kbd>N</Kbd> to open the Add New dialog, and <Kbd>F</Kbd> to focus the search bar — all without touching the mouse.
+                Click single buttons on the top Quick Access Bar to open any form or page in 1-click, or press <Kbd>F2</Kbd> for New Bill, <Kbd>F3</Kbd> for Daily Ledger, and <Kbd>F4</Kbd> for Purchases!
               </div>
             </CardContent>
           </Card>
@@ -489,6 +555,9 @@ export default function ProfilePage() {
           {isSaving ? "Saving…" : "Save Changes"}
         </Button>
       </footer>
+
+      {/* Edit Shortcuts Modal */}
+      <KeyboardShortcutsDialog open={showEditDialog} onClose={() => setShowEditDialog(false)} />
     </Layout>
   );
 }

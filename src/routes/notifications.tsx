@@ -19,6 +19,8 @@ import {
   RefreshCcw,
   Calendar,
   PhoneCall,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -28,7 +30,7 @@ import { toast } from "sonner";
 import { useState, useMemo } from "react";
 import { useAuth } from "@/lib/auth";
 
-function paginateCombined<A, B>(arrA: A[], arrB: B[], page: number, pageSize = 10) {
+function paginateCombined<A, B>(arrA: A[], arrB: B[], page: number, pageSize = 8) {
   const combined: Array<{ isA: boolean; item: A | B }> = [
     ...arrA.map((item) => ({ isA: true as const, item })),
     ...arrB.map((item) => ({ isA: false as const, item })),
@@ -107,21 +109,23 @@ export default function NotificationsPage() {
     displayInvoices.length +
     displayLowStock.length;
 
+  const PAGE_SIZE = 8;
+
   const [readyPage, setReadyPage] = useState(1);
-  const readyPag = paginateCombined(displayReadyOrders, displayReadyRepairs, readyPage);
+  const readyPag = paginateCombined(displayReadyOrders, displayReadyRepairs, readyPage, PAGE_SIZE);
 
   const [duePage, setDuePage] = useState(1);
-  const duePag = paginateCombined(displayDueOrders, displayDueRepairs, duePage);
+  const duePag = paginateCombined(displayDueOrders, displayDueRepairs, duePage, PAGE_SIZE);
 
   const [invoicesPage, setInvoicesPage] = useState(1);
-  const invoicesTotalPages = Math.ceil(displayInvoices.length / 10) || 1;
+  const invoicesTotalPages = Math.ceil(displayInvoices.length / PAGE_SIZE) || 1;
   const invoicesCurrentPage = Math.min(invoicesPage, invoicesTotalPages);
-  const paginatedInvoices = displayInvoices.slice((invoicesCurrentPage - 1) * 10, invoicesCurrentPage * 10);
+  const paginatedInvoices = displayInvoices.slice((invoicesCurrentPage - 1) * PAGE_SIZE, invoicesCurrentPage * PAGE_SIZE);
 
   const [lowStockPage, setLowStockPage] = useState(1);
-  const lowStockTotalPages = Math.ceil(displayLowStock.length / 10) || 1;
+  const lowStockTotalPages = Math.ceil(displayLowStock.length / PAGE_SIZE) || 1;
   const lowStockCurrentPage = Math.min(lowStockPage, lowStockTotalPages);
-  const paginatedLowStock = displayLowStock.slice((lowStockCurrentPage - 1) * 10, lowStockCurrentPage * 10);
+  const paginatedLowStock = displayLowStock.slice((lowStockCurrentPage - 1) * PAGE_SIZE, lowStockCurrentPage * PAGE_SIZE);
 
   const shopIdentifier = useMemo(() => {
     return tenantSession?.shop?.slug || tenantSession?.shop?.shopName || "Your Shop";
@@ -280,7 +284,7 @@ export default function NotificationsPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+          <div className="space-y-6">
             {/* ========= READY FOR DELIVERY CARD ========= */}
             {(displayReadyOrders.length > 0 || displayReadyRepairs.length > 0) && (
               <Card className="border-border shadow-sm overflow-hidden rounded-xl">
@@ -299,112 +303,190 @@ export default function NotificationsPage() {
                   </Badge>
                 </div>
 
-                <div className="divide-y divide-border">
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-muted/50 text-muted-foreground uppercase text-[10px] tracking-wider border-b border-border font-semibold">
+                      <tr>
+                        <th className="px-4 py-3">Type &amp; Ref #</th>
+                        <th className="px-4 py-3">Customer Details</th>
+                        <th className="px-4 py-3">Item Description</th>
+                        <th className="px-4 py-3">Date / Due</th>
+                        <th className="px-4 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {readyPag.a.map((o) => (
+                        <tr key={o.id || (o as any)._id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border-blue-200 text-[10px] font-bold uppercase">
+                                Order
+                              </Badge>
+                              <span className="font-bold text-foreground text-xs font-mono">{o.orderNo}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <div className="font-semibold text-foreground">{o.customerName}</div>
+                            {o.customerMobile && (
+                              <div className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
+                                <PhoneCall className="w-3 h-3 text-muted-foreground" /> {o.customerMobile}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 text-foreground max-w-xs truncate">
+                            {o.itemDescription || "—"}
+                          </td>
+                          <td className="px-4 py-3.5 text-muted-foreground font-mono">
+                            {formatDate(o.date)}
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 shadow-sm"
+                                onClick={() =>
+                                  sendWhatsApp(
+                                    o.customerMobile,
+                                    `*${shopIdentifier}*\n\nनमस्ते ${o.customerName},\n\nआपका कस्टम ऑर्डर (${o.orderNo}) - ${o.itemDescription} अब डिलीवरी के लिए तैयार है। ऑर्डर ${formatDate(o.date)} को दिया गया था।\n\nकृपया इसे लेने के लिए दुकान पर आएं।\n\nधन्यवाद!`
+                                  )
+                                }
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> WhatsApp
+                              </Button>
+                              <Link to="/orders">
+                                <Button size="sm" variant="outline" className="h-8 text-xs">
+                                  View <ArrowUpRight className="w-3 h-3 ml-1" />
+                                </Button>
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {readyPag.b.map((r) => {
+                        const balanceDue = (r.estimate || 0) - (r.advance || 0);
+                        return (
+                          <tr key={r.id || (r as any)._id} className="hover:bg-muted/30 transition-colors">
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border-purple-200 text-[10px] font-bold uppercase">
+                                  Repair
+                                </Badge>
+                                <span className="font-bold text-foreground text-xs font-mono">{r.ticketNo}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <div className="font-semibold text-foreground">{r.customerName}</div>
+                              {r.customerMobile && (
+                                <div className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
+                                  <PhoneCall className="w-3 h-3 text-muted-foreground" /> {r.customerMobile}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3.5 text-foreground max-w-xs truncate">
+                              {r.itemDescription || "—"}
+                            </td>
+                            <td className="px-4 py-3.5 font-mono">
+                              <div className="text-muted-foreground">{formatDate(r.date)}</div>
+                              {balanceDue > 0 && (
+                                <div className="text-amber-700 dark:text-amber-400 font-semibold text-[11px]">
+                                  Due: {inr(balanceDue)}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3.5 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  size="sm"
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 shadow-sm"
+                                  onClick={() =>
+                                    sendWhatsApp(
+                                      r.customerMobile,
+                                      `*${shopIdentifier}*\n\nनमस्ते ${r.customerName},\n\nआपका रिपेयर आइटम (${r.ticketNo}) - ${r.itemDescription} अब डिलीवरी के लिए तैयार है। बकाया राशि ${inr(balanceDue)} है।\n\nकृपया इसे लेने के लिए दुकान पर आएं।\n\nधन्यवाद!`
+                                    )
+                                  }
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> WhatsApp
+                                </Button>
+                                <Link to="/repairs">
+                                  <Button size="sm" variant="outline" className="h-8 text-xs">
+                                    View <ArrowUpRight className="w-3 h-3 ml-1" />
+                                  </Button>
+                                </Link>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile Card List View */}
+                <div className="block md:hidden divide-y divide-border">
                   {readyPag.a.map((o) => (
-                    <div key={o.id || (o as any)._id} className="p-4 hover:bg-muted/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div key={o.id || (o as any)._id} className="p-4 hover:bg-muted/30 transition-colors flex flex-col gap-3">
                       <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border-blue-200 text-[10px] font-bold uppercase">
-                            Order
-                          </Badge>
-                          <span className="font-bold text-foreground text-sm font-mono">{o.orderNo}</span>
-                          <span className="text-xs text-muted-foreground">({formatDate(o.date)})</span>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border-blue-200 text-[10px] font-bold uppercase">Order</Badge>
+                            <span className="font-bold text-foreground text-xs font-mono">{o.orderNo}</span>
+                          </div>
+                          <span className="text-[11px] text-muted-foreground font-mono">{formatDate(o.date)}</span>
                         </div>
                         <div className="font-semibold text-foreground text-sm">{o.customerName}</div>
-                        {o.customerMobile && (
-                          <div className="text-xs text-muted-foreground flex items-center gap-1 font-mono">
-                            <PhoneCall className="w-3 h-3 text-muted-foreground" /> {o.customerMobile}
-                          </div>
-                        )}
-                        <div className="text-xs text-slate-600 dark:text-slate-300 line-clamp-1">
-                          Item: <strong className="text-foreground">{o.itemDescription}</strong>
-                        </div>
+                        {o.customerMobile && <div className="text-xs text-muted-foreground font-mono">{o.customerMobile}</div>}
+                        <div className="text-xs text-muted-foreground">{o.itemDescription}</div>
                       </div>
-
-                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                        <Button
-                          size="sm"
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 shadow-sm"
-                          onClick={() =>
-                            sendWhatsApp(
-                              o.customerMobile,
-                              `*${shopIdentifier}*\n\nनमस्ते ${o.customerName},\n\nआपका कस्टम ऑर्डर (${o.orderNo}) - ${o.itemDescription} अब डिलीवरी के लिए तैयार है। ऑर्डर ${formatDate(o.date)} को दिया गया था।\n\nकृपया इसे लेने के लिए दुकान पर आएं।\n\nधन्यवाद!`
-                            )
-                          }
-                        >
+                      <div className="flex items-center justify-end gap-2 pt-1 border-t border-border/50">
+                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8" onClick={() => sendWhatsApp(o.customerMobile, `*${shopIdentifier}*\n\nनमस्ते ${o.customerName},\n\nआपका कस्टम ऑर्डर (${o.orderNo}) डिलीवरी के लिए तैयार है।`)}>
                           <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> WhatsApp
                         </Button>
                         <Link to="/orders">
-                          <Button size="sm" variant="outline" className="h-8 text-xs">
-                            View <ArrowUpRight className="w-3 h-3 ml-1" />
-                          </Button>
+                          <Button size="sm" variant="outline" className="h-8 text-xs">View</Button>
                         </Link>
                       </div>
                     </div>
                   ))}
-
-                  {readyPag.b.map((r) => {
-                    const balanceDue = (r.estimate || 0) - (r.advance || 0);
-                    return (
-                      <div key={r.id || (r as any)._id} className="p-4 hover:bg-muted/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="space-y-1">
+                  {readyPag.b.map((r) => (
+                    <div key={r.id || (r as any)._id} className="p-4 hover:bg-muted/30 transition-colors flex flex-col gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border-purple-200 text-[10px] font-bold uppercase">
-                              Repair
-                            </Badge>
-                            <span className="font-bold text-foreground text-sm font-mono">{r.ticketNo}</span>
-                            <span className="text-xs text-muted-foreground">({formatDate(r.date)})</span>
+                            <Badge variant="outline" className="bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border-purple-200 text-[10px] font-bold uppercase">Repair</Badge>
+                            <span className="font-bold text-foreground text-xs font-mono">{r.ticketNo}</span>
                           </div>
-                          <div className="font-semibold text-foreground text-sm">{r.customerName}</div>
-                          {r.customerMobile && (
-                            <div className="text-xs text-muted-foreground flex items-center gap-1 font-mono">
-                              <PhoneCall className="w-3 h-3 text-muted-foreground" /> {r.customerMobile}
-                            </div>
-                          )}
-                          <div className="text-xs text-slate-600 dark:text-slate-300 line-clamp-1">
-                            Repair Item: <strong className="text-foreground">{r.itemDescription}</strong>
-                          </div>
-                          {balanceDue > 0 && (
-                            <div className="text-xs text-amber-700 font-semibold font-mono">
-                              Due: {inr(balanceDue)}
-                            </div>
-                          )}
+                          <span className="text-[11px] text-muted-foreground font-mono">{formatDate(r.date)}</span>
                         </div>
-
-                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                          <Button
-                            size="sm"
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 shadow-sm"
-                            onClick={() =>
-                              sendWhatsApp(
-                                r.customerMobile,
-                                `*${shopIdentifier}*\n\nनमस्ते ${r.customerName},\n\nआपका रिपेयर आइटम (${r.ticketNo}) - ${r.itemDescription} अब डिलीवरी के लिए तैयार है। आइटम ${formatDate(r.date)} को प्राप्त हुआ था। बकाया राशि ${inr(
-                                  balanceDue
-                                )} है।\n\nकृपया इसे लेने के लिए दुकान पर आएं।\n\nधन्यवाद!`
-                              )
-                            }
-                          >
-                            <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> WhatsApp
-                          </Button>
-                          <Link to="/repairs">
-                            <Button size="sm" variant="outline" className="h-8 text-xs">
-                              View <ArrowUpRight className="w-3 h-3 ml-1" />
-                            </Button>
-                          </Link>
-                        </div>
+                        <div className="font-semibold text-foreground text-sm">{r.customerName}</div>
+                        {r.customerMobile && <div className="text-xs text-muted-foreground font-mono">{r.customerMobile}</div>}
+                        <div className="text-xs text-muted-foreground">{r.itemDescription}</div>
                       </div>
-                    );
-                  })}
+                      <div className="flex items-center justify-end gap-2 pt-1 border-t border-border/50">
+                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8" onClick={() => sendWhatsApp(r.customerMobile, `*${shopIdentifier}*\n\nनमस्ते ${r.customerName},\n\nआपका रिपेयर (${r.ticketNo}) तैयार है।`)}>
+                          <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> WhatsApp
+                        </Button>
+                        <Link to="/repairs">
+                          <Button size="sm" variant="outline" className="h-8 text-xs">View</Button>
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
-                {readyPag.totalPages > 1 && (
+                {readyPag.total > 0 && (
                   <div className="flex items-center justify-between px-4 py-3 bg-muted/20 border-t border-border text-xs">
-                    <span className="text-muted-foreground">
-                      Page {readyPag.currentPage} of {readyPag.totalPages} ({readyPag.total} items)
+                    <span className="text-muted-foreground font-medium">
+                      Showing {Math.min((readyPag.currentPage - 1) * PAGE_SIZE + 1, readyPag.total)}–{Math.min(readyPag.currentPage * PAGE_SIZE, readyPag.total)} of {readyPag.total} items (Page {readyPag.currentPage} of {readyPag.totalPages})
                     </span>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setReadyPage((p) => Math.max(1, p - 1))} disabled={readyPag.currentPage === 1}>Prev</Button>
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setReadyPage((p) => Math.min(readyPag.totalPages, p + 1))} disabled={readyPag.currentPage === readyPag.totalPages}>Next</Button>
+                    <div className="flex gap-1.5">
+                      <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={() => setReadyPage((p) => Math.max(1, p - 1))} disabled={readyPag.currentPage === 1}>
+                        <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Previous
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={() => setReadyPage((p) => Math.min(readyPag.totalPages, p + 1))} disabled={readyPag.currentPage === readyPag.totalPages}>
+                        Next <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -429,96 +511,166 @@ export default function NotificationsPage() {
                   </Badge>
                 </div>
 
-                <div className="divide-y divide-border">
-                  {duePag.a.map((o) => (
-                    <div key={o.id || (o as any)._id} className="p-4 hover:bg-muted/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border-blue-200 text-[10px] font-bold uppercase">
-                            Order
-                          </Badge>
-                          <span className="font-bold text-foreground text-sm font-mono">{o.orderNo}</span>
-                        </div>
-                        <div className="font-semibold text-foreground text-sm">{o.customerName}</div>
-                        <div className="text-xs text-rose-600 font-bold flex items-center gap-1">
-                          <Calendar className="w-3 h-3" /> Due Date: {o.dueDate ? formatDate(o.dueDate) : "—"}
-                        </div>
-                        <div className="text-xs text-slate-600 dark:text-slate-300 line-clamp-1">
-                          Item: <strong className="text-foreground">{o.itemDescription}</strong>
-                        </div>
-                      </div>
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-muted/50 text-muted-foreground uppercase text-[10px] tracking-wider border-b border-border font-semibold">
+                      <tr>
+                        <th className="px-4 py-3">Type &amp; Ref #</th>
+                        <th className="px-4 py-3">Customer Details</th>
+                        <th className="px-4 py-3">Target Due Date</th>
+                        <th className="px-4 py-3">Item Description</th>
+                        <th className="px-4 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {duePag.a.map((o) => (
+                        <tr key={o.id || (o as any)._id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border-blue-200 text-[10px] font-bold uppercase">
+                                Order
+                              </Badge>
+                              <span className="font-bold text-foreground text-xs font-mono">{o.orderNo}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <div className="font-semibold text-foreground">{o.customerName}</div>
+                            {o.customerMobile && (
+                              <div className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
+                                <PhoneCall className="w-3 h-3 text-muted-foreground" /> {o.customerMobile}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-300 font-mono text-[11px] font-bold">
+                              <Calendar className="w-3 h-3 mr-1" /> {o.dueDate ? formatDate(o.dueDate) : "—"}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3.5 text-foreground max-w-xs truncate">
+                            {o.itemDescription || "—"}
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 shadow-sm"
+                                onClick={() =>
+                                  sendWhatsApp(
+                                    o.customerMobile,
+                                    `*${shopIdentifier}*\n\nनमस्ते ${o.customerName},\n\nयह आपके कस्टम ऑर्डर (${o.orderNo}) के संबंध में एक रिमाइंडर है। देय तिथि ${o.dueDate ? formatDate(o.dueDate) : "—"} थी।`
+                                  )
+                                }
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> WhatsApp
+                              </Button>
+                              <Link to="/orders">
+                                <Button size="sm" variant="outline" className="h-8 text-xs">
+                                  View <ArrowUpRight className="w-3 h-3 ml-1" />
+                                </Button>
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
 
-                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                        <Button
-                          size="sm"
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 shadow-sm"
-                          onClick={() =>
-                            sendWhatsApp(
-                              o.customerMobile,
-                              `*${shopIdentifier}*\n\nनमस्ते ${o.customerName},\n\nयह आपके कस्टम ऑर्डर (${o.orderNo}) के संबंध में एक रिमाइंडर है। अपेक्षित देय तिथि ${o.dueDate ? formatDate(o.dueDate) : "—"} थी।\n\nअपडेट के लिए कृपया हमसे संपर्क करें या दुकान पर आएं।\n\nधन्यवाद!`
-                            )
-                          }
-                        >
-                          <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> WhatsApp
-                        </Button>
-                        <Link to="/orders">
-                          <Button size="sm" variant="outline" className="h-8 text-xs">
-                            View <ArrowUpRight className="w-3 h-3 ml-1" />
-                          </Button>
-                        </Link>
+                      {duePag.b.map((r) => (
+                        <tr key={r.id || (r as any)._id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border-purple-200 text-[10px] font-bold uppercase">
+                                Repair
+                              </Badge>
+                              <span className="font-bold text-foreground text-xs font-mono">{r.ticketNo}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <div className="font-semibold text-foreground">{r.customerName}</div>
+                            {r.customerMobile && (
+                              <div className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
+                                <PhoneCall className="w-3 h-3 text-muted-foreground" /> {r.customerMobile}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-300 font-mono text-[11px] font-bold">
+                              <Calendar className="w-3 h-3 mr-1" /> {r.deliveryDate ? formatDate(r.deliveryDate) : "—"}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3.5 text-foreground max-w-xs truncate">
+                            {r.itemDescription || "—"}
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 shadow-sm"
+                                onClick={() =>
+                                  sendWhatsApp(
+                                    r.customerMobile,
+                                    `*${shopIdentifier}*\n\nनमस्ते ${r.customerName},\n\nयह आपके रिपेयर आइटम (${r.ticketNo}) के संबंध में एक रिमाइंडर है। अपेक्षित तिथि ${r.deliveryDate ? formatDate(r.deliveryDate) : "—"} थी।`
+                                  )
+                                }
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> WhatsApp
+                              </Button>
+                              <Link to="/repairs">
+                                <Button size="sm" variant="outline" className="h-8 text-xs">
+                                  View <ArrowUpRight className="w-3 h-3 ml-1" />
+                                </Button>
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile View */}
+                <div className="block md:hidden divide-y divide-border">
+                  {duePag.a.map((o) => (
+                    <div key={o.id || (o as any)._id} className="p-4 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <Badge variant="outline" className="bg-blue-50 text-blue-700">Order {o.orderNo}</Badge>
+                        <span className="text-xs text-rose-600 font-bold">{o.dueDate ? formatDate(o.dueDate) : "—"}</span>
+                      </div>
+                      <div className="font-semibold text-sm">{o.customerName}</div>
+                      <div className="text-xs text-muted-foreground">{o.itemDescription}</div>
+                      <div className="flex justify-end gap-2 pt-2">
+                        <Button size="sm" className="bg-emerald-600 text-white text-xs h-8" onClick={() => sendWhatsApp(o.customerMobile, `Reminder for Order ${o.orderNo}`)}>WhatsApp</Button>
+                        <Link to="/orders"><Button size="sm" variant="outline" className="h-8 text-xs">View</Button></Link>
                       </div>
                     </div>
                   ))}
-
                   {duePag.b.map((r) => (
-                    <div key={r.id || (r as any)._id} className="p-4 hover:bg-muted/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border-purple-200 text-[10px] font-bold uppercase">
-                            Repair
-                          </Badge>
-                          <span className="font-bold text-foreground text-sm font-mono">{r.ticketNo}</span>
-                        </div>
-                        <div className="font-semibold text-foreground text-sm">{r.customerName}</div>
-                        <div className="text-xs text-rose-600 font-bold flex items-center gap-1">
-                          <Calendar className="w-3 h-3" /> Target Date: {r.deliveryDate ? formatDate(r.deliveryDate) : "—"}
-                        </div>
-                        <div className="text-xs text-slate-600 dark:text-slate-300 line-clamp-1">
-                          Repair Item: <strong className="text-foreground">{r.itemDescription}</strong>
-                        </div>
+                    <div key={r.id || (r as any)._id} className="p-4 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <Badge variant="outline" className="bg-purple-50 text-purple-700">Repair {r.ticketNo}</Badge>
+                        <span className="text-xs text-rose-600 font-bold">{r.deliveryDate ? formatDate(r.deliveryDate) : "—"}</span>
                       </div>
-
-                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                        <Button
-                          size="sm"
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 shadow-sm"
-                          onClick={() =>
-                            sendWhatsApp(
-                              r.customerMobile,
-                              `*${shopIdentifier}*\n\nनमस्ते ${r.customerName},\n\nयह आपके रिपेयर आइटम (${r.ticketNo}) के संबंध में एक रिमाइंडर है। अपेक्षित डिलीवरी तिथि ${r.deliveryDate ? formatDate(r.deliveryDate) : "—"} थी।\n\nअपडेट के लिए कृपया हमसे संपर्क करें या दुकान पर आएं।\n\nधन्यवाद!`
-                            )
-                          }
-                        >
-                          <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> WhatsApp
-                        </Button>
-                        <Link to="/repairs">
-                          <Button size="sm" variant="outline" className="h-8 text-xs">
-                            View <ArrowUpRight className="w-3 h-3 ml-1" />
-                          </Button>
-                        </Link>
+                      <div className="font-semibold text-sm">{r.customerName}</div>
+                      <div className="text-xs text-muted-foreground">{r.itemDescription}</div>
+                      <div className="flex justify-end gap-2 pt-2">
+                        <Button size="sm" className="bg-emerald-600 text-white text-xs h-8" onClick={() => sendWhatsApp(r.customerMobile, `Reminder for Repair ${r.ticketNo}`)}>WhatsApp</Button>
+                        <Link to="/repairs"><Button size="sm" variant="outline" className="h-8 text-xs">View</Button></Link>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                {duePag.totalPages > 1 && (
+                {duePag.total > 0 && (
                   <div className="flex items-center justify-between px-4 py-3 bg-muted/20 border-t border-border text-xs">
-                    <span className="text-muted-foreground">
-                      Page {duePag.currentPage} of {duePag.totalPages} ({duePag.total} items)
+                    <span className="text-muted-foreground font-medium">
+                      Showing {Math.min((duePag.currentPage - 1) * PAGE_SIZE + 1, duePag.total)}–{Math.min(duePag.currentPage * PAGE_SIZE, duePag.total)} of {duePag.total} items (Page {duePag.currentPage} of {duePag.totalPages})
                     </span>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDuePage((p) => Math.max(1, p - 1))} disabled={duePag.currentPage === 1}>Prev</Button>
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDuePage((p) => Math.min(duePag.totalPages, p + 1))} disabled={duePag.currentPage === duePag.totalPages}>Next</Button>
+                    <div className="flex gap-1.5">
+                      <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={() => setDuePage((p) => Math.max(1, p - 1))} disabled={duePag.currentPage === 1}>
+                        <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Previous
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={() => setDuePage((p) => Math.min(duePag.totalPages, p + 1))} disabled={duePag.currentPage === duePag.totalPages}>
+                        Next <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -543,61 +695,102 @@ export default function NotificationsPage() {
                   </Badge>
                 </div>
 
-                <div className="divide-y divide-border">
-                  {paginatedInvoices.map((i) => (
-                    <div key={i.id || (i as any)._id} className="p-4 hover:bg-muted/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 text-[10px] font-bold uppercase">
-                            Invoice
-                          </Badge>
-                          <span className="font-bold text-foreground text-sm font-mono">{i.number}</span>
-                          <span className="text-xs text-muted-foreground">({formatDate(i.createdAt)})</span>
-                        </div>
-                        <div className="font-semibold text-foreground text-sm">{i.customerName}</div>
-                        {i.customerMobile && (
-                          <div className="text-xs text-muted-foreground flex items-center gap-1 font-mono">
-                            <PhoneCall className="w-3 h-3 text-muted-foreground" /> {i.customerMobile}
-                          </div>
-                        )}
-                        <div className="text-sm text-amber-700 font-bold font-mono">
-                          Balance Due: {inr(i.balanceDue || 0)}
-                        </div>
-                      </div>
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-muted/50 text-muted-foreground uppercase text-[10px] tracking-wider border-b border-border font-semibold">
+                      <tr>
+                        <th className="px-4 py-3">Invoice # &amp; Date</th>
+                        <th className="px-4 py-3">Customer Details</th>
+                        <th className="px-4 py-3">Total Amount</th>
+                        <th className="px-4 py-3">Balance Due</th>
+                        <th className="px-4 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {paginatedInvoices.map((i) => (
+                        <tr key={i.id || (i as any)._id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 text-[10px] font-bold uppercase">
+                                Invoice
+                              </Badge>
+                              <span className="font-bold text-foreground text-xs font-mono">{i.number}</span>
+                            </div>
+                            <div className="text-[11px] text-muted-foreground mt-0.5">{formatDate(i.createdAt)}</div>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <div className="font-semibold text-foreground">{i.customerName}</div>
+                            {i.customerMobile && (
+                              <div className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
+                                <PhoneCall className="w-3 h-3 text-muted-foreground" /> {i.customerMobile}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 font-mono text-foreground font-medium">
+                            {inr((i as any).grandTotal || (i as any).gTotal || i.total || 0)}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className="text-amber-700 dark:text-amber-400 font-bold font-mono text-xs">
+                              {inr(i.balanceDue || 0)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 shadow-sm"
+                                onClick={() =>
+                                  sendWhatsApp(
+                                    i.customerMobile,
+                                    `*${shopIdentifier}*\n\nनमस्ते ${i.customerName},\n\nयह आपके इनवॉइस नंबर: ${i.number} के लिए *${inr(i.balanceDue || 0)}* की बकाया राशि का रिमाइंडर है।`
+                                  )
+                                }
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> WhatsApp
+                              </Button>
+                              <Link to="/dues">
+                                <Button size="sm" variant="outline" className="h-8 text-xs border-amber-300 hover:bg-amber-50">
+                                  Collect <ExternalLink className="w-3 h-3 ml-1" />
+                                </Button>
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                        <Button
-                          size="sm"
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 shadow-sm"
-                          onClick={() =>
-                            sendWhatsApp(
-                              i.customerMobile,
-                              `*${shopIdentifier}*\n\nनमस्ते ${i.customerName},\n\nयह आपके इनवॉइस नंबर: ${i.number} (दिनांक ${formatDate(
-                                i.createdAt
-                              )}) के लिए *${inr(i.balanceDue || 0)}* की बकाया राशि के संबंध में एक रिमाइंडर है।\n\nकृपया जल्द से जल्द बकाया राशि का भुगतान करें।\n\nधन्यवाद!`
-                            )
-                          }
-                        >
-                          <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> WhatsApp
-                        </Button>
-                        <Link to="/dues">
-                          <Button size="sm" variant="outline" className="h-8 text-xs">
-                            Collect <ExternalLink className="w-3 h-3 ml-1" />
-                          </Button>
-                        </Link>
+                {/* Mobile View */}
+                <div className="block md:hidden divide-y divide-border">
+                  {paginatedInvoices.map((i) => (
+                    <div key={i.id || (i as any)._id} className="p-4 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs font-mono">{i.number}</span>
+                        <span className="text-xs text-amber-700 font-bold font-mono">Due: {inr(i.balanceDue || 0)}</span>
+                      </div>
+                      <div className="font-semibold text-sm">{i.customerName}</div>
+                      <div className="flex justify-end gap-2 pt-2">
+                        <Button size="sm" className="bg-emerald-600 text-white text-xs h-8" onClick={() => sendWhatsApp(i.customerMobile, `Payment reminder for Invoice ${i.number}`)}>WhatsApp</Button>
+                        <Link to="/dues"><Button size="sm" variant="outline" className="h-8 text-xs">Collect</Button></Link>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                {invoicesTotalPages > 1 && (
+                {displayInvoices.length > 0 && (
                   <div className="flex items-center justify-between px-4 py-3 bg-muted/20 border-t border-border text-xs">
-                    <span className="text-muted-foreground">
-                      Page {invoicesCurrentPage} of {invoicesTotalPages} ({displayInvoices.length} entries)
+                    <span className="text-muted-foreground font-medium">
+                      Showing {Math.min((invoicesCurrentPage - 1) * PAGE_SIZE + 1, displayInvoices.length)}–{Math.min(invoicesCurrentPage * PAGE_SIZE, displayInvoices.length)} of {displayInvoices.length} entries (Page {invoicesCurrentPage} of {invoicesTotalPages})
                     </span>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setInvoicesPage((p) => Math.max(1, p - 1))} disabled={invoicesCurrentPage === 1}>Prev</Button>
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setInvoicesPage((p) => Math.min(invoicesTotalPages, p + 1))} disabled={invoicesCurrentPage === invoicesTotalPages}>Next</Button>
+                    <div className="flex gap-1.5">
+                      <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={() => setInvoicesPage((p) => Math.max(1, p - 1))} disabled={invoicesCurrentPage === 1}>
+                        <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Previous
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={() => setInvoicesPage((p) => Math.min(invoicesTotalPages, p + 1))} disabled={invoicesCurrentPage === invoicesTotalPages}>
+                        Next <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -622,46 +815,78 @@ export default function NotificationsPage() {
                   </Badge>
                 </div>
 
-                <div className="divide-y divide-border">
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-muted/50 text-muted-foreground uppercase text-[10px] tracking-wider border-b border-border font-semibold">
+                      <tr>
+                        <th className="px-4 py-3">Item Name</th>
+                        <th className="px-4 py-3">Category / Subcategory</th>
+                        <th className="px-4 py-3">Purity &amp; Net Wt</th>
+                        <th className="px-4 py-3 text-center">Available Stock</th>
+                        <th className="px-4 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {paginatedLowStock.map((p) => (
+                        <tr key={p.id || (p as any)._id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-4 py-3.5 font-semibold text-foreground">
+                            {p.name}
+                          </td>
+                          <td className="px-4 py-3.5 text-muted-foreground">
+                            <span className="font-medium text-foreground">{p.category}</span>
+                            {p.subcategory ? ` • ${p.subcategory}` : ""}
+                          </td>
+                          <td className="px-4 py-3.5 text-muted-foreground">
+                            <span>Purity: {p.purity || "—"}</span>
+                            {p.netWeight > 0 && <span> • {p.netWeight}g</span>}
+                          </td>
+                          <td className="px-4 py-3.5 text-center">
+                            <Badge variant="outline" className="bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border-rose-300 font-mono font-bold">
+                              {p.stock} Pcs Left
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <Link to="/inventory">
+                              <Button size="sm" variant="outline" className="h-8 text-xs border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950">
+                                Restock <ArrowUpRight className="w-3 h-3 ml-1" />
+                              </Button>
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile View */}
+                <div className="block md:hidden divide-y divide-border">
                   {paginatedLowStock.map((p) => (
-                    <div key={p.id || (p as any)._id} className="p-4 hover:bg-muted/30 transition-colors flex items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="font-semibold text-foreground text-sm">{p.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          Category: <span className="font-medium text-foreground">{p.category}</span> {p.subcategory ? `• ${p.subcategory}` : ""}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground">Purity: {p.purity || "—"}</span>
-                          {p.netWeight > 0 && <span className="text-muted-foreground">• Net Wt: {p.netWeight}g</span>}
-                        </div>
+                    <div key={p.id || (p as any)._id} className="p-4 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-sm">{p.name}</div>
+                        <div className="text-xs text-muted-foreground">{p.category} {p.subcategory ? `• ${p.subcategory}` : ""}</div>
                       </div>
-
-                      <div className="flex items-center gap-3 shrink-0">
-                        <div className="text-right">
-                          <div className="text-xs text-muted-foreground">Available</div>
-                          <Badge variant="outline" className="bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border-rose-300 font-mono font-bold">
-                            {p.stock} Pcs Left
-                          </Badge>
-                        </div>
-
-                        <Link to="/inventory">
-                          <Button size="sm" variant="outline" className="h-8 text-xs border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950">
-                            Restock <ArrowUpRight className="w-3 h-3 ml-1" />
-                          </Button>
-                        </Link>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="bg-rose-50 text-rose-700 font-mono font-bold">{p.stock} Pcs</Badge>
+                        <Link to="/inventory"><Button size="sm" variant="outline" className="h-8 text-xs">Restock</Button></Link>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                {lowStockTotalPages > 1 && (
+                {displayLowStock.length > 0 && (
                   <div className="flex items-center justify-between px-4 py-3 bg-muted/20 border-t border-border text-xs">
-                    <span className="text-muted-foreground">
-                      Page {lowStockCurrentPage} of {lowStockTotalPages} ({displayLowStock.length} items)
+                    <span className="text-muted-foreground font-medium">
+                      Showing {Math.min((lowStockCurrentPage - 1) * PAGE_SIZE + 1, displayLowStock.length)}–{Math.min(lowStockCurrentPage * PAGE_SIZE, displayLowStock.length)} of {displayLowStock.length} items (Page {lowStockCurrentPage} of {lowStockTotalPages})
                     </span>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setLowStockPage((p) => Math.max(1, p - 1))} disabled={lowStockCurrentPage === 1}>Prev</Button>
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setLowStockPage((p) => Math.min(lowStockTotalPages, p + 1))} disabled={lowStockCurrentPage === lowStockTotalPages}>Next</Button>
+                    <div className="flex gap-1.5">
+                      <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={() => setLowStockPage((p) => Math.max(1, p - 1))} disabled={lowStockCurrentPage === 1}>
+                        <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Previous
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={() => setLowStockPage((p) => Math.min(lowStockTotalPages, p + 1))} disabled={lowStockCurrentPage === lowStockTotalPages}>
+                        Next <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                      </Button>
                     </div>
                   </div>
                 )}

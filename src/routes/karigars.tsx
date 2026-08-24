@@ -239,6 +239,7 @@ export default function KarigarsPage() {
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button
+                data-new-button="true"
                 size="lg"
                 className="bg-amber-800 hover:bg-amber-900 text-white font-medium shadow-sm w-full md:w-auto"
                 onClick={() => {
@@ -252,16 +253,17 @@ export default function KarigarsPage() {
             </DialogTrigger>
 
             <DialogContent
-              className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6"
+              className="w-[95vw] sm:max-w-2xl max-h-[92vh] overflow-y-auto p-0 border border-rose-300 dark:border-rose-950 bg-background shadow-2xl rounded-xl"
               onInteractOutside={(e) => e.preventDefault()}
               onKeyDown={handleKeyNav}
             >
-              <DialogHeader>
-                <DialogTitle className="font-display text-2xl">
-                  {editingId ? "Edit" : "New"} Karigar
+              <DialogHeader className="p-3.5 sm:p-4 bg-rose-100/80 dark:bg-slate-900 border-b border-rose-300 dark:border-rose-950 flex items-center justify-between">
+                <DialogTitle className="text-base sm:text-lg font-bold font-sans text-rose-950 dark:text-rose-100 uppercase tracking-wide flex items-center gap-2">
+                  <Hammer className="w-5 h-5 text-rose-700 dark:text-rose-400" />
+                  <span>{editingId ? "Edit Karigar Master" : "New Karigar Master"}</span>
                 </DialogTitle>
-                <DialogDescription>Add or update karigar details and portal credentials.</DialogDescription>
               </DialogHeader>
+              <div className="p-4 sm:p-6">
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field
@@ -455,7 +457,8 @@ export default function KarigarsPage() {
                   )}
                 </Button>
               </DialogFooter>
-            </DialogContent>
+            </div>
+          </DialogContent>
           </Dialog>
         </header>
 
@@ -814,7 +817,7 @@ export default function KarigarsPage() {
 
       {/* Karigar Full Details & Workload Modal */}
       <Dialog open={!!viewingKarigar} onOpenChange={(v) => !v && setViewingKarigar(null)}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-neutral-50 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none" onInteractOutside={(e) => e.preventDefault()}>
           {viewingKarigar && (() => {
             const kId = viewingKarigar._id || viewingKarigar.id;
             const kName = viewingKarigar.name || "";

@@ -13,7 +13,7 @@ import { useLocalState, inr, type Purchase, type Supplier, type SupplierTransact
 import { useDebounce } from "@/lib/utils";
 import { useApiMutation } from "@/hooks/useApi";
 import { useTenantAPI } from "@/lib/api";
-import { Plus, Trash2, Pencil, Search, Loader2, BookOpen, Eye, Wallet, ShoppingBag, ClipboardList, AlertCircle, BarChart3, Truck, Building2, Coins, Sparkles } from "lucide-react";
+import { Plus, Trash2, Pencil, Search, Loader2, BookOpen, Eye, Wallet, ShoppingBag, ClipboardList, AlertCircle, BarChart3, Truck, Building2, Coins, Sparkles, Printer, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
@@ -58,29 +58,94 @@ export default function SuppliersPage() {
   /* Supplier Master                                                        */
   /* ---------------------------------------------------------------------- */
   const [open, setOpen] = useState(false);
-  const empty: Supplier = { id: "", name: "", mobile: "", companyNo: "", email: "", category: "", gstNumber: "", address: "", note: "", balanceGold: 0, balanceSilver: 0, outstanding: 0, transactions: [] } as any;
+  const empty: Supplier = {
+    id: "",
+    name: "",
+    acNo: "1001",
+    group: "SUPPLIER",
+    mobile: "",
+    phone: "",
+    email: "",
+    category: "Wholesale",
+    gstNumber: "",
+    pan: "",
+    address: "",
+    location: "",
+    city: "",
+    state: "",
+    pin: "",
+    country: "India",
+    occupation: "",
+    refBy: "",
+    website: "",
+    dob: "",
+    anniversary: "",
+    companyNo: "",
+    taxNo: "",
+    tcs: 0,
+    tds: 0,
+    uidNo: "",
+    cstNo: "",
+    note: "",
+    openingBalanceGold: 0,
+    openingBalanceGoldType: "Dr",
+    openingBalanceSilver: 0,
+    openingBalanceSilverType: "Dr",
+    openingBalanceAmount: 0,
+    openingBalanceAmountType: "Dr",
+    openingBalanceDate: new Date().toISOString().slice(0, 10),
+    outstanding: 0,
+    balanceGold: 0,
+    balanceSilver: 0,
+    transactions: [],
+  } as any;
+
   const [form, setForm] = useState<Supplier>(empty);
+  const [formTab, setFormTab] = useState("acDetail");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const debouncedQ = useDebounce(q, 300);
   const [page, setPage] = useState(1);
 
-  const [categories, setCategories] = useLocalState<string[]>("ajms.supplierCategories", ["Wholesale", "Manufacturer", "Distributor"]);
+  const [categories, setCategories] = useLocalState<string[]>("ajms.supplierCategories", ["Wholesale", "Manufacturer", "Distributor", "Bullion Dealer"]);
   const [addCatOpen, setAddCatOpen] = useState(false);
   const [newCat, setNewCat] = useState("");
 
   const save = async () => {
-    if (!form.name || !form.mobile || !(form as any).companyNo || !form.category || !(form as any).address || !form.note) {
-      toast.error("Name, mobile, company no, category, address, and note are required");
+    if (!form.name?.trim()) {
+      toast.error("Account / Supplier Name is required");
       return;
     }
+    if (!form.mobile?.trim() && !(form as any).phone?.trim()) {
+      toast.error("Mobile or Phone number is required");
+      return;
+    }
+
+    // Compute net balances based on Opening Balances & Dr/Cr
+    const goldMultiplier = form.openingBalanceGoldType === "Cr" ? -1 : 1;
+    const silverMultiplier = form.openingBalanceSilverType === "Cr" ? -1 : 1;
+    const amountMultiplier = form.openingBalanceAmountType === "Cr" ? -1 : 1;
+
+    const goldBal = (Number(form.openingBalanceGold) || 0) * goldMultiplier;
+    const silverBal = (Number(form.openingBalanceSilver) || 0) * silverMultiplier;
+    const amountBal = (Number(form.openingBalanceAmount) || 0) * amountMultiplier;
+
+    const payload: Supplier = {
+      ...form,
+      group: form.group || "SUPPLIER",
+      category: form.category || "Wholesale",
+      balanceGold: editingId ? form.balanceGold : goldBal,
+      balanceSilver: editingId ? form.balanceSilver : silverBal,
+      outstanding: editingId ? form.outstanding : amountBal,
+    };
+
     try {
       if (editingId) {
-        await updateMutation.mutateAsync({ id: editingId, body: form });
-        toast.success("Supplier updated successfully");
+        await updateMutation.mutateAsync({ id: editingId, body: payload });
+        toast.success("Supplier account updated successfully");
       } else {
-        await createMutation.mutateAsync(form);
-        toast.success("Supplier created successfully");
+        await createMutation.mutateAsync(payload);
+        toast.success("Supplier account created successfully");
       }
       setForm(empty);
       setEditingId(null);
@@ -91,6 +156,7 @@ export default function SuppliersPage() {
   };
 
   const remove = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this supplier account?")) return;
     try {
       await deleteMutation.mutateAsync(id);
       toast.success("Supplier deleted successfully");
@@ -111,9 +177,10 @@ export default function SuppliersPage() {
   };
 
   const filtered = list.filter(s =>
-    s.name.toLowerCase().includes(debouncedQ.toLowerCase()) ||
-    s.mobile.includes(debouncedQ) ||
-    (s as any).companyNo?.toLowerCase().includes(debouncedQ.toLowerCase())
+    (s.name || "").toLowerCase().includes(debouncedQ.toLowerCase()) ||
+    (s.mobile || "").includes(debouncedQ) ||
+    (s.companyNo || "").toLowerCase().includes(debouncedQ.toLowerCase()) ||
+    (s.acNo || "").toLowerCase().includes(debouncedQ.toLowerCase())
   ).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
   const isLoading_UI = isLoading || createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
@@ -123,20 +190,32 @@ export default function SuppliersPage() {
   const paginated = filtered.slice((currentPage - 1) * 10, currentPage * 10);
 
   /* ---------------------------------------------------------------------- */
-  /* Supplier Detail dialog (Ledger / Payments / Purchase History / Orders) */
+  /* Supplier Detail dialog (Dual Flow Ledger / Payments / Purchase History) */
   /* ---------------------------------------------------------------------- */
   const [detailSupplier, setDetailSupplier] = useState<Supplier | null>(null);
-  const [detailTab, setDetailTab] = useState("ledger");
+  const [detailTab, setDetailTab] = useState("unified");
   const [goldPage, setGoldPage] = useState(1);
   const [silverPage, setSilverPage] = useState(1);
   const [paymentPage, setPaymentPage] = useState(1);
+  const [unifiedPage, setUnifiedPage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
   const [ordersPage, setOrdersPage] = useState(1);
+
   const [txSearchQuery, setTxSearchQuery] = useState("");
   const debouncedTxSearchQuery = useDebounce(txSearchQuery, 300);
   const [txSearchDate, setTxSearchDate] = useState<string>("");
-  const [txDateFocused, setTxDateFocused] = useState(false);
-  const [txSearchDateFocused, setTxSearchDateFocused] = useState(false);
+
+  // Combined Dual Flow Form (Metal & Cash)
+  const [dualForm, setDualForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    refNo: "",
+    type: "Credit" as "Credit" | "Debit",
+    goldWeight: 0,
+    silverWeight: 0,
+    amount: 0,
+    note: ""
+  });
+
   const [txForm, setTxForm] = useState({
     date: new Date().toISOString().slice(0, 10),
     type: "Credit" as "Credit" | "Debit",
@@ -145,6 +224,7 @@ export default function SuppliersPage() {
     weight: 0,
     note: ""
   });
+
   const [paymentForm, setPaymentForm] = useState({
     date: new Date().toISOString().slice(0, 10),
     type: "Debit" as "Credit" | "Debit",
@@ -153,11 +233,56 @@ export default function SuppliersPage() {
     note: ""
   });
 
-  const openDetail = (s: Supplier, tab: string = "ledger") => {
+  const openDetail = (s: Supplier, tab: string = "unified") => {
     setDetailSupplier(s);
     setDetailTab(tab);
-    setGoldPage(1); setSilverPage(1); setPaymentPage(1); setHistoryPage(1); setOrdersPage(1);
+    setGoldPage(1); setSilverPage(1); setPaymentPage(1); setUnifiedPage(1); setHistoryPage(1); setOrdersPage(1);
     setTxSearchQuery(""); setTxSearchDate("");
+  };
+
+  // Add Unified Flow Transaction (Metal + Amount)
+  const addDualTransaction = async () => {
+    if (!detailSupplier) return;
+    if (!dualForm.goldWeight && !dualForm.silverWeight && !dualForm.amount) {
+      toast.error("Please enter Gold Weight, Silver Weight, or Cash Amount.");
+      return;
+    }
+
+    const multiplier = dualForm.type === "Credit" ? 1 : -1;
+
+    const newTx: SupplierTransaction = {
+      id: Date.now().toString(),
+      date: dualForm.date,
+      refNo: dualForm.refNo,
+      type: dualForm.type,
+      kind: "Dual",
+      weight: Number(dualForm.goldWeight || dualForm.silverWeight) || 0,
+      goldWeight: Number(dualForm.goldWeight) || 0,
+      silverWeight: Number(dualForm.silverWeight) || 0,
+      amount: Number(dualForm.amount) || 0,
+      note: dualForm.note
+    };
+
+    const newBalanceGold = (detailSupplier.balanceGold || 0) + (newTx.goldWeight || 0) * multiplier;
+    const newBalanceSilver = (detailSupplier.balanceSilver || 0) + (newTx.silverWeight || 0) * multiplier;
+    const newOutstanding = (detailSupplier.outstanding || 0) + (newTx.amount || 0) * multiplier;
+
+    const updatedSupplier = {
+      ...detailSupplier,
+      balanceGold: newBalanceGold,
+      balanceSilver: newBalanceSilver,
+      outstanding: newOutstanding,
+      transactions: [...(detailSupplier.transactions || []), newTx]
+    };
+
+    try {
+      const saved = await updateMutation.mutateAsync({ id: detailSupplier._id || detailSupplier.id || "", body: updatedSupplier });
+      setDetailSupplier(saved || updatedSupplier);
+      setDualForm({ date: new Date().toISOString().slice(0, 10), refNo: "", type: "Credit", goldWeight: 0, silverWeight: 0, amount: 0, note: "" });
+      toast.success("Dual flow transaction recorded!");
+    } catch (e) {
+      toast.error("Failed to record transaction");
+    }
   };
 
   const addTransaction = async () => {
@@ -207,14 +332,23 @@ export default function SuppliersPage() {
     const multiplier = txToDelete.type === "Credit" ? -1 : 1; // Reverse the effect
     let newBalanceGold = detailSupplier.balanceGold || 0;
     let newBalanceSilver = detailSupplier.balanceSilver || 0;
+    let newOutstanding = detailSupplier.outstanding || 0;
 
-    if (txToDelete.metal === "Gold") newBalanceGold += (txToDelete.weight || 0) * multiplier;
-    if (txToDelete.metal === "Silver") newBalanceSilver += (txToDelete.weight || 0) * multiplier;
+    if (txToDelete.kind === "Dual") {
+      newBalanceGold += (txToDelete.goldWeight || 0) * multiplier;
+      newBalanceSilver += (txToDelete.silverWeight || 0) * multiplier;
+      newOutstanding += (txToDelete.amount || 0) * multiplier;
+    } else {
+      if (txToDelete.metal === "Gold") newBalanceGold += (txToDelete.weight || 0) * multiplier;
+      if (txToDelete.metal === "Silver") newBalanceSilver += (txToDelete.weight || 0) * multiplier;
+      if (txToDelete.kind === "Payment") newOutstanding += (txToDelete.amount || 0) * multiplier;
+    }
 
     const updatedSupplier = {
       ...detailSupplier,
       balanceGold: newBalanceGold,
       balanceSilver: newBalanceSilver,
+      outstanding: newOutstanding,
       transactions: detailSupplier.transactions?.filter(t => (t._id || t.id) !== txId)
     };
 
@@ -227,8 +361,6 @@ export default function SuppliersPage() {
     }
   };
 
-  // Payments (₹) mini-ledger — same Credit/Debit sign convention as the weight ledger
-  // and as purchases.tsx's applySupplierLedgerTx, but drives `outstanding` instead of weight.
   const addPayment = async () => {
     if (!detailSupplier) return;
     if (!paymentForm.amount) { toast.error("Enter a payment amount."); return; }
@@ -254,23 +386,6 @@ export default function SuppliersPage() {
     }
   };
 
-  const deletePayment = async (txId: string) => {
-    if (!detailSupplier) return;
-    if (!window.confirm("Delete this payment record?")) return;
-    const txToDelete = detailSupplier.transactions?.find(t => (t._id || t.id) === txId);
-    if (!txToDelete) return;
-    const sign = txToDelete.type === "Credit" ? -1 : 1; // reverse
-    const newOutstanding = (detailSupplier.outstanding || 0) + sign * (txToDelete.amount || 0);
-    const updatedSupplier = { ...detailSupplier, outstanding: newOutstanding, transactions: detailSupplier.transactions?.filter(t => (t._id || t.id) !== txId) };
-    try {
-      const saved = await updateMutation.mutateAsync({ id: detailSupplier._id || detailSupplier.id || "", body: updatedSupplier });
-      setDetailSupplier(saved || updatedSupplier);
-      toast.success("Payment deleted");
-    } catch (e) {
-      toast.error("Failed to delete payment");
-    }
-  };
-
   const activeBillNumbers = useMemo(() => new Set(purchases.map((p: any) => p.billNo).filter(Boolean)), [purchases]);
 
   const isDocActive = (t: SupplierTransaction) => {
@@ -283,9 +398,26 @@ export default function SuppliersPage() {
     return true;
   };
 
+  // Unified Transactions List for Credit/Debit Flow
+  const unifiedTxList = useMemo(() => {
+    if (!detailSupplier?.transactions) return [];
+    let txs = detailSupplier.transactions.filter(isDocActive);
+    if (debouncedTxSearchQuery) {
+      const sq = debouncedTxSearchQuery.toLowerCase();
+      txs = txs.filter(t =>
+        t.type.toLowerCase().includes(sq) ||
+        (t.note || "").toLowerCase().includes(sq) ||
+        (t.refNo || "").toLowerCase().includes(sq) ||
+        formatDate(t.date).toLowerCase().includes(sq)
+      );
+    }
+    if (txSearchDate) txs = txs.filter(t => t.date === txSearchDate);
+    return txs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [detailSupplier, debouncedTxSearchQuery, txSearchDate, activeBillNumbers]);
+
   const goldTx = useMemo(() => {
     if (!detailSupplier?.transactions) return [];
-    let txs = detailSupplier.transactions.filter(t => t.kind !== "Payment" && t.metal === "Gold" && isDocActive(t));
+    let txs = detailSupplier.transactions.filter(t => (t.kind !== "Payment" && t.metal === "Gold") || (t.kind === "Dual" && t.goldWeight));
     if (debouncedTxSearchQuery) {
       const sq = debouncedTxSearchQuery.toLowerCase();
       txs = txs.filter(t =>
@@ -297,11 +429,11 @@ export default function SuppliersPage() {
     }
     if (txSearchDate) txs = txs.filter(t => t.date === txSearchDate);
     return txs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [detailSupplier, debouncedTxSearchQuery, txSearchDate, activeBillNumbers]);
+  }, [detailSupplier, debouncedTxSearchQuery, txSearchDate]);
 
   const silverTx = useMemo(() => {
     if (!detailSupplier?.transactions) return [];
-    let txs = detailSupplier.transactions.filter(t => t.kind !== "Payment" && t.metal === "Silver" && isDocActive(t));
+    let txs = detailSupplier.transactions.filter(t => (t.kind !== "Payment" && t.metal === "Silver") || (t.kind === "Dual" && t.silverWeight));
     if (debouncedTxSearchQuery) {
       const sq = debouncedTxSearchQuery.toLowerCase();
       txs = txs.filter(t =>
@@ -313,12 +445,16 @@ export default function SuppliersPage() {
     }
     if (txSearchDate) txs = txs.filter(t => t.date === txSearchDate);
     return txs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [detailSupplier, debouncedTxSearchQuery, txSearchDate, activeBillNumbers]);
+  }, [detailSupplier, debouncedTxSearchQuery, txSearchDate]);
 
   const paymentTx = useMemo(() => {
     if (!detailSupplier?.transactions) return [];
-    return detailSupplier.transactions.filter(t => t.kind === "Payment" && isDocActive(t)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [detailSupplier, activeBillNumbers]);
+    return detailSupplier.transactions.filter(t => t.kind === "Payment" || (t.kind === "Dual" && t.amount)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [detailSupplier]);
+
+  const totalUnifiedPages = Math.ceil(unifiedTxList.length / 10) || 1;
+  const currentUnifiedPage = Math.min(unifiedPage, totalUnifiedPages);
+  const paginatedUnifiedTx = unifiedTxList.slice((currentUnifiedPage - 1) * 10, currentUnifiedPage * 10);
 
   const totalGoldPages = Math.ceil(goldTx.length / 10) || 1;
   const currentGoldPage = Math.min(goldPage, totalGoldPages);
@@ -332,37 +468,7 @@ export default function SuppliersPage() {
   const currentPaymentPage = Math.min(paymentPage, totalPaymentPages);
   const paginatedPaymentTx = paymentTx.slice((currentPaymentPage - 1) * 10, currentPaymentPage * 10);
 
-  const goldBreakdown = useMemo(() => {
-    if (!detailSupplier) return {};
-    const breakdown: Record<string, number> = {};
-    let txSum = 0;
-    (detailSupplier.transactions || []).filter(t => t.kind !== "Payment" && t.metal === "Gold").forEach(t => {
-      const p = t.purity || "22K";
-      const w = (t.weight || 0) * (t.type === "Credit" ? 1 : -1);
-      breakdown[p] = (breakdown[p] || 0) + w;
-      txSum += w;
-    });
-    const opening = (detailSupplier.balanceGold || 0) - txSum;
-    if (Math.abs(opening) > 0.001) breakdown["Opening/Other"] = (breakdown["Opening/Other"] || 0) + opening;
-    return breakdown;
-  }, [detailSupplier]);
-
-  const silverBreakdown = useMemo(() => {
-    if (!detailSupplier) return {};
-    const breakdown: Record<string, number> = {};
-    let txSum = 0;
-    (detailSupplier.transactions || []).filter(t => t.kind !== "Payment" && t.metal === "Silver").forEach(t => {
-      const p = t.purity || "Silver";
-      const w = (t.weight || 0) * (t.type === "Credit" ? 1 : -1);
-      breakdown[p] = (breakdown[p] || 0) + w;
-      txSum += w;
-    });
-    const opening = (detailSupplier.balanceSilver || 0) - txSum;
-    if (Math.abs(opening) > 0.001) breakdown["Opening/Other"] = (breakdown["Opening/Other"] || 0) + opening;
-    return breakdown;
-  }, [detailSupplier]);
-
-  // Purchase History & Orders — this supplier's docs from the shared Purchases collection
+  // Purchase History & Orders
   const supplierId = detailSupplier ? (detailSupplier._id || detailSupplier.id) : "";
   const supplierPurchases = useMemo(() => purchases.filter((p: any) => p.supplierId === supplierId), [purchases, supplierId]);
   const historyList = useMemo(() => supplierPurchases
@@ -412,7 +518,7 @@ export default function SuppliersPage() {
   return (
     <Layout>
       {/* Header Banner */}
-      <header className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 p-6 rounded-2xl text-white shadow-lg mb-6">
+      <header className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-slate-900 border-b border-amber-900/30 p-6 rounded-2xl text-white shadow-lg mb-6">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -422,7 +528,7 @@ export default function SuppliersPage() {
           </div>
           <h1 className="text-3xl font-display font-bold">Suppliers &amp; Bullion Ledgers</h1>
           <p className="text-xs text-slate-300 mt-1 max-w-xl">
-            Track bullion vendor accounts, gold &amp; silver metal weight balances, and cash payment history.
+            Track bullion vendor accounts, fine gold/silver metal weights, cash balances &amp; dual credit/debit flows.
           </p>
         </div>
       </header>
@@ -495,74 +601,268 @@ export default function SuppliersPage() {
           <div className="flex flex-col-reverse md:flex-row items-center justify-between gap-4">
             <div className="relative w-full md:max-w-md">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pl-9 bg-background focus:bg-background transition-colors shadow-2xs rounded-lg border-slate-300 dark:border-slate-700" placeholder="Search by name, mobile or company no..." value={q} onChange={(e) => setQ(e.target.value)} />
+              <Input className="pl-9 bg-background focus:bg-background transition-colors shadow-2xs rounded-lg border-slate-300 dark:border-slate-700" placeholder="Search by name, mobile, A/c No or company..." value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
             </div>
             <div className="flex justify-end w-full md:w-auto">
               <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
-                  <Button size="lg" className="bg-amber-800 hover:bg-amber-900 text-white font-medium shadow-sm" onClick={() => { setForm(empty); setEditingId(null); }} disabled={isLoading_UI}>
-                    <Plus className="w-4 h-4 mr-2" /> Add Supplier
+                  <Button data-new-button="true" size="lg" className="bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-sm" onClick={() => { setForm(empty); setEditingId(null); setFormTab("acDetail"); }} disabled={isLoading_UI}>
+                    <Plus className="w-4 h-4 mr-2" /> Add Supplier Account
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
-                  <DialogHeader>
-                    <DialogTitle className="font-display text-2xl">{editingId ? "Edit Supplier Account" : "New Supplier Account"}</DialogTitle>
-                    <DialogDescription>Add or update bullion supplier information and opening balances.</DialogDescription>
+
+                {/* DESKTOP ERP STYLE ACCOUNTS INFO DIALOG (FULL PAGE) */}
+                <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-neutral-50 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
+                  <DialogHeader className="p-3.5 sm:p-4 bg-amber-500/10 dark:bg-amber-950/40 border-b border-amber-200 dark:border-slate-800 flex items-center justify-between pr-8">
+                    <DialogTitle className="text-base sm:text-lg font-bold font-sans text-amber-950 dark:text-amber-100 uppercase tracking-wide flex items-center gap-2">
+                      <UserCheck className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                      <span>{editingId ? "Edit Accounts Info — Supplier Master" : "Accounts Info — New Supplier Master"}</span>
+                    </DialogTitle>
                   </DialogHeader>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="Supplier Name *" v={form.name} on={v => setForm({ ...form, name: v })} />
-                    <Field label="Mobile No *" v={form.mobile} on={v => setForm({ ...form, mobile: v })} />
-                    <Field label="Company No *" v={(form as any).companyNo} on={v => setForm({ ...form, companyNo: v } as any)} />
-                    <Field label="Email (optional)" v={form.email || ""} on={v => setForm({ ...form, email: v })} />
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-medium text-muted-foreground">Category *</Label>
-                      <div className="flex gap-2 items-center">
-                        <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                          <SelectTrigger className="flex-1"><SelectValue placeholder="Select category" /></SelectTrigger>
-                          <SelectContent>
-                            {categories.map((c) => (
-                              <SelectItem key={c} value={c}>{c}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Dialog open={addCatOpen} onOpenChange={setAddCatOpen}>
-                          <DialogTrigger asChild>
-                            <Button size="icon" variant="outline" className="shrink-0" title="Add Category">
-                              <Plus className="w-4 h-4" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-h-[60vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
-                            <DialogHeader>
-                              <DialogTitle>Add Category</DialogTitle>
-                              <DialogDescription>Add a new category label for your suppliers.</DialogDescription>
-                            </DialogHeader>
-                            <div className="py-4">
-                              <Input value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder="Category name" autoFocus />
-                            </div>
-                            <DialogFooter>
-                              <Button variant="outline" onClick={() => setAddCatOpen(false)}>Cancel</Button>
-                              <Button onClick={addCategory}>Add</Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
+
+                  <div className="p-4 sm:p-5 space-y-4">
+                    {/* Top Control Section: Account Name, Group & A/c No */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-300 dark:border-slate-800 shadow-2xs">
+                      <div className="sm:col-span-6">
+                        <Label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase">Account Name *</Label>
+                        <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. SANMATI JEWELLERS" className="mt-1 font-bold text-sm bg-white dark:bg-slate-950 border-slate-300 focus:ring-amber-500" />
+                      </div>
+                      <div className="sm:col-span-3">
+                        <Label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase">Group</Label>
+                        <Input value={form.group || "SUPPLIER"} onChange={(e) => setForm({ ...form, group: e.target.value })} className="mt-1 font-bold text-xs uppercase bg-white dark:bg-slate-950 border-slate-300 focus:ring-amber-500" />
+                      </div>
+                      <div className="sm:col-span-3">
+                        <Label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase">A/c No</Label>
+                        <Input value={form.acNo || "1001"} onChange={(e) => setForm({ ...form, acNo: e.target.value })} className="mt-1 font-mono font-bold text-xs bg-white dark:bg-slate-950 border-slate-300 focus:ring-amber-500" />
                       </div>
                     </div>
-                    <Field label="GST No (optional)" v={form.gstNumber || ""} on={v => setForm({ ...form, gstNumber: v })} />
-                    <div className="col-span-2 grid grid-cols-2 gap-4 mt-2 p-3 bg-muted/30 rounded-md border border-border">
-                      <div className="col-span-2 text-xs font-semibold text-primary uppercase tracking-wider -mb-1">Opening Balance (Weight)</div>
-                      <div className="space-y-1.5"><Label className="text-xs font-medium text-muted-foreground">Gold Due (g)</Label><Input type="number" value={form.balanceGold === 0 ? "" : form.balanceGold} onChange={e => setForm({ ...form, balanceGold: Number(e.target.value) })} placeholder="0" /></div>
-                      <div className="space-y-1.5"><Label className="text-xs font-medium text-muted-foreground">Silver Due (g)</Label><Input type="number" value={form.balanceSilver === 0 ? "" : form.balanceSilver} onChange={e => setForm({ ...form, balanceSilver: Number(e.target.value) })} placeholder="0" /></div>
-                    </div>
-                    <div className="col-span-2 space-y-3 mt-1">
-                      <Field label="Address *" v={(form as any).address} on={v => setForm({ ...form, address: v } as any)} />
-                      <Field label="Note *" v={form.note || ""} on={v => setForm({ ...form, note: v })} />
+
+                    {/* Main Body Grid: Left Tabbed Details & Right Opening Balance Card */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                      {/* Left Column: Tabs */}
+                      <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg p-3 shadow-2xs">
+                        <Tabs value={formTab} onValueChange={setFormTab}>
+                          <TabsList className="grid grid-cols-2 w-full mb-3 bg-slate-100 dark:bg-slate-800 p-1 rounded-md">
+                            <TabsTrigger value="acDetail" className="text-xs font-bold py-1.5">A/c &amp; Contact Details</TabsTrigger>
+                            <TabsTrigger value="taxDetail" className="text-xs font-bold py-1.5">Tax &amp; Compliance Details</TabsTrigger>
+                          </TabsList>
+
+                          <TabsContent value="acDetail" className="space-y-3">
+                            <div>
+                              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">Address *</Label>
+                              <textarea
+                                value={form.address || ""}
+                                onChange={(e) => setForm({ ...form, address: e.target.value })}
+                                placeholder="Shop / Building, Street Address, Landmark..."
+                                rows={2}
+                                className="w-full text-xs font-medium mt-1 p-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 focus:ring-2 focus:ring-amber-500 outline-none"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2.5">
+                              <div>
+                                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">Location / Area</Label>
+                                <Input value={form.location || ""} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Zaveri Bazar" className="h-8 text-xs mt-0.5" />
+                              </div>
+                              <div>
+                                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">City</Label>
+                                <Input value={form.city || ""} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Mumbai" className="h-8 text-xs mt-0.5" />
+                              </div>
+                              <div>
+                                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">State</Label>
+                                <Input value={form.state || ""} onChange={(e) => setForm({ ...form, state: e.target.value })} placeholder="Maharashtra" className="h-8 text-xs mt-0.5" />
+                              </div>
+                              <div>
+                                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">Pincode</Label>
+                                <Input value={form.pin || ""} onChange={(e) => setForm({ ...form, pin: e.target.value })} placeholder="400002" className="h-8 text-xs mt-0.5 font-mono" />
+                              </div>
+                              <div>
+                                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">Mobile No *</Label>
+                                <Input value={form.mobile || ""} onChange={(e) => setForm({ ...form, mobile: e.target.value })} placeholder="9876543210" className="h-8 text-xs mt-0.5 font-mono" />
+                              </div>
+                              <div>
+                                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">Landline Phone</Label>
+                                <Input value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="022-23456789" className="h-8 text-xs mt-0.5 font-mono" />
+                              </div>
+                              <div>
+                                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">Email ID</Label>
+                                <Input value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="supplier@bullion.com" className="h-8 text-xs mt-0.5" />
+                              </div>
+                              <div>
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">Category</Label>
+                                  <Dialog open={addCatOpen} onOpenChange={setAddCatOpen}>
+                                    <DialogTrigger asChild>
+                                      <button className="text-[10px] text-amber-700 hover:underline font-bold">+ Add</button>
+                                    </DialogTrigger>
+                                    <DialogContent className="max-w-xs" onInteractOutside={(e) => e.preventDefault()}>
+                                      <DialogHeader>
+                                        <DialogTitle className="text-sm font-bold">Add Category</DialogTitle>
+                                      </DialogHeader>
+                                      <div className="py-2">
+                                        <Input value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder="New category name" autoFocus className="h-8 text-xs" />
+                                      </div>
+                                      <DialogFooter>
+                                        <Button size="sm" variant="outline" onClick={() => setAddCatOpen(false)}>Cancel</Button>
+                                        <Button size="sm" onClick={addCategory} className="bg-amber-600 hover:bg-amber-700 text-white">Add</Button>
+                                      </DialogFooter>
+                                    </DialogContent>
+                                  </Dialog>
+                                </div>
+                                <Select value={form.category || "Wholesale"} onValueChange={(v) => setForm({ ...form, category: v })}>
+                                  <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {categories.map((c) => (
+                                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          </TabsContent>
+
+                          <TabsContent value="taxDetail" className="space-y-3">
+                            <div className="grid grid-cols-2 gap-2.5">
+                              <div>
+                                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">GSTIN (B2B)</Label>
+                                <Input value={form.gstNumber || ""} onChange={(e) => setForm({ ...form, gstNumber: e.target.value.toUpperCase() })} placeholder="27AAAAA0000A1Z5" className="h-8 text-xs font-mono uppercase mt-0.5" />
+                              </div>
+                              <div>
+                                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">PAN No (Bullion HUID)</Label>
+                                <Input value={form.pan || ""} onChange={(e) => setForm({ ...form, pan: e.target.value.toUpperCase() })} placeholder="ABCDE1234F" className="h-8 text-xs font-mono uppercase mt-0.5" />
+                              </div>
+                              <div>
+                                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">Tax No</Label>
+                                <Input value={form.taxNo || ""} onChange={(e) => setForm({ ...form, taxNo: e.target.value })} placeholder="Tax Reg No" className="h-8 text-xs mt-0.5" />
+                              </div>
+                              <div>
+                                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">UID / Aadhaar</Label>
+                                <Input value={form.uidNo || ""} onChange={(e) => setForm({ ...form, uidNo: e.target.value })} placeholder="12 Digit UID" className="h-8 text-xs font-mono mt-0.5" />
+                              </div>
+                              <div>
+                                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">TCS (%)</Label>
+                                <Input type="number" step="0.01" value={form.tcs || ""} onChange={(e) => setForm({ ...form, tcs: Number(e.target.value) })} placeholder="0.10" className="h-8 text-xs font-mono mt-0.5" />
+                              </div>
+                              <div>
+                                <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">TDS (%)</Label>
+                                <Input type="number" step="0.01" value={form.tds || ""} onChange={(e) => setForm({ ...form, tds: Number(e.target.value) })} placeholder="0.10" className="h-8 text-xs font-mono mt-0.5" />
+                              </div>
+                            </div>
+                          </TabsContent>
+                        </Tabs>
+                      </div>
+
+                      {/* Right Column: Opening Balance Box (Desktop ERP exact replica) */}
+                      <div className="lg:col-span-5 bg-amber-500/10 dark:bg-slate-900 border-2 border-amber-300 dark:border-amber-900/60 rounded-lg p-4 font-mono shadow-2xs flex flex-col justify-between">
+                        <div>
+                          <div className="text-xs font-black uppercase text-amber-950 dark:text-amber-200 border-b border-amber-300 pb-1.5 mb-3 flex items-center justify-between">
+                            <span>Opening Balance</span>
+                            <span className="text-[10px] text-amber-800 dark:text-amber-400 font-sans">Metal &amp; Cash</span>
+                          </div>
+
+                          <div className="space-y-3 text-xs">
+                            {/* Gold Fine */}
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-bold text-amber-900 dark:text-amber-300 w-24">Gold Fine (g):</span>
+                              <Input
+                                type="number"
+                                step="0.001"
+                                value={form.openingBalanceGold || ""}
+                                onChange={(e) => setForm({ ...form, openingBalanceGold: Number(e.target.value) })}
+                                placeholder="0.000"
+                                className="h-8 w-24 text-right font-mono font-bold bg-white dark:bg-slate-950 border-amber-300"
+                              />
+                              <div className="flex items-center gap-1 font-sans bg-white dark:bg-slate-950 border border-amber-300 p-0.5 rounded text-[11px]">
+                                <label className="flex items-center gap-0.5 px-1 cursor-pointer font-bold">
+                                  <input type="radio" name="goldDrCr" checked={form.openingBalanceGoldType !== "Cr"} onChange={() => setForm({ ...form, openingBalanceGoldType: "Dr" })} /> Dr
+                                </label>
+                                <label className="flex items-center gap-0.5 px-1 cursor-pointer font-bold text-rose-700">
+                                  <input type="radio" name="goldDrCr" checked={form.openingBalanceGoldType === "Cr"} onChange={() => setForm({ ...form, openingBalanceGoldType: "Cr" })} /> Cr
+                                </label>
+                              </div>
+                            </div>
+
+                            {/* Silver Fine */}
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-bold text-slate-800 dark:text-slate-300 w-24">Silver Fine (g):</span>
+                              <Input
+                                type="number"
+                                step="0.001"
+                                value={form.openingBalanceSilver || ""}
+                                onChange={(e) => setForm({ ...form, openingBalanceSilver: Number(e.target.value) })}
+                                placeholder="0.000"
+                                className="h-8 w-24 text-right font-mono font-bold bg-white dark:bg-slate-950 border-amber-300"
+                              />
+                              <div className="flex items-center gap-1 font-sans bg-white dark:bg-slate-950 border border-amber-300 p-0.5 rounded text-[11px]">
+                                <label className="flex items-center gap-0.5 px-1 cursor-pointer font-bold">
+                                  <input type="radio" name="silverDrCr" checked={form.openingBalanceSilverType !== "Cr"} onChange={() => setForm({ ...form, openingBalanceSilverType: "Dr" })} /> Dr
+                                </label>
+                                <label className="flex items-center gap-0.5 px-1 cursor-pointer font-bold text-rose-700">
+                                  <input type="radio" name="silverDrCr" checked={form.openingBalanceSilverType === "Cr"} onChange={() => setForm({ ...form, openingBalanceSilverType: "Cr" })} /> Cr
+                                </label>
+                              </div>
+                            </div>
+
+                            {/* Cash Amount */}
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-bold text-rose-900 dark:text-rose-300 w-24">Amount (₹):</span>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={form.openingBalanceAmount || ""}
+                                onChange={(e) => setForm({ ...form, openingBalanceAmount: Number(e.target.value) })}
+                                placeholder="0.00"
+                                className="h-8 w-24 text-right font-mono font-bold bg-white dark:bg-slate-950 border-amber-300"
+                              />
+                              <div className="flex items-center gap-1 font-sans bg-white dark:bg-slate-950 border border-amber-300 p-0.5 rounded text-[11px]">
+                                <label className="flex items-center gap-0.5 px-1 cursor-pointer font-bold">
+                                  <input type="radio" name="amountDrCr" checked={form.openingBalanceAmountType !== "Cr"} onChange={() => setForm({ ...form, openingBalanceAmountType: "Dr" })} /> Dr
+                                </label>
+                                <label className="flex items-center gap-0.5 px-1 cursor-pointer font-bold text-rose-700">
+                                  <input type="radio" name="amountDrCr" checked={form.openingBalanceAmountType === "Cr"} onChange={() => setForm({ ...form, openingBalanceAmountType: "Cr" })} /> Cr
+                                </label>
+                              </div>
+                            </div>
+
+                            {/* Bal Date */}
+                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-amber-300">
+                              <span className="font-bold text-slate-800 dark:text-slate-300 w-24">Bal Date:</span>
+                              <Input
+                                type="date"
+                                value={form.openingBalanceDate || ""}
+                                onChange={(e) => setForm({ ...form, openingBalanceDate: e.target.value })}
+                                className="h-8 w-44 font-mono font-bold text-xs bg-white dark:bg-slate-950 border-amber-300"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 pt-3 border-t border-amber-300 text-[11px] text-amber-900 dark:text-amber-200 font-sans">
+                          <strong>Note:</strong> Dr = Metal/Amount We Owe to Supplier. Cr = Metal/Amount Paid or Advance.
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading_UI}>Cancel</Button>
-                    <Button onClick={save} disabled={isLoading_UI || !form.name || !form.mobile || !(form as any).companyNo || !form.category || !(form as any).address || !form.note}>
-                      {isLoading_UI ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : "Save"}
-                    </Button>
+
+                  {/* ERP Footer Action Toolbar */}
+                  <DialogFooter className="p-3.5 bg-slate-100 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => window.print()} className="h-9 text-xs gap-1 bg-white border-slate-300">
+                        <Printer className="w-3.5 h-3.5" /> Print
+                      </Button>
+                      <Button variant="outline" onClick={() => { setForm(empty); setEditingId(null); }} className="h-9 text-xs bg-white border-slate-300">
+                        New
+                      </Button>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading_UI} className="h-9 text-xs bg-white border-slate-300">
+                        Cancel
+                      </Button>
+                      <Button onClick={save} disabled={isLoading_UI || !form.name} className="h-9 px-6 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase shadow-sm">
+                        {isLoading_UI ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : "Save Supplier"}
+                      </Button>
+                    </div>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -579,12 +879,11 @@ export default function SuppliersPage() {
                       <thead className="text-left text-xs font-bold uppercase tracking-wider sticky top-0 bg-slate-900 text-slate-200 z-10 shadow-sm">
                         <tr>
                           <th className="p-3.5 pl-5 whitespace-nowrap">Supplier Name</th>
-                          <th className="p-3.5 whitespace-nowrap">Mobile</th>
-                          <th className="p-3.5 whitespace-nowrap">Company No</th>
-                          <th className="p-3.5 whitespace-nowrap">Category</th>
-                          <th className="p-3.5 text-right whitespace-nowrap">Gold Due (g)</th>
-                          <th className="p-3.5 text-right whitespace-nowrap">Silver Due (g)</th>
-                          <th className="p-3.5 text-right whitespace-nowrap">Outstanding</th>
+                          <th className="p-3.5 whitespace-nowrap">A/c No / Mobile</th>
+                          <th className="p-3.5 whitespace-nowrap">Group / Category</th>
+                          <th className="p-3.5 text-right whitespace-nowrap">Gold Fine (g)</th>
+                          <th className="p-3.5 text-right whitespace-nowrap">Silver Fine (g)</th>
+                          <th className="p-3.5 text-right whitespace-nowrap">Outstanding (₹)</th>
                           <th className="p-3.5 text-right pr-5 whitespace-nowrap w-40">Actions</th>
                         </tr>
                       </thead>
@@ -603,18 +902,17 @@ export default function SuppliersPage() {
                                   </div>
                                   <div>
                                     <div className="font-bold text-foreground text-sm group-hover:text-amber-900 dark:group-hover:text-amber-300 transition-colors">{s.name}</div>
-                                    {(s as any).address && <div className="text-[11px] text-muted-foreground line-clamp-1 max-w-[180px]">{(s as any).address}</div>}
+                                    {(s as any).address && <div className="text-[11px] text-muted-foreground line-clamp-1 max-w-[200px]">{(s as any).address}</div>}
                                   </div>
                                 </div>
                               </td>
-                              <td className="p-3.5 font-mono text-xs font-medium text-slate-700 dark:text-slate-300">{s.mobile}</td>
-                              <td className="p-3.5">
-                                <div className="font-mono text-xs font-semibold text-foreground">{(s as any).companyNo || "—"}</div>
-                                {s.gstNumber && <div className="text-[10px] text-muted-foreground font-mono">GST: {s.gstNumber}</div>}
+                              <td className="p-3.5 font-mono text-xs font-medium text-slate-700 dark:text-slate-300">
+                                <div>A/c: <span className="font-bold">{s.acNo || "1001"}</span></div>
+                                <div>{s.mobile}</div>
                               </td>
                               <td className="p-3.5">
                                 <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300 dark:border-amber-800 text-xs font-semibold px-2.5 py-0.5 rounded-full shadow-2xs">
-                                  {s.category}
+                                  {s.category || "Wholesale"}
                                 </Badge>
                               </td>
                               <td className="p-3.5 text-right">
@@ -640,13 +938,13 @@ export default function SuppliersPage() {
                               </td>
                               <td className="p-3.5 text-right pr-5">
                                 <div className="flex gap-1.5 justify-end">
-                                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 border-amber-400 text-amber-900 bg-amber-50/50 hover:bg-amber-100 font-semibold shadow-2xs" onClick={() => openDetail(s)}>
+                                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 border-amber-400 text-amber-900 bg-amber-50/50 hover:bg-amber-100 font-semibold shadow-2xs" onClick={() => openDetail(s, "unified")}>
                                     <BookOpen className="w-3.5 h-3.5 text-amber-700" /> Ledger
                                   </Button>
-                                  <Button size="icon" variant="outline" className="h-8 w-8 text-slate-700 hover:bg-slate-100" onClick={() => { setForm(s); setEditingId(s._id || null); setOpen(true); }} disabled={isLoading_UI} title="Edit Supplier">
+                                  <Button size="icon" variant="outline" className="h-8 w-8 text-slate-700 hover:bg-slate-100" onClick={() => { setForm(s); setEditingId(s._id || null); setOpen(true); }} disabled={isLoading_UI} title="Edit Supplier Account">
                                     <Pencil className="w-3.5 h-3.5" />
                                   </Button>
-                                  <Button size="icon" variant="outline" className="h-8 w-8 border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => remove(s._id || "")} disabled={isLoading_UI} title="Delete Supplier">
+                                  <Button size="icon" variant="outline" className="h-8 w-8 border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => remove(s._id || "")} disabled={isLoading_UI} title="Delete Supplier Account">
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </Button>
                                 </div>
@@ -658,7 +956,6 @@ export default function SuppliersPage() {
                     </table>
                   </div>
 
-
                   {/* Mobile Cards View */}
                   <div className="md:hidden grid grid-cols-1 sm:grid-cols-2 gap-3 p-3">
                     {paginated.map(s => (
@@ -666,7 +963,7 @@ export default function SuppliersPage() {
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <div className="font-semibold text-base text-foreground">{s.name}</div>
-                            <div className="text-xs text-muted-foreground mt-0.5">{s.mobile} · {(s as any).companyNo}</div>
+                            <div className="text-xs text-muted-foreground mt-0.5">A/c: {s.acNo || "1001"} · {s.mobile}</div>
                           </div>
                           <span className="inline-flex items-center rounded-full border border-sidebar-border bg-muted/60 px-2.5 py-0.5 text-[10px] font-semibold">{s.category}</span>
                         </div>
@@ -687,8 +984,8 @@ export default function SuppliersPage() {
                         </div>
 
                         <div className="flex items-center justify-end gap-2 pt-1 border-t border-border/60">
-                          <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => openDetail(s)}>
-                            <Eye className="w-3.5 h-3.5 text-blue-600" /> Details
+                          <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => openDetail(s, "unified")}>
+                            <Eye className="w-3.5 h-3.5 text-amber-600" /> Ledger
                           </Button>
                           <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => { setForm(s); setEditingId(s._id || null); setOpen(true); }} disabled={isLoading_UI}>
                             <Pencil className="w-3.5 h-3.5 text-muted-foreground" /> Edit
@@ -700,15 +997,6 @@ export default function SuppliersPage() {
                       </div>
                     ))}
                   </div>
-                  {totalPages > 1 && (
-                    <div className="flex items-center justify-between px-4 py-3 border-t">
-                      <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filtered.length)} of {filtered.length} entries</div>
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
-                        <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </CardContent>
@@ -720,31 +1008,24 @@ export default function SuppliersPage() {
         {/* ==================================================================== */}
         <TabsContent value="outstanding" className="space-y-6">
           <Card className="border shadow-sm overflow-hidden bg-card">
-            <CardHeader className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white p-5">
-              <CardTitle className="font-display text-xl flex items-center gap-2">
-                <AlertCircle className="w-5 h-5 text-amber-400" /> Outstanding Balances &amp; Dues Ledger
+            <CardHeader className="bg-amber-500/10 dark:bg-amber-950/40 p-4 border-b border-amber-200">
+              <CardTitle className="text-base font-bold text-amber-950 dark:text-amber-100 flex items-center justify-between">
+                <span>Supplier Outstanding Summary</span>
+                <span className="text-xs font-mono font-normal">Active Dues: {suppliersWithDues.length} Suppliers</span>
               </CardTitle>
-              <p className="text-xs text-slate-300 mt-1">
-                Vendors with active gold metal, silver metal, or cash dues requiring settlement.
-              </p>
             </CardHeader>
             <CardContent className="p-0">
-              {suppliersWithDues.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="font-semibold text-foreground">No outstanding balances</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">All supplier accounts and bullion ledgers are fully cleared!</p>
-                </div>
-              ) : (
+              {suppliersWithDues.length === 0 ? <p className="text-center text-muted-foreground py-12">No outstanding supplier dues.</p> : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[850px] border-collapse">
-                    <thead className="text-left text-xs font-bold uppercase tracking-wider bg-slate-900 text-slate-200 z-10 border-b">
+                  <table className="w-full text-sm min-w-[800px] border-collapse">
+                    <thead className="bg-slate-900 text-slate-200 text-xs font-bold uppercase">
                       <tr>
-                        <th className="p-3.5 pl-5 whitespace-nowrap">Supplier</th>
-                        <th className="p-3.5 whitespace-nowrap">Category</th>
-                        <th className="p-3.5 text-right whitespace-nowrap">Gold Due (g)</th>
-                        <th className="p-3.5 text-right whitespace-nowrap">Silver Due (g)</th>
-                        <th className="p-3.5 text-right whitespace-nowrap">Cash Outstanding</th>
-                        <th className="p-3.5 text-right pr-5 whitespace-nowrap w-44">Action</th>
+                        <th className="p-3.5 pl-5">Supplier</th>
+                        <th className="p-3.5">Category</th>
+                        <th className="p-3.5 text-right">Gold Due (g)</th>
+                        <th className="p-3.5 text-right">Silver Due (g)</th>
+                        <th className="p-3.5 text-right">Cash Outstanding</th>
+                        <th className="p-3.5 text-right pr-5">Quick Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/60 bg-card">
@@ -761,13 +1042,13 @@ export default function SuppliersPage() {
                                   {initials}
                                 </div>
                                 <div>
-                                  <div className="font-bold text-foreground text-sm group-hover:text-amber-900 dark:group-hover:text-amber-300 transition-colors">{s.name}</div>
+                                  <div className="font-bold text-foreground text-sm">{s.name}</div>
                                   <div className="text-[11px] text-muted-foreground font-mono">{s.mobile}</div>
                                 </div>
                               </div>
                             </td>
                             <td className="p-3.5">
-                              <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300 dark:border-amber-800 text-xs font-semibold px-2.5 py-0.5 rounded-full shadow-2xs">
+                              <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300 text-xs font-semibold px-2.5 py-0.5 rounded-full shadow-2xs">
                                 {s.category || "—"}
                               </Badge>
                             </td>
@@ -793,8 +1074,8 @@ export default function SuppliersPage() {
                               </span>
                             </td>
                             <td className="p-3.5 text-right pr-5">
-                              <Button size="sm" className="h-8 text-xs gap-1.5 bg-amber-800 hover:bg-amber-900 text-white font-medium shadow-2xs" onClick={() => openDetail(s, "payments")}>
-                                <Wallet className="w-3.5 h-3.5" /> Record Payment
+                              <Button size="sm" className="h-8 text-xs gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-2xs" onClick={() => openDetail(s, "unified")}>
+                                <Wallet className="w-3.5 h-3.5" /> Ledger &amp; Pay
                               </Button>
                             </td>
                           </tr>
@@ -823,7 +1104,7 @@ export default function SuppliersPage() {
                       <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={50} />
                       <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
                       <RechartsTooltip formatter={(val: number) => [inr(val), "Purchase Value"]} />
-                      <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="value" fill="#d97706" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -850,206 +1131,160 @@ export default function SuppliersPage() {
       </Tabs>
 
       {/* ==================================================================== */}
-      {/* Supplier Detail dialog                                               */}
+      {/* Supplier Detail Dialog (Dual Metal & Cash Flow Master Ledger FULL PAGE) */}
       {/* ==================================================================== */}
       <Dialog open={!!detailSupplier} onOpenChange={(v) => { if (!v) setDetailSupplier(null); }}>
-        <DialogContent className="w-[95vw] sm:max-w-5xl max-h-[90vh] overflow-y-auto p-4 sm:p-6" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
+        <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-neutral-50 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
           {detailSupplier && (
             <>
-              <DialogHeader>
-                <DialogTitle className="text-2xl font-display flex items-center gap-2">
-                  <BookOpen className="w-6 h-6 text-primary" /> {detailSupplier.name}
+              <DialogHeader className="p-3.5 sm:p-4 bg-amber-500/10 dark:bg-amber-950/40 border-b border-amber-200 dark:border-slate-800 flex items-center justify-between pr-8">
+                <DialogTitle className="text-base sm:text-xl font-bold font-sans text-amber-950 dark:text-amber-100 flex items-center gap-2">
+                  <BookOpen className="w-6 h-6 text-amber-600" /> {detailSupplier.name}
+                  <span className="text-xs font-mono bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-amber-300">A/c: {detailSupplier.acNo || "1001"}</span>
                 </DialogTitle>
-                <DialogDescription>Ledger, payments, purchase history &amp; orders for this supplier.</DialogDescription>
+                <DialogDescription className="text-xs text-amber-900/80 dark:text-amber-300">
+                  Comprehensive Dual Metal &amp; Cash Flow Ledger, Purchase History &amp; Orders.
+                </DialogDescription>
               </DialogHeader>
 
-              <div className="grid grid-cols-3 gap-4 mb-4 mt-2">
-                <Card className="bg-amber-50 border-amber-100 shadow-none">
-                  <CardContent className="p-4">
-                    <div className="text-sm text-amber-800 font-medium">Gold Due (g)</div>
-                    <div className="text-2xl font-bold text-amber-600 mt-1">{(detailSupplier.balanceGold || 0).toFixed(3)} g</div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-slate-100 border-slate-200 shadow-none">
-                  <CardContent className="p-4">
-                    <div className="text-sm text-slate-800 font-medium">Silver Due (g)</div>
-                    <div className="text-2xl font-bold text-slate-600 mt-1">{(detailSupplier.balanceSilver || 0).toFixed(3)} g</div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-rose-50 border-rose-100 shadow-none">
-                  <CardContent className="p-4">
-                    <div className="text-sm text-rose-800 font-medium">Outstanding</div>
-                    <div className="text-2xl font-bold text-rose-600 mt-1">{inr(detailSupplier.outstanding || 0)}</div>
-                  </CardContent>
-                </Card>
-              </div>
+              <div className="p-4 sm:p-5 space-y-4">
+                {/* 3 Live Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <Card className="bg-amber-500/10 border-amber-300 dark:border-amber-900/60 shadow-2xs">
+                    <CardContent className="p-3.5">
+                      <div className="text-xs font-bold text-amber-900 dark:text-amber-300 uppercase">Gold Fine Balance</div>
+                      <div className="text-2xl font-black font-mono text-amber-600 mt-1">{(detailSupplier.balanceGold || 0).toFixed(3)} g</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-slate-500/10 border-slate-300 dark:border-slate-700 shadow-2xs">
+                    <CardContent className="p-3.5">
+                      <div className="text-xs font-bold text-slate-800 dark:text-slate-300 uppercase">Silver Fine Balance</div>
+                      <div className="text-2xl font-black font-mono text-slate-700 dark:text-slate-200 mt-1">{(detailSupplier.balanceSilver || 0).toFixed(3)} g</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-rose-500/10 border-rose-300 dark:border-rose-900/60 shadow-2xs">
+                    <CardContent className="p-3.5">
+                      <div className="text-xs font-bold text-rose-900 dark:text-rose-300 uppercase">Cash Outstanding</div>
+                      <div className="text-2xl font-black font-mono text-rose-600 mt-1">{inr(detailSupplier.outstanding || 0)}</div>
+                    </CardContent>
+                  </Card>
+                </div>
 
-              <Tabs value={detailTab} onValueChange={setDetailTab}>
-                <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full h-auto bg-muted/60 p-1 rounded-xl gap-1 mb-4">
-                  <TabsTrigger value="ledger" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5"><BookOpen className="w-3.5 h-3.5" />Ledger</TabsTrigger>
-                  <TabsTrigger value="payments" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5" />Payments</TabsTrigger>
-                  <TabsTrigger value="history" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5"><ShoppingBag className="w-3.5 h-3.5" />Purchase History</TabsTrigger>
-                  <TabsTrigger value="orders" className="text-xs font-semibold py-2 rounded-lg flex items-center gap-1.5"><ClipboardList className="w-3.5 h-3.5" />Orders</TabsTrigger>
-                </TabsList>
+                <Tabs value={detailTab} onValueChange={setDetailTab}>
+                  <TabsList className="grid grid-cols-2 sm:grid-cols-6 w-full h-auto bg-slate-200 dark:bg-slate-900 p-1 rounded-xl gap-1 mb-4">
+                    <TabsTrigger value="unified" className="text-xs font-bold py-2 rounded-lg flex items-center gap-1.5 data-[state=active]:bg-amber-600 data-[state=active]:text-white"><BookOpen className="w-3.5 h-3.5" />Master Dual Flow</TabsTrigger>
+                    <TabsTrigger value="ledger" className="text-xs font-bold py-2 rounded-lg flex items-center gap-1.5"><Coins className="w-3.5 h-3.5" />Gold Ledger</TabsTrigger>
+                    <TabsTrigger value="silver" className="text-xs font-bold py-2 rounded-lg flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" />Silver Ledger</TabsTrigger>
+                    <TabsTrigger value="payments" className="text-xs font-bold py-2 rounded-lg flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5" />Payments (₹)</TabsTrigger>
+                    <TabsTrigger value="history" className="text-xs font-bold py-2 rounded-lg flex items-center gap-1.5"><ShoppingBag className="w-3.5 h-3.5" />Purchases</TabsTrigger>
+                    <TabsTrigger value="orders" className="text-xs font-bold py-2 rounded-lg flex items-center gap-1.5"><ClipboardList className="w-3.5 h-3.5" />Orders</TabsTrigger>
+                  </TabsList>
 
-                {/* -------------------------- Ledger (gold/silver weight) -------------------------- */}
-                <TabsContent value="ledger" className="space-y-4">
-                  {(Object.keys(goldBreakdown).length > 0 || Object.keys(silverBreakdown).length > 0) && (
-                    <div className="grid grid-cols-2 gap-4 text-xs">
-                      <div className="bg-amber-50/60 rounded-lg p-2.5 space-y-0.5">
-                        {Object.entries(goldBreakdown).filter(([_, w]) => Math.abs(w) > 0.001).map(([p, w]) => (
-                          <div key={p} className="flex justify-between text-amber-700"><span>{p}:</span><span className="font-medium">{w.toFixed(3)} g</span></div>
-                        ))}
+                  {/* -------------------------- UNIFIED MASTER DUAL FLOW LEDGER -------------------------- */}
+                  <TabsContent value="unified" className="space-y-4">
+                    {/* Add Combined Dual Flow Form */}
+                    <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-amber-300 dark:border-amber-900/60 shadow-2xs space-y-3">
+                      <div className="text-xs font-black text-amber-950 dark:text-amber-200 uppercase tracking-wide flex items-center gap-2">
+                        <Plus className="w-4 h-4 text-amber-600" />
+                        <span>Record Dual Credit / Debit Transaction (Metal &amp; Amount)</span>
                       </div>
-                      <div className="bg-slate-100/60 rounded-lg p-2.5 space-y-0.5">
-                        {Object.entries(silverBreakdown).filter(([_, w]) => Math.abs(w) > 0.001).map(([p, w]) => (
-                          <div key={p} className="flex justify-between text-slate-600"><span>{p}:</span><span className="font-medium">{w.toFixed(3)} g</span></div>
-                        ))}
+
+                      <div className="grid grid-cols-2 sm:grid-cols-12 gap-2.5 items-end">
+                        <div className="sm:col-span-2">
+                          <Label className="text-[11px] font-bold uppercase">Date</Label>
+                          <Input type="date" value={dualForm.date} onChange={e => setDualForm({ ...dualForm, date: e.target.value })} className="h-8 text-xs font-mono bg-white dark:bg-slate-950" />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label className="text-[11px] font-bold uppercase">Ref / Bill No</Label>
+                          <Input value={dualForm.refNo} onChange={e => setDualForm({ ...dualForm, refNo: e.target.value })} placeholder="PO-1002" className="h-8 text-xs font-mono uppercase bg-white dark:bg-slate-950" />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label className="text-[11px] font-bold uppercase">Flow Type</Label>
+                          <Select value={dualForm.type} onValueChange={(v: any) => setDualForm({ ...dualForm, type: v })}>
+                            <SelectTrigger className="h-8 text-xs font-bold bg-white dark:bg-slate-950"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Credit" className="font-bold text-amber-800">Credit (+ We Owe)</SelectItem>
+                              <SelectItem value="Debit" className="font-bold text-rose-700">Debit (- We Paid)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label className="text-[11px] font-bold text-amber-800 dark:text-amber-300 uppercase">Gold Fine (g)</Label>
+                          <Input type="number" step="0.001" value={dualForm.goldWeight || ""} onChange={e => setDualForm({ ...dualForm, goldWeight: Number(e.target.value) })} placeholder="0.000" className="h-8 text-xs font-mono font-bold bg-white dark:bg-slate-950 border-amber-300" />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">Silver Fine (g)</Label>
+                          <Input type="number" step="0.001" value={dualForm.silverWeight || ""} onChange={e => setDualForm({ ...dualForm, silverWeight: Number(e.target.value) })} placeholder="0.000" className="h-8 text-xs font-mono font-bold bg-white dark:bg-slate-950 border-slate-300" />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label className="text-[11px] font-bold text-rose-800 dark:text-rose-300 uppercase">Cash Amount (₹)</Label>
+                          <Input type="number" step="0.01" value={dualForm.amount || ""} onChange={e => setDualForm({ ...dualForm, amount: Number(e.target.value) })} placeholder="0.00" className="h-8 text-xs font-mono font-bold bg-white dark:bg-slate-950 border-rose-300" />
+                        </div>
+                        <div className="sm:col-span-10">
+                          <Label className="text-[11px] font-bold uppercase">Particulars / Note</Label>
+                          <Input value={dualForm.note} onChange={e => setDualForm({ ...dualForm, note: e.target.value })} placeholder="Transaction particulars..." className="h-8 text-xs bg-white dark:bg-slate-950" />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Button onClick={addDualTransaction} disabled={updateMutation.isPending} className="h-8 w-full bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase shadow-sm">
+                            Add Flow
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  )}
 
-                  <div className="bg-muted/30 p-4 rounded-lg border border-border">
-                    <h3 className="font-semibold mb-3">Add Transaction</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Type</Label>
-                        <Select value={txForm.type} onValueChange={(v: any) => setTxForm({ ...txForm, type: v })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Credit">Credit (+ We Owe)</SelectItem>
-                            <SelectItem value="Debit">Debit (- We Paid)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Metal</Label>
-                        <Select value={txForm.metal} onValueChange={(v: any) => setTxForm({ ...txForm, metal: v })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Gold">Gold</SelectItem>
-                            <SelectItem value="Silver">Silver</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Purity</Label>
-                        <Input value={txForm.purity} onChange={e => setTxForm({ ...txForm, purity: e.target.value })} placeholder="e.g. 22K" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Weight (g)</Label>
-                        <Input type="number" value={txForm.weight || ""} onChange={e => setTxForm({ ...txForm, weight: Number(e.target.value) })} />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Date</Label>
-                        {(() => {
-                          let displayValue = txForm.date;
-                          if (!txDateFocused && txForm.date) {
-                            const parts = txForm.date.split('-');
-                            if (parts.length === 3) displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
-                          }
-                          return (
-                            <Input
-                              type={txDateFocused ? "date" : "text"}
-                              placeholder="DD/MM/YYYY"
-                              value={displayValue}
-                              onChange={e => setTxForm({ ...txForm, date: e.target.value })}
-                              onFocus={() => setTxDateFocused(true)}
-                              onBlur={() => setTxDateFocused(false)}
-                              className="w-full bg-background shadow-sm h-9"
-                            />
-                          );
-                        })()}
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Note</Label>
-                        <Input value={txForm.note} onChange={e => setTxForm({ ...txForm, note: e.target.value })} placeholder="Remarks..." />
-                      </div>
-                      <div className="col-span-2 md:col-span-6 flex justify-end mt-2">
-                        <Button onClick={addTransaction} disabled={updateMutation.isPending || !txForm.weight}>
-                          Add Transaction
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-                    <h3 className="font-semibold text-base flex items-center gap-2"><BookOpen className="w-4 h-4 text-primary" /> Transaction History</h3>
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                      {(() => {
-                        let displayValue = txSearchDate;
-                        if (!txSearchDateFocused && txSearchDate) {
-                          const parts = txSearchDate.split('-');
-                          if (parts.length === 3) displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
-                        }
-                        return (
-                          <Input
-                            type={txSearchDateFocused ? "date" : "text"}
-                            placeholder="DD/MM/YYYY"
-                            value={displayValue}
-                            onChange={e => { setTxSearchDate(e.target.value); setGoldPage(1); setSilverPage(1); }}
-                            onFocus={() => setTxSearchDateFocused(true)}
-                            onBlur={() => setTxSearchDateFocused(false)}
-                            className="w-full sm:w-40 bg-background h-9"
-                          />
-                        );
-                      })()}
-                      {txSearchDate && (
-                        <Button variant="ghost" size="sm" onClick={() => { setTxSearchDate(""); setGoldPage(1); setSilverPage(1); }} className="h-9">Clear</Button>
-                      )}
-                      <div className="relative flex-1 sm:w-64">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Search type, note..."
-                          value={txSearchQuery}
-                          onChange={e => { setTxSearchQuery(e.target.value); setGoldPage(1); setSilverPage(1); }}
-                          className="pl-9 h-9 bg-background text-sm shadow-sm"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Gold Table */}
-                    <Card className="shadow-sm border-amber-200/50 overflow-hidden flex flex-col bg-white">
-                      <CardHeader className="bg-amber-50/50 py-3 border-b border-amber-100">
-                        <CardTitle className="text-base font-semibold text-amber-700 flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-amber-500"></div> Gold Ledger
+                    {/* Master Dual Flow Table */}
+                    <Card className="border border-slate-300 dark:border-slate-800 overflow-hidden shadow-2xs">
+                      <CardHeader className="bg-slate-100 dark:bg-slate-900 py-3 border-b border-slate-300 flex items-center justify-between">
+                        <CardTitle className="text-sm font-bold text-slate-900 dark:text-white uppercase flex items-center gap-2">
+                          <BookOpen className="w-4 h-4 text-amber-600" /> Master Credit &amp; Debit Ledger (Metal &amp; Amount Flow)
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="p-0 flex-1 flex flex-col">
+
+                      <CardContent className="p-0">
                         <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead className="bg-amber-50/30 text-left border-b border-amber-100/50 text-amber-900/70 text-xs uppercase">
+                          <table className="w-full text-xs font-mono border-collapse min-w-[900px]">
+                            <thead className="bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-slate-100 uppercase font-black border-b border-slate-300">
                               <tr>
-                                <th className="py-2.5 px-3 font-semibold">Date</th>
-                                <th className="py-2.5 px-3 font-semibold">Details</th>
-                                <th className="py-2.5 px-3 text-right font-semibold">Weight</th>
-                                <th className="py-2.5 px-3 w-10"></th>
+                                <th className="p-2.5 border border-slate-300 dark:border-slate-700 text-left">Date / Ref</th>
+                                <th className="p-2.5 border border-slate-300 dark:border-slate-700 text-left">Particulars</th>
+                                <th className="p-2.5 border border-slate-300 dark:border-slate-700 text-center">Type</th>
+                                <th className="p-2.5 border border-slate-300 dark:border-slate-700 text-right bg-amber-100/60 dark:bg-amber-950/40 text-amber-950">Gold Fine (g)</th>
+                                <th className="p-2.5 border border-slate-300 dark:border-slate-700 text-right bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100">Silver Fine (g)</th>
+                                <th className="p-2.5 border border-slate-300 dark:border-slate-700 text-right bg-rose-100/60 dark:bg-rose-950/40 text-rose-950">Cash Amount (₹)</th>
+                                <th className="p-2.5 border border-slate-300 dark:border-slate-700 text-center">Action</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-amber-100/30">
-                              {paginatedGoldTx.length === 0 ? (
-                                <tr><td colSpan={4} className="text-center py-10 text-muted-foreground">No Gold transactions.</td></tr>
+                            <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-950">
+                              {paginatedUnifiedTx.length === 0 ? (
+                                <tr><td colSpan={7} className="text-center py-10 text-muted-foreground font-sans">No transactions in master flow ledger.</td></tr>
                               ) : (
-                                paginatedGoldTx.map((tx, i) => (
-                                  <tr key={tx._id || tx.id || i} className="hover:bg-amber-50/20 transition-colors group">
-                                    <td className="p-3 align-top whitespace-nowrap">
-                                      <div className="font-medium text-slate-800">{formatDate(tx.date)}</div>
-                                      <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${tx.type === 'Credit' ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'}`}>{tx.type}</span>
+                                paginatedUnifiedTx.map((tx, idx) => (
+                                  <tr key={tx._id || tx.id || idx} className="hover:bg-amber-50/40 dark:hover:bg-slate-800/40 transition-colors">
+                                    <td className="p-2 border border-slate-300 dark:border-slate-700 font-bold whitespace-nowrap">
+                                      <div>{formatDate(tx.date)}</div>
+                                      {tx.refNo && <div className="text-[10px] text-amber-800 dark:text-amber-400 font-semibold">{tx.refNo}</div>}
                                     </td>
-                                    <td className="p-3 align-top">
-                                      <div className="font-medium text-slate-800">{tx.purity || "—"}</div>
-                                      <div className="text-xs text-slate-500 mt-0.5 line-clamp-2 max-w-40" title={tx.note}>{tx.note || "No remarks"}</div>
+                                    <td className="p-2 border border-slate-300 dark:border-slate-700 font-sans">
+                                      <div className="font-semibold text-slate-900 dark:text-slate-100">{tx.note || "Voucher Transaction"}</div>
+                                      {tx.purity && <span className="text-[10px] text-muted-foreground">Purity: {tx.purity}</span>}
                                     </td>
-                                    <td className="p-3 text-right align-top">
-                                      <div className={`font-bold ${tx.type === 'Credit' ? 'text-green-600' : 'text-rose-600'}`}>
-                                        {tx.type === 'Credit' ? '+' : '-'}{(tx.weight || 0) > 0 ? `${tx.weight}g` : "0g"}
-                                      </div>
+                                    <td className="p-2 border border-slate-300 dark:border-slate-700 text-center font-bold">
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-black ${tx.type === "Credit" ? "bg-amber-100 text-amber-800 border border-amber-300" : "bg-rose-100 text-rose-800 border border-rose-300"}`}>
+                                        {tx.type === "Credit" ? "Cr (+)" : "Dr (-)"}
+                                      </span>
                                     </td>
-                                    <td className="p-3 text-right align-top opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50" onClick={() => deleteTransaction(tx.id || tx._id || "")} title="Delete Transaction">
-                                        <Trash2 className="w-4 h-4" />
+                                    <td className="p-2 border border-slate-300 dark:border-slate-700 text-right font-black text-amber-700 dark:text-amber-400">
+                                      {(tx.goldWeight || (tx.metal === "Gold" ? tx.weight : 0) || 0) > 0 ? `${(tx.goldWeight || tx.weight || 0).toFixed(3)} g` : "—"}
+                                    </td>
+                                    <td className="p-2 border border-slate-300 dark:border-slate-700 text-right font-black text-slate-700 dark:text-slate-300">
+                                      {(tx.silverWeight || (tx.metal === "Silver" ? tx.weight : 0) || 0) > 0 ? `${(tx.silverWeight || tx.weight || 0).toFixed(3)} g` : "—"}
+                                    </td>
+                                    <td className="p-2 border border-slate-300 dark:border-slate-700 text-right font-black text-rose-700 dark:text-rose-400">
+                                      {(tx.amount || 0) > 0 ? inr(tx.amount || 0) : "—"}
+                                    </td>
+                                    <td className="p-2 border border-slate-300 dark:border-slate-700 text-center">
+                                      <Button size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50" onClick={() => deleteTransaction(tx.id || tx._id || "")} title="Delete Flow Record">
+                                        <Trash2 className="w-3.5 h-3.5" />
                                       </Button>
                                     </td>
                                   </tr>
@@ -1058,243 +1293,238 @@ export default function SuppliersPage() {
                             </tbody>
                           </table>
                         </div>
-                        {totalGoldPages > 1 && (
-                          <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/10 mt-auto">
-                            <div className="text-xs text-muted-foreground">Page {currentGoldPage} of {totalGoldPages}</div>
+
+                        {totalUnifiedPages > 1 && (
+                          <div className="flex items-center justify-between p-3 bg-slate-100 border-t border-slate-300">
+                            <span className="text-xs font-semibold text-slate-700">Page {currentUnifiedPage} of {totalUnifiedPages}</span>
                             <div className="flex gap-1">
-                              <Button size="sm" variant="outline" className="h-7 text-xs bg-background" onClick={() => setGoldPage(p => Math.max(1, p - 1))} disabled={currentGoldPage === 1}>Prev</Button>
-                              <Button size="sm" variant="outline" className="h-7 text-xs bg-background" onClick={() => setGoldPage(p => Math.min(totalGoldPages, p + 1))} disabled={currentGoldPage === totalGoldPages}>Next</Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setUnifiedPage(p => Math.max(1, p - 1))} disabled={currentUnifiedPage === 1}>Prev</Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setUnifiedPage(p => Math.min(totalUnifiedPages, p + 1))} disabled={currentUnifiedPage === totalUnifiedPages}>Next</Button>
                             </div>
                           </div>
                         )}
                       </CardContent>
                     </Card>
+                  </TabsContent>
 
-                    {/* Silver Table */}
-                    <Card className="shadow-sm border-slate-200/50 overflow-hidden flex flex-col bg-white">
-                      <CardHeader className="bg-slate-50/50 py-3 border-b border-slate-200">
-                        <CardTitle className="text-base font-semibold text-slate-700 flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-slate-400"></div> Silver Ledger
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="p-0 flex-1 flex flex-col">
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead className="bg-slate-50/50 text-left border-b border-slate-200/70 text-slate-600 text-xs uppercase">
-                              <tr>
-                                <th className="py-2.5 px-3 font-semibold">Date</th>
-                                <th className="py-2.5 px-3 font-semibold">Details</th>
-                                <th className="py-2.5 px-3 text-right font-semibold">Weight</th>
-                                <th className="py-2.5 px-3 w-10"></th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {paginatedSilverTx.length === 0 ? (
-                                <tr><td colSpan={4} className="text-center py-10 text-muted-foreground">No Silver transactions.</td></tr>
-                              ) : (
-                                paginatedSilverTx.map((tx, i) => (
-                                  <tr key={tx._id || tx.id || i} className="hover:bg-slate-50 transition-colors group">
-                                    <td className="p-3 align-top whitespace-nowrap">
-                                      <div className="font-medium text-slate-800">{formatDate(tx.date)}</div>
-                                      <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${tx.type === 'Credit' ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'}`}>{tx.type}</span>
-                                    </td>
-                                    <td className="p-3 align-top">
-                                      <div className="font-medium text-slate-800">{tx.purity || "—"}</div>
-                                      <div className="text-xs text-slate-500 mt-0.5 line-clamp-2 max-w-40" title={tx.note}>{tx.note || "No remarks"}</div>
-                                    </td>
-                                    <td className="p-3 text-right align-top">
-                                      <div className={`font-bold ${tx.type === 'Credit' ? 'text-green-600' : 'text-rose-600'}`}>
-                                        {tx.type === 'Credit' ? '+' : '-'}{(tx.weight || 0) > 0 ? `${tx.weight}g` : "0g"}
-                                      </div>
-                                    </td>
-                                    <td className="p-3 text-right align-top opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50" onClick={() => deleteTransaction(tx.id || tx._id || "")} title="Delete Transaction">
-                                        <Trash2 className="w-4 h-4" />
-                                      </Button>
-                                    </td>
-                                  </tr>
-                                ))
-                              )}
-                            </tbody>
-                          </table>
+                  {/* -------------------------- Gold Ledger Tab -------------------------- */}
+                  <TabsContent value="ledger" className="space-y-4">
+                    <div className="bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-300 shadow-2xs">
+                      <h3 className="font-bold text-xs uppercase mb-2">Record Gold Weight Flow</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-6 gap-2.5 items-end">
+                        <div>
+                          <Label className="text-[11px] uppercase font-bold">Type</Label>
+                          <Select value={txForm.type} onValueChange={(v: any) => setTxForm({ ...txForm, type: v })}>
+                            <SelectTrigger className="h-8 text-xs font-bold"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Credit">Credit (+ We Owe)</SelectItem>
+                              <SelectItem value="Debit">Debit (- We Paid)</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
-                        {totalSilverPages > 1 && (
-                          <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/10 mt-auto">
-                            <div className="text-xs text-muted-foreground">Page {currentSilverPage} of {totalSilverPages}</div>
-                            <div className="flex gap-1">
-                              <Button size="sm" variant="outline" className="h-7 text-xs bg-background" onClick={() => setSilverPage(p => Math.max(1, p - 1))} disabled={currentSilverPage === 1}>Prev</Button>
-                              <Button size="sm" variant="outline" className="h-7 text-xs bg-background" onClick={() => setSilverPage(p => Math.min(totalSilverPages, p + 1))} disabled={currentSilverPage === totalSilverPages}>Next</Button>
-                            </div>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-                </TabsContent>
-
-                {/* -------------------------- Payments (₹) -------------------------- */}
-                <TabsContent value="payments" className="space-y-4">
-                  <div className="bg-muted/30 p-4 rounded-lg border border-border">
-                    <h3 className="font-semibold mb-3">Record Payment / Adjustment</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Type</Label>
-                        <Select value={paymentForm.type} onValueChange={(v: any) => setPaymentForm({ ...paymentForm, type: v })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Debit">Debit (Payment Made)</SelectItem>
-                            <SelectItem value="Credit">Credit (Amount Owed)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Amount ₹</Label>
-                        <Input type="number" value={paymentForm.amount || ""} onChange={e => setPaymentForm({ ...paymentForm, amount: Number(e.target.value) })} />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Payment Mode</Label>
-                        <select className="w-full h-10 border rounded-md px-3 bg-background text-sm" value={paymentForm.paymentMode} onChange={e => setPaymentForm({ ...paymentForm, paymentMode: e.target.value })}>
-                          {["Cash", "UPI", "Card", "Bank", "Cheque"].map(m => <option key={m}>{m}</option>)}
-                        </select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Date</Label>
-                        <Input type="date" value={paymentForm.date} onChange={e => setPaymentForm({ ...paymentForm, date: e.target.value })} className="w-full bg-background shadow-sm h-9" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Note</Label>
-                        <Input value={paymentForm.note} onChange={e => setPaymentForm({ ...paymentForm, note: e.target.value })} placeholder="Remarks..." />
-                      </div>
-                      <div className="col-span-2 md:col-span-5 flex justify-end mt-2">
-                        <Button onClick={addPayment} disabled={updateMutation.isPending || !paymentForm.amount}>Record Payment</Button>
+                        <div>
+                          <Label className="text-[11px] uppercase font-bold">Purity</Label>
+                          <Input value={txForm.purity} onChange={e => setTxForm({ ...txForm, purity: e.target.value })} placeholder="22K" className="h-8 text-xs font-bold" />
+                        </div>
+                        <div>
+                          <Label className="text-[11px] uppercase font-bold">Weight (g)</Label>
+                          <Input type="number" step="0.001" value={txForm.weight || ""} onChange={e => setTxForm({ ...txForm, weight: Number(e.target.value) })} placeholder="0.000" className="h-8 text-xs font-mono font-bold" />
+                        </div>
+                        <div>
+                          <Label className="text-[11px] uppercase font-bold">Date</Label>
+                          <Input type="date" value={txForm.date} onChange={e => setTxForm({ ...txForm, date: e.target.value })} className="h-8 text-xs font-mono" />
+                        </div>
+                        <div className="col-span-2 md:col-span-2 flex gap-2">
+                          <Input value={txForm.note} onChange={e => setTxForm({ ...txForm, note: e.target.value })} placeholder="Remarks..." className="h-8 text-xs flex-1" />
+                          <Button onClick={addTransaction} disabled={updateMutation.isPending || !txForm.weight} className="h-8 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase">
+                            Add Gold
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <Card className="shadow-sm overflow-hidden">
-                    <CardHeader className="py-3 border-b"><CardTitle className="text-base font-semibold">Payment History</CardTitle></CardHeader>
-                    <CardContent className="p-0">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead className="bg-muted/30 text-left border-b">
-                            <tr>
-                              <th className="p-3">Date</th><th className="p-3">Type</th><th className="p-3">Mode</th><th className="p-3">Note</th>
-                              <th className="p-3 text-right">Amount</th><th className="p-3"></th>
-                            </tr>
+                    <Card className="border border-slate-300 overflow-hidden shadow-2xs">
+                      <CardHeader className="bg-amber-500/10 py-2.5 border-b border-amber-200">
+                        <CardTitle className="text-xs font-black uppercase text-amber-950 flex items-center justify-between">
+                          <span>Gold Weight Ledger</span>
+                          <span className="font-mono">Total: {(detailSupplier.balanceGold || 0).toFixed(3)} g</span>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <table className="w-full text-xs font-mono">
+                          <thead className="bg-slate-100 border-b border-slate-300 text-left font-bold uppercase">
+                            <tr><th className="p-2">Date</th><th className="p-2">Details</th><th className="p-2 text-center">Type</th><th className="p-2 text-right">Weight (g)</th><th className="p-2 text-center">Action</th></tr>
                           </thead>
-                          <tbody>
-                            {paginatedPaymentTx.length === 0 ? (
-                              <tr><td colSpan={6} className="text-center py-10 text-muted-foreground">No payments recorded yet.</td></tr>
-                            ) : (
-                              paginatedPaymentTx.map((tx, i) => (
-                                <tr key={tx._id || tx.id || i} className="border-b last:border-0 hover:bg-muted/20">
-                                  <td className="p-3 whitespace-nowrap">{formatDate(tx.date)}</td>
-                                  <td className="p-3">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${tx.type === 'Credit' ? 'bg-rose-100 text-rose-700' : 'bg-green-100 text-green-700'}`}>{tx.type}</span>
-                                  </td>
-                                  <td className="p-3 text-muted-foreground">{tx.paymentMode || "—"}</td>
-                                  <td className="p-3 max-w-48 truncate" title={tx.note}>{tx.note || "—"}</td>
-                                  <td className={`p-3 text-right font-bold ${tx.type === 'Credit' ? 'text-rose-600' : 'text-green-600'}`}>{tx.type === 'Credit' ? '+' : '-'}{inr(tx.amount || 0)}</td>
-                                  <td className="p-3 text-right">
-                                    <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-rose-600 hover:bg-rose-50" onClick={() => deletePayment(tx.id || tx._id || "")} title="Delete"><Trash2 className="w-4 h-4" /></Button>
-                                  </td>
-                                </tr>
-                              ))
-                            )}
+                          <tbody className="divide-y divide-slate-200">
+                            {paginatedGoldTx.length === 0 ? <tr><td colSpan={5} className="text-center py-6 text-muted-foreground font-sans">No Gold weight records.</td></tr> : paginatedGoldTx.map((tx, i) => (
+                              <tr key={tx._id || tx.id || i} className="hover:bg-amber-50/40">
+                                <td className="p-2 font-bold">{formatDate(tx.date)}</td>
+                                <td className="p-2 font-sans">{tx.purity || "22K"} · {tx.note || "Gold Flow"}</td>
+                                <td className="p-2 text-center font-bold">{tx.type}</td>
+                                <td className="p-2 text-right font-black text-amber-700">{(tx.goldWeight || tx.weight || 0).toFixed(3)} g</td>
+                                <td className="p-2 text-center"><Button size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-rose-600" onClick={() => deleteTransaction(tx.id || tx._id || "")}><Trash2 className="w-3.5 h-3.5" /></Button></td>
+                              </tr>
+                            ))}
                           </tbody>
                         </table>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  {/* -------------------------- Silver Ledger Tab -------------------------- */}
+                  <TabsContent value="silver" className="space-y-4">
+                    <Card className="border border-slate-300 overflow-hidden shadow-2xs">
+                      <CardHeader className="bg-slate-200 py-2.5 border-b border-slate-300">
+                        <CardTitle className="text-xs font-black uppercase text-slate-900 flex items-center justify-between">
+                          <span>Silver Weight Ledger</span>
+                          <span className="font-mono">Total: {(detailSupplier.balanceSilver || 0).toFixed(3)} g</span>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <table className="w-full text-xs font-mono">
+                          <thead className="bg-slate-100 border-b border-slate-300 text-left font-bold uppercase">
+                            <tr><th className="p-2">Date</th><th className="p-2">Details</th><th className="p-2 text-center">Type</th><th className="p-2 text-right">Weight (g)</th><th className="p-2 text-center">Action</th></tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {paginatedSilverTx.length === 0 ? <tr><td colSpan={5} className="text-center py-6 text-muted-foreground font-sans">No Silver weight records.</td></tr> : paginatedSilverTx.map((tx, i) => (
+                              <tr key={tx._id || tx.id || i} className="hover:bg-slate-100">
+                                <td className="p-2 font-bold">{formatDate(tx.date)}</td>
+                                <td className="p-2 font-sans">{tx.note || "Silver Flow"}</td>
+                                <td className="p-2 text-center font-bold">{tx.type}</td>
+                                <td className="p-2 text-right font-black text-slate-700">{(tx.silverWeight || tx.weight || 0).toFixed(3)} g</td>
+                                <td className="p-2 text-center"><Button size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-rose-600" onClick={() => deleteTransaction(tx.id || tx._id || "")}><Trash2 className="w-3.5 h-3.5" /></Button></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  {/* -------------------------- Payments Tab -------------------------- */}
+                  <TabsContent value="payments" className="space-y-4">
+                    <div className="bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-300 shadow-2xs">
+                      <h3 className="font-bold text-xs uppercase mb-2">Record Cash / Bank Payment</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-6 gap-2.5 items-end">
+                        <div>
+                          <Label className="text-[11px] uppercase font-bold">Type</Label>
+                          <Select value={paymentForm.type} onValueChange={(v: any) => setPaymentForm({ ...paymentForm, type: v })}>
+                            <SelectTrigger className="h-8 text-xs font-bold"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Credit">Credit (+ We Owe)</SelectItem>
+                              <SelectItem value="Debit">Debit (- Paid Cash)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-[11px] uppercase font-bold">Amount (₹)</Label>
+                          <Input type="number" step="0.01" value={paymentForm.amount || ""} onChange={e => setPaymentForm({ ...paymentForm, amount: Number(e.target.value) })} placeholder="0.00" className="h-8 text-xs font-mono font-bold" />
+                        </div>
+                        <div>
+                          <Label className="text-[11px] uppercase font-bold">Mode</Label>
+                          <Select value={paymentForm.paymentMode} onValueChange={v => setPaymentForm({ ...paymentForm, paymentMode: v })}>
+                            <SelectTrigger className="h-8 text-xs font-bold"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Cash">Cash</SelectItem>
+                              <SelectItem value="UPI">UPI / GPay</SelectItem>
+                              <SelectItem value="NEFT">NEFT / Bank</SelectItem>
+                              <SelectItem value="Cheque">Cheque</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-[11px] uppercase font-bold">Date</Label>
+                          <Input type="date" value={paymentForm.date} onChange={e => setPaymentForm({ ...paymentForm, date: e.target.value })} className="h-8 text-xs font-mono" />
+                        </div>
+                        <div className="col-span-2 md:col-span-2 flex gap-2">
+                          <Input value={paymentForm.note} onChange={e => setPaymentForm({ ...paymentForm, note: e.target.value })} placeholder="Remarks..." className="h-8 text-xs flex-1" />
+                          <Button onClick={addPayment} disabled={updateMutation.isPending || !paymentForm.amount} className="h-8 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase">
+                            Pay
+                          </Button>
+                        </div>
                       </div>
-                      {totalPaymentPages > 1 && (
-                        <div className="flex items-center justify-between px-4 py-3 border-t">
-                          <div className="text-xs text-muted-foreground">Page {currentPaymentPage} of {totalPaymentPages}</div>
-                          <div className="flex gap-1">
-                            <Button size="sm" variant="outline" onClick={() => setPaymentPage(p => Math.max(1, p - 1))} disabled={currentPaymentPage === 1}>Prev</Button>
-                            <Button size="sm" variant="outline" onClick={() => setPaymentPage(p => Math.min(totalPaymentPages, p + 1))} disabled={currentPaymentPage === totalPaymentPages}>Next</Button>
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
+                    </div>
 
-                {/* -------------------------- Purchase History (read-only) -------------------------- */}
-                <TabsContent value="history" className="space-y-4">
-                  <Card className="shadow-sm overflow-hidden">
-                    <CardContent className="p-0">
-                      {historyList.length === 0 ? <p className="text-center text-muted-foreground py-12">No purchase history for this supplier yet.</p> : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead className="bg-muted/30 text-left border-b">
-                              <tr><th className="p-3">Bill</th><th>Date</th><th>Type</th><th>Metal</th><th className="text-right">Wt (g)</th><th className="text-right">Total</th><th>Status</th></tr>
+                    <Card className="border border-slate-300 overflow-hidden shadow-2xs">
+                      <CardHeader className="bg-rose-500/10 py-2.5 border-b border-rose-200">
+                        <CardTitle className="text-xs font-black uppercase text-rose-950 flex items-center justify-between">
+                          <span>Cash Payment Ledger</span>
+                          <span className="font-mono">Outstanding: {inr(detailSupplier.outstanding || 0)}</span>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <table className="w-full text-xs font-mono">
+                          <thead className="bg-slate-100 border-b border-slate-300 text-left font-bold uppercase">
+                            <tr><th className="p-2">Date</th><th className="p-2">Mode &amp; Details</th><th className="p-2 text-center">Type</th><th className="p-2 text-right">Amount (₹)</th><th className="p-2 text-center">Action</th></tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {paginatedPaymentTx.length === 0 ? <tr><td colSpan={5} className="text-center py-6 text-muted-foreground font-sans">No payment records.</td></tr> : paginatedPaymentTx.map((tx, i) => (
+                              <tr key={tx._id || tx.id || i} className="hover:bg-rose-50/40">
+                                <td className="p-2 font-bold">{formatDate(tx.date)}</td>
+                                <td className="p-2 font-sans">{tx.paymentMode || "Cash"} · {tx.note || "Payment"}</td>
+                                <td className="p-2 text-center font-bold">{tx.type}</td>
+                                <td className="p-2 text-right font-black text-rose-700">{inr(tx.amount || 0)}</td>
+                                <td className="p-2 text-center"><Button size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-rose-600" onClick={() => deleteTransaction(tx.id || tx._id || "")}><Trash2 className="w-3.5 h-3.5" /></Button></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  {/* -------------------------- Purchases History -------------------------- */}
+                  <TabsContent value="history" className="space-y-4">
+                    <Card className="border border-slate-300 overflow-hidden shadow-2xs">
+                      <CardContent className="p-0">
+                        {historyList.length === 0 ? <p className="text-center text-muted-foreground py-10 font-sans">No purchase vouchers for this supplier.</p> : (
+                          <table className="w-full text-xs font-mono">
+                            <thead className="bg-slate-900 text-slate-200 text-left font-bold uppercase">
+                              <tr><th className="p-2.5">Voucher No</th><th>Date</th><th className="text-right">Total ₹</th></tr>
                             </thead>
-                            <tbody>
+                            <tbody className="divide-y divide-slate-200">
                               {paginatedHistory.map((p: any) => (
-                                <tr key={p._id || p.id} className="border-b last:border-0 hover:bg-muted/20">
-                                  <td className="p-3 font-semibold">{p.billNo}</td>
-                                  <td className="whitespace-nowrap">{formatDate(p.date)}</td>
-                                  <td className="text-xs text-muted-foreground">{p.docType === "Return" ? "Return" : "Purchase"}</td>
-                                  <td>{p.metal} {p.purity}</td>
-                                  <td className="text-right">{p.weight}g</td>
-                                  <td className={`text-right font-bold ${p.docType === "Return" ? "text-red-600" : "text-emerald-600"}`}>{p.docType === "Return" ? "-" : ""}{inr(p.total)}</td>
-                                  <td><StatusBadge status={p.status} /></td>
+                                <tr key={p._id || p.id} className="hover:bg-slate-100">
+                                  <td className="p-2.5 font-bold">{p.billNo}</td>
+                                  <td>{formatDate(p.date)}</td>
+                                  <td className="text-right font-black text-amber-700">{inr(p.total)}</td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
-                        </div>
-                      )}
-                      {totalHistoryPages > 1 && (
-                        <div className="flex items-center justify-between px-4 py-3 border-t">
-                          <div className="text-xs text-muted-foreground">Page {currentHistoryPage} of {totalHistoryPages}</div>
-                          <div className="flex gap-1">
-                            <Button size="sm" variant="outline" onClick={() => setHistoryPage(p => Math.max(1, p - 1))} disabled={currentHistoryPage === 1}>Prev</Button>
-                            <Button size="sm" variant="outline" onClick={() => setHistoryPage(p => Math.min(totalHistoryPages, p + 1))} disabled={currentHistoryPage === totalHistoryPages}>Next</Button>
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
 
-                {/* -------------------------- Orders (read-only) -------------------------- */}
-                <TabsContent value="orders" className="space-y-4">
-                  <Card className="shadow-sm overflow-hidden">
-                    <CardContent className="p-0">
-                      {ordersList.length === 0 ? <p className="text-center text-muted-foreground py-12">No purchase orders for this supplier yet.</p> : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead className="bg-muted/30 text-left border-b">
-                              <tr><th className="p-3">PO No</th><th>Date</th><th>Metal</th><th className="text-right">Wt (g)</th><th className="text-right">Total</th><th>Status</th></tr>
+                  {/* -------------------------- Orders -------------------------- */}
+                  <TabsContent value="orders" className="space-y-4">
+                    <Card className="border border-slate-300 overflow-hidden shadow-2xs">
+                      <CardContent className="p-0">
+                        {ordersList.length === 0 ? <p className="text-center text-muted-foreground py-10 font-sans">No purchase orders for this supplier yet.</p> : (
+                          <table className="w-full text-xs font-mono">
+                            <thead className="bg-slate-900 text-slate-200 text-left font-bold uppercase">
+                              <tr><th className="p-2.5">PO No</th><th>Date</th><th>Metal</th><th className="text-right">Wt (g)</th><th className="text-right">Total ₹</th><th>Status</th></tr>
                             </thead>
-                            <tbody>
+                            <tbody className="divide-y divide-slate-200">
                               {paginatedDetailOrders.map((p: any) => (
-                                <tr key={p._id || p.id} className="border-b last:border-0 hover:bg-muted/20">
-                                  <td className="p-3 font-semibold">{p.billNo}</td>
-                                  <td className="whitespace-nowrap">{formatDate(p.date)}</td>
+                                <tr key={p._id || p.id} className="hover:bg-slate-100">
+                                  <td className="p-2.5 font-bold">{p.billNo}</td>
+                                  <td>{formatDate(p.date)}</td>
                                   <td>{p.metal} {p.purity}</td>
                                   <td className="text-right">{p.weight}g</td>
-                                  <td className="text-right font-bold text-emerald-600">{inr(p.total)}</td>
+                                  <td className="text-right font-bold text-amber-700">{inr(p.total)}</td>
                                   <td><StatusBadge status={p.status} /></td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
-                        </div>
-                      )}
-                      {totalOrdersPages > 1 && (
-                        <div className="flex items-center justify-between px-4 py-3 border-t">
-                          <div className="text-xs text-muted-foreground">Page {currentOrdersPage} of {totalOrdersPages}</div>
-                          <div className="flex gap-1">
-                            <Button size="sm" variant="outline" onClick={() => setOrdersPage(p => Math.max(1, p - 1))} disabled={currentOrdersPage === 1}>Prev</Button>
-                            <Button size="sm" variant="outline" onClick={() => setOrdersPage(p => Math.min(totalOrdersPages, p + 1))} disabled={currentOrdersPage === totalOrdersPages}>Next</Button>
-                          </div>
-                        </div>
-                      )}
-                      <p className="text-xs text-muted-foreground px-3 pb-3">Approve, reject or receive orders from the Purchases page's Orders/Approvals tabs.</p>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-              </Tabs>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                </Tabs>
+              </div>
             </>
           )}
         </DialogContent>
@@ -1302,8 +1532,3 @@ export default function SuppliersPage() {
     </Layout>
   );
 }
-
-function Field({ label, v, on }: { label: string; v: string; on: (v: string) => void }) {
-  return <div className="space-y-1.5"><Label className="text-xs font-medium text-muted-foreground">{label}</Label><Input value={v} onChange={e => on(e.target.value)} /></div>;
-}
-

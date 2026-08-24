@@ -1,4 +1,4 @@
-import { NavLink, useLocation, Link } from "react-router-dom";
+import { NavLink, useLocation, Link, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Package,
@@ -29,8 +29,9 @@ import {
   Scale,
   Keyboard,
   ChevronRight,
+  Zap,
 } from "lucide-react";
-import { useEffect, useState, useRef, useLayoutEffect, type ReactNode, useMemo } from "react";
+import { useEffect, useState, useRef, type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -41,8 +42,9 @@ import { type Order, type Repair, type Invoice, type Product } from "@/lib/stora
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { useGlobalKeyboard } from "@/hooks/useGlobalKeyboard";
+import { useGlobalKeyboard, useActiveShortcuts } from "@/hooks/useGlobalKeyboard";
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
+import { CommandPaletteDialog } from "@/components/CommandPaletteDialog";
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 
@@ -106,64 +108,27 @@ const adminGroups: { title: string; items: NavItem[] }[] = [
 /* ─────────────────────────────────────────────────────────────── */
 /*  Sidebar body                                                   */
 /* ─────────────────────────────────────────────────────────────── */
-const SIDEBAR_SCROLL_KEY = "ajms_sidebar_scroll_top";
-let sidebarScrollPosition = (() => {
-  try {
-    return parseInt(sessionStorage.getItem(SIDEBAR_SCROLL_KEY) || "0", 10) || 0;
-  } catch {
-    return 0;
-  }
-})();
-
-function updateSidebarScroll(top: number) {
-  sidebarScrollPosition = top;
-  try {
-    sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(top));
-  } catch {
-    // Ignore storage quota errors
-  }
-}
-
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
   const { tenantSession } = useAuth();
+  const navContainerRef = useRef<HTMLDivElement>(null);
   const isKarigar  = tenantSession?.user?.role === "karigar";
   const isOperator = tenantSession?.user?.role === "operator";
   const shopName   = tenantSession?.shop?.shopName || "JewelShop";
   const logoUrl    = tenantSession?.shop?.logoUrl;
   const initials   = shopName.slice(0, 2).toUpperCase();
 
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-
-  useLayoutEffect(() => {
-    const container = scrollAreaRef.current;
-    if (!container) return;
-
-    const viewport = container.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]");
-    if (!viewport) return;
-
-    viewport.scrollTop = sidebarScrollPosition;
-
-    const rafId = requestAnimationFrame(() => {
-      if (viewport) viewport.scrollTop = sidebarScrollPosition;
-    });
-
-    const timeoutId = setTimeout(() => {
-      if (viewport) viewport.scrollTop = sidebarScrollPosition;
-    }, 50);
-
-    const handleScroll = () => {
-      updateSidebarScroll(viewport.scrollTop);
-    };
-
-    viewport.addEventListener("scroll", handleScroll, { passive: true });
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      clearTimeout(timeoutId);
-      viewport.removeEventListener("scroll", handleScroll);
-    };
+  // Restore sidebar scroll position across route changes
+  useEffect(() => {
+    const savedPos = sessionStorage.getItem("sidebar_nav_scroll_pos");
+    if (savedPos && navContainerRef.current) {
+      navContainerRef.current.scrollTop = Number(savedPos);
+    }
   }, []);
+
+  const handleNavScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    sessionStorage.setItem("sidebar_nav_scroll_pos", String(e.currentTarget.scrollTop));
+  };
 
   const groups = isKarigar
     ? [{ title: "nav.groupMyWorkspace", items: [{ to: "/karigar-tasks", label: "nav.myTasks", icon: ClipboardList }] }]
@@ -208,49 +173,51 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       {/* ── Nav ── */}
-      <div ref={scrollAreaRef} className="flex-1 flex flex-col min-h-0">
-        <ScrollArea className="flex-1">
-          <nav className="px-3 py-3 space-y-4">
-            {groups.map((g) => (
-              <div key={g.title}>
-                {/* Group label */}
-                <div className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">
-                  {t(g.title)}
-                </div>
-
-                <div className="space-y-0.5">
-                  {g.items.map((n) => {
-                    const Icon = n.icon;
-                    return (
-                      <NavLink
-                        key={n.to}
-                        to={n.to === "/" ? "/dashboard" : n.to}
-                        end={n.to === "/"}
-                        onClick={onNavigate}
-                        className={({ isActive }) =>
-                          cn(
-                            "group flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-medium transition-all duration-150",
-                            isActive
-                              ? "bg-primary text-primary-foreground shadow-sm"
-                              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                          )
-                        }
-                      >
-                        {({ isActive }) => (
-                          <>
-                            <Icon className={cn("w-4 h-4 shrink-0", isActive ? "opacity-100" : "opacity-60 group-hover:opacity-100")} />
-                            <span className="flex-1 truncate">{t(n.label)}</span>
-                            {isActive && <ChevronRight className="w-3 h-3 opacity-50 shrink-0" />}
-                          </>
-                        )}
-                      </NavLink>
-                    );
-                  })}
-                </div>
+      <div
+        ref={navContainerRef}
+        onScroll={handleNavScroll}
+        className="flex-1 overflow-y-auto scrollbar-none"
+      >
+        <nav className="px-3 py-3 space-y-4">
+          {groups.map((g) => (
+            <div key={g.title}>
+              {/* Group label */}
+              <div className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">
+                {t(g.title)}
               </div>
-            ))}
-          </nav>
-        </ScrollArea>
+
+              <div className="space-y-0.5">
+                {g.items.map((n) => {
+                  const Icon = n.icon;
+                  return (
+                    <NavLink
+                      key={n.to}
+                      to={n.to === "/" ? "/dashboard" : n.to}
+                      end={n.to === "/"}
+                      onClick={onNavigate}
+                      className={({ isActive }) =>
+                        cn(
+                          "group flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-medium transition-all duration-150",
+                          isActive
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                        )
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <Icon className={cn("w-4 h-4 shrink-0", isActive ? "opacity-100" : "opacity-60 group-hover:opacity-100")} />
+                          <span className="flex-1 truncate">{t(n.label)}</span>
+                          {isActive && <ChevronRight className="w-3 h-3 opacity-50 shrink-0" />}
+                        </>
+                      )}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
       </div>
 
       {/* ── Logout ── */}
@@ -277,16 +244,115 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
 export function Layout({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { tenantSession } = useAuth();
   const [open, setOpen] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+
+  const activeShortcuts = useActiveShortcuts();
 
   const shopName = tenantSession?.shop?.shopName || "";
   const userRole = tenantSession?.user?.role || "";
 
+  // Helper to click primary Add/New/Create button on page and focus first field
+  const triggerNewRecordButton = () => {
+    // 1. If a dialog is already open, focus its first input
+    const existingDialog = document.querySelector('[role="dialog"]');
+    if (existingDialog) {
+      const firstInput = existingDialog.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input:not([type='hidden']), select, textarea");
+      firstInput?.focus();
+      return true;
+    }
+
+    const mainArea = document.querySelector("main");
+    if (!mainArea) return false;
+
+    // 2. Check for explicit data-new-button="true" inside main content area
+    const explicitBtn = mainArea.querySelector<HTMLButtonElement>('button[data-new-button="true"]');
+    if (explicitBtn && !explicitBtn.disabled) {
+      explicitBtn.click();
+      setTimeout(() => {
+        const dialog = document.querySelector('[role="dialog"]');
+        const firstInput = dialog?.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input:not([type='hidden']), select, textarea");
+        firstInput?.focus();
+      }, 100);
+      return true;
+    }
+
+    // 3. Fallback: Search visible buttons inside main content area ONLY
+    const buttons = Array.from(mainArea.querySelectorAll<HTMLButtonElement>("button"));
+    const btn = buttons.find((b) => {
+      const isVisible = !b.disabled && b.offsetParent !== null;
+      if (!isVisible) return false;
+
+      const txt = (b.innerText || "").toLowerCase();
+      const aria = (b.getAttribute("aria-label") || "").toLowerCase();
+      const title = (b.getAttribute("title") || "").toLowerCase();
+      const combined = `${txt} ${aria} ${title}`;
+
+      return (
+        combined.includes("add") ||
+        combined.includes("new") ||
+        combined.includes("create") ||
+        combined.includes("nayan") ||
+        combined.includes("banao") ||
+        combined.includes("jodo") ||
+        combined.includes("issue") ||
+        combined.includes("record") ||
+        combined.includes("entry") ||
+        combined.includes("loan") ||
+        combined.includes("bill") ||
+        combined.includes("invoice") ||
+        combined.includes("voucher") ||
+        combined.includes("purchase") ||
+        combined.includes("product") ||
+        combined.includes("item") ||
+        combined.includes("repair") ||
+        combined.includes("order") ||
+        combined.includes("customer") ||
+        combined.includes("girvi") ||
+        combined.includes("supplier") ||
+        combined.includes("employee") ||
+        combined.includes("karigar") ||
+        combined.includes("due") ||
+        combined.includes("advance") ||
+        combined.includes("rate") ||
+        combined.includes("shop") ||
+        combined.includes("task") ||
+        combined.includes("payment") ||
+        combined.includes("receive") ||
+        combined.includes("spend") ||
+        combined.includes("expense")
+      );
+    });
+
+    if (btn) {
+      btn.click();
+      setTimeout(() => {
+        const dialog = document.querySelector('[role="dialog"]');
+        const firstInput = dialog?.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input:not([type='hidden']), select, textarea");
+        firstInput?.focus();
+      }, 120);
+      return true;
+    }
+
+    // 4. If no modal button found (e.g. Billing POS screen), focus first visible text input inside main area
+    const pageInput = mainArea.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+      "input:not([type='hidden']), select, textarea"
+    );
+    if (pageInput) {
+      pageInput.focus();
+      return true;
+    }
+
+    return false;
+  };
+
   // Global keyboard shortcuts
   useGlobalKeyboard({
     onToggleHelp: () => setShowShortcuts((v) => !v),
+    onToggleCommandPalette: () => setShowCommandPalette((v) => !v),
     onFocusSearch: () => {
       const el = document.querySelector<HTMLInputElement>(
         'input[type="search"], input[placeholder*="earch"], input[placeholder*="ilter"], input[data-search]'
@@ -294,13 +360,7 @@ export function Layout({ children }: { children: ReactNode }) {
       el?.focus();
       el?.select();
     },
-    onNewRecord: () => {
-      const btn = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) => {
-        const txt = b.innerText?.toLowerCase() || "";
-        return (txt.includes("add") || txt.includes("new") || txt.includes("create")) && !b.disabled && b.offsetParent !== null;
-      });
-      btn?.click();
-    },
+    onNewRecord: triggerNewRecordButton,
   });
 
   const tenantApi = useTenantAPI();
@@ -328,11 +388,36 @@ export function Layout({ children }: { children: ReactNode }) {
     window.scrollTo(0, 0);
   }, [pathname]);
 
+  // Single-Click Quick Launch Bar definitions — clean standard routes
+  const quickBarActions: { id: string; label: string; icon: any; route: string }[] = [
+    { id: "new_bill", label: "New Bill", icon: ShoppingCart, route: "/billing" },
+    { id: "daily_ledger", label: "Daily Ledger", icon: BookOpen, route: "/ledger" },
+    { id: "purchases", label: "Purchases", icon: ShoppingBag, route: "/purchases" },
+    { id: "sales", label: "Sales", icon: Receipt, route: "/sales" },
+    { id: "customers", label: "Customers", icon: Users, route: "/customers" },
+    { id: "expenses", label: "Expenses", icon: Wallet, route: "/expenses" },
+    { id: "reports", label: "Reports", icon: BarChart3, route: "/reports" },
+    { id: "girvi", label: "Girvi", icon: Landmark, route: "/girvi" },
+    { id: "repairs", label: "Repairs", icon: Wrench, route: "/repairs" },
+    { id: "orders", label: "Orders", icon: ShoppingBag, route: "/orders" },
+  ];
+
+  const getShortcutKeyDisplay = (id: string) => {
+    const s = activeShortcuts.find((item) => item.id === id);
+    if (!s) return "";
+    const parts = [];
+    if (s.ctrl) parts.push("Ctrl");
+    if (s.alt) parts.push("Alt");
+    if (s.shift) parts.push("Shift");
+    parts.push(s.key);
+    return parts.join("+");
+  };
+
   return (
     <div className="h-dvh flex overflow-hidden bg-background print:h-auto print:overflow-visible">
 
       {/* ── Desktop Sidebar ── */}
-      <aside className="hidden lg:flex w-60 shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex-col h-full print:hidden">
+      <aside className="hidden lg:flex w-52 xl:w-56 shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex-col h-full print:hidden">
         <SidebarBody />
       </aside>
 
@@ -350,10 +435,10 @@ export function Layout({ children }: { children: ReactNode }) {
       <div className="flex-1 min-w-0 flex flex-col h-full print:h-auto">
 
         {/* ── Top Header ── */}
-        <header className="shrink-0 sticky top-0 z-30 h-14 flex items-center justify-between px-4 border-b border-border bg-background/95 backdrop-blur-sm print:hidden">
+        <header className="shrink-0 sticky top-0 z-30 h-13 flex items-center justify-between px-3 sm:px-4 border-b border-border bg-background/95 backdrop-blur-sm print:hidden gap-2">
 
           {/* Left — mobile hamburger + page breadcrumb */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
             <Button
               variant="ghost"
               size="icon"
@@ -365,13 +450,14 @@ export function Layout({ children }: { children: ReactNode }) {
             </Button>
 
             {/* Desktop: show shop name as subtle breadcrumb */}
-            <span className="hidden lg:block text-xs text-muted-foreground font-medium truncate max-w-[180px]">
+            <span className="hidden lg:block text-xs text-muted-foreground font-medium truncate max-w-[140px] xl:max-w-[180px]">
               {shopName}
             </span>
           </div>
 
           {/* Right — actions */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
+
             <LanguageSwitcher />
             <ThemeToggle />
 
@@ -380,7 +466,7 @@ export function Layout({ children }: { children: ReactNode }) {
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              title="Keyboard shortcuts (?)"
+              title="Keyboard shortcuts / Edit keys (F1)"
               onClick={() => setShowShortcuts(true)}
             >
               <Keyboard className="w-4 h-4" />
@@ -405,15 +491,75 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
+        {/* ── Single-Click Quick Action Toolbar ── */}
+        <div className="shrink-0 bg-muted/40 border-b border-border px-2.5 py-1 flex items-center gap-1.5 overflow-x-auto scrollbar-none text-xs print:hidden">
+          <span className="text-[11px] font-bold text-muted-foreground/80 tracking-wide shrink-0 mr-0.5 flex items-center gap-1 select-none">
+            <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />
+            <span className="hidden sm:inline">Single Click Forms:</span>
+          </span>
+
+          {quickBarActions.map((act) => {
+            const Icon = act.icon;
+            const keyDisp = getShortcutKeyDisplay(act.id);
+            const isActive = pathname === act.route.split("?")[0];
+            const handleQuickClick = () => {
+              const targetPath = act.route.split("?")[0];
+              navigate(targetPath);
+            };
+            return (
+              <button
+                key={act.id}
+                onClick={handleQuickClick}
+                className={cn(
+                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border transition-all shrink-0 shadow-2xs group cursor-pointer",
+                  isActive
+                    ? "bg-primary text-primary-foreground border-primary font-semibold"
+                    : "bg-background border-border/80 text-foreground hover:border-primary/50 hover:bg-primary/5"
+                )}
+                title={`Click to open ${act.label} Page (${keyDisp})`}
+              >
+                <Icon className={cn("w-3 h-3 shrink-0", isActive ? "text-primary-foreground" : "text-primary group-hover:scale-110 transition-transform")} />
+                <span>{act.label}</span>
+                {keyDisp && (
+                  <kbd className={cn(
+                    "inline-flex items-center px-1 py-0.2 rounded text-[9px] font-mono font-bold transition-colors",
+                    isActive
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : "bg-muted text-muted-foreground group-hover:text-primary group-hover:bg-primary/10"
+                  )}>
+                    {keyDisp}
+                  </kbd>
+                )}
+              </button>
+            );
+          })}
+
+          <button
+            onClick={() => setShowShortcuts(true)}
+            className="ml-auto text-[11px] text-primary hover:text-primary/80 hover:underline shrink-0 font-medium px-1 flex items-center gap-1 cursor-pointer"
+            title="Edit / Update shortcut keys"
+          >
+            <Keyboard className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Update Keys</span>
+          </button>
+        </div>
+
         {/* ── Page content ── */}
         <main className="flex-1 overflow-hidden print:h-auto print:overflow-visible">
           <ScrollArea className="h-full print:h-auto print:overflow-visible">
-            <div className="w-full max-w-[1600px] min-w-0 mx-auto p-2.5 sm:p-6 print:max-w-none print:p-0 overflow-x-hidden">
+            <div className="w-full max-w-full min-w-0 mx-auto px-4 sm:px-6 md:px-8 py-3 sm:py-5 print:max-w-none print:p-0 overflow-x-hidden">
               {children}
             </div>
           </ScrollArea>
         </main>
       </div>
+
+      {/* ── Command Palette dialog ── */}
+      <CommandPaletteDialog
+        open={showCommandPalette}
+        onOpenChange={setShowCommandPalette}
+        onOpenHelp={() => setShowShortcuts(true)}
+      />
 
       {/* ── Keyboard shortcuts dialog ── */}
       <KeyboardShortcutsDialog open={showShortcuts} onClose={() => setShowShortcuts(false)} />

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useState, useMemo } from "react";
 import { Layout } from "@/components/Layout";
+import { InvoiceModal } from "@/routes/billing";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { inr, calcItem, type Invoice } from "@/lib/storage";
+import { inr, calcItem, type Invoice, isInvoiceGst } from "@/lib/storage";
 import { useAuth } from "@/lib/auth";
 import { formatDate, useDebounce, triggerPrint, cn } from "@/lib/utils";
 import { Receipt, Trash2, Printer, Eye, Award, DollarSign, Search, FileText, Plus, RotateCcw, X } from "lucide-react";
@@ -58,8 +59,10 @@ export default function SalesPage() {
 
 
   const isOperator = authUser?.role === "operator";
-  const invoices = allInvoices;
-  const [docTypeFilter, setDocTypeFilter] = useState<"ALL" | "GST" | "NON-GST">("ALL");
+
+  const invoices = useMemo(() => {
+    return allInvoices.filter((i) => (isOperator ? !isInvoiceGst(i) : isInvoiceGst(i)));
+  }, [allInvoices, isOperator]);
 
   const [activeMainTab, setActiveMainTab] = useState("invoices");
   const [q, setQ] = useState("");
@@ -243,14 +246,9 @@ export default function SalesPage() {
         (filterType === "PAID" && (i.balanceDue || 0) <= 0) ||
         (filterType === "DUE" && (i.balanceDue || 0) > 0);
 
-      const matchDocType =
-        docTypeFilter === "ALL" ||
-        (docTypeFilter === "GST" && i.type === "GST") ||
-        (docTypeFilter === "NON-GST" && i.type !== "GST");
-
-      return matchText && matchStatus && matchDocType;
+      return matchText && matchStatus;
     }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [invoices, debouncedQ, filterType, docTypeFilter]);
+  }, [invoices, debouncedQ, filterType]);
 
   // Aggregated Sales Statistics
   const totalReturnsValuation = useMemo(() => salesReturns.reduce((s, r: any) => s + (r.totalRefund || 0), 0), [salesReturns]);
@@ -298,7 +296,7 @@ export default function SalesPage() {
             <RotateCcw className="w-4 h-4 mr-2" /> Issue Sales Return
           </Button>
           <Link to="/billing">
-            <Button size="lg" className="bg-primary text-white hover:bg-primary/90">
+            <Button data-new-button="true" size="lg" className="bg-primary text-white hover:bg-primary/90">
               <Plus className="w-4 h-4 mr-2" /> Issue New Invoice
             </Button>
           </Link>
@@ -404,46 +402,6 @@ export default function SalesPage() {
 
               {/* Segmented Filter Pills */}
               <div className="flex flex-wrap items-center gap-2">
-                {!isOperator && (
-                  <div className="inline-flex items-center p-1 bg-muted/60 dark:bg-muted/30 rounded-xl gap-1 border border-border/40">
-                    <button
-                      type="button"
-                      onClick={() => setDocTypeFilter("ALL")}
-                      className={cn(
-                        "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all",
-                        docTypeFilter === "ALL"
-                          ? "bg-background text-foreground shadow-xs border border-border/40 font-bold"
-                          : "text-muted-foreground hover:text-foreground hover:bg-background/40"
-                      )}
-                    >
-                      All Types
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDocTypeFilter("GST")}
-                      className={cn(
-                        "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all",
-                        docTypeFilter === "GST"
-                          ? "bg-indigo-600 text-white shadow-xs font-bold dark:bg-indigo-700"
-                          : "text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
-                      )}
-                    >
-                      GST
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDocTypeFilter("NON-GST")}
-                      className={cn(
-                        "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all",
-                        docTypeFilter === "NON-GST"
-                          ? "bg-emerald-600 text-white shadow-xs font-bold dark:bg-emerald-700"
-                          : "text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                      )}
-                    >
-                      Estimate
-                    </button>
-                  </div>
-                )}
 
                 {/* Status Filter Segmented Control */}
                 <div className="inline-flex items-center p-1 bg-muted/60 dark:bg-muted/30 rounded-xl gap-1 border border-border/40">
@@ -926,7 +884,7 @@ export default function SalesPage() {
 
       {/* CREATE SALES RETURN DIALOG */}
       <Dialog open={openReturnDialog} onOpenChange={setOpenReturnDialog}>
-        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+        <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-4 sm:p-6 bg-slate-100 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none">
           <DialogHeader>
             <DialogTitle className="text-lg font-display flex items-center gap-2 text-rose-700">
               <RotateCcw className="w-5 h-5" /> Issue Sales Return (Credit Note)
@@ -1112,8 +1070,8 @@ export default function SalesPage() {
 
       {/* VIEW & PRINT INVOICE MODAL */}
       {selectedInvoice && (
-        <InvoiceViewModal
-          invoice={selectedInvoice}
+        <InvoiceModal
+          inv={selectedInvoice}
           isReturned={returnedInvoiceIds.has((selectedInvoice as any)._id || (selectedInvoice as any).id)}
           onClose={() => setSelectedInvoice(null)}
         />
@@ -1258,158 +1216,4 @@ function CreditNoteViewModal({ salesReturn, onClose }: { salesReturn: any; onClo
   );
 }
 
-function InvoiceViewModal({ invoice, onClose, isReturned }: { invoice: Invoice; onClose: () => void; isReturned?: boolean }) {
-  return (
-    <div className="print-section fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:static print:block print:bg-white print:p-0 print:overflow-visible print:h-auto overflow-y-auto pointer-events-auto">
-      <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:my-0 print:max-h-none print:block">
-        <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
-        <div className="p-6 sm:p-10 print:p-2 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible relative">
 
-          {/* RETURNED Watermark */}
-          {isReturned && (
-            <div
-              className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-10 print:flex"
-              style={{ transform: 'rotate(-35deg)' }}
-            >
-              <span
-                style={{
-                  fontSize: '6rem',
-                  fontWeight: 900,
-                  color: 'rgba(220, 38, 38, 0.12)',
-                  letterSpacing: '0.08em',
-                  whiteSpace: 'nowrap',
-                  border: '6px solid rgba(220, 38, 38, 0.12)',
-                  padding: '0.25em 0.6em',
-                  borderRadius: '0.2em',
-                  lineHeight: 1,
-                  userSelect: 'none',
-                }}
-              >
-                RETURNED
-              </span>
-            </div>
-          )}
-
-          <ShopHeader documentLabel={invoice.type === "GST" ? "Invoice" : "Estimate Sales Receipt"} compact />
-
-          {/* Customer & Meta Details */}
-          <div className="flex justify-between items-start mb-6 text-sm">
-            <div>
-              <div className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-1">Customer Details:</div>
-              <div className="font-bold text-lg">{invoice.customerName}</div>
-              <div className="text-slate-700">{invoice.customerMobile}</div>
-              {invoice.customerAddress && <div className="text-slate-700 mt-0.5 max-w-xs">{invoice.customerAddress}</div>}
-            </div>
-            <div className="text-right">
-              <div className="text-2xl font-display font-bold mb-2 text-slate-900">
-                {invoice.type === "GST" ? "INVOICE" : "ESTIMATE RECEIPT"}
-              </div>
-              <table className="ml-auto text-left text-slate-700 text-xs">
-                <tbody>
-                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Invoice No:</td><td className="font-semibold text-slate-900">{invoice.number}</td></tr>
-                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Date:</td><td className="font-semibold text-slate-900">{formatDate(invoice.createdAt)}</td></tr>
-                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Payment Mode:</td><td className="font-semibold text-slate-900">{invoice.paymentMode}</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Items Table */}
-          <div className="overflow-x-auto w-full mb-6">
-            <table className="w-full text-xs border-collapse border border-slate-300">
-              <thead className="bg-slate-100 text-slate-700 uppercase">
-                <tr>
-                  <th className="border border-slate-300 py-2 px-3 text-center w-10">#</th>
-                  <th className="border border-slate-300 py-2 px-3 text-left">Item Description</th>
-                  <th className="border border-slate-300 py-2 px-3 text-center">Purity</th>
-                  <th className="border border-slate-300 py-2 px-3 text-center">Qty</th>
-                  <th className="border border-slate-300 py-2 px-3 text-center">Net Wt</th>
-                  <th className="border border-slate-300 py-2 px-3 text-right">Rate/g</th>
-                  <th className="border border-slate-300 py-2 px-3 text-right">Making</th>
-                  <th className="border border-slate-300 py-2 px-3 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(invoice.items || []).map((it: any, idx: number) => {
-                  const isGst = invoice.type === "GST";
-                  const c = calcItem(it, isGst);
-                  const qty = it.qty || 1;
-                  const lineTotal = c.line;
-                  return (
-                    <tr key={idx} className="border-b border-slate-300">
-                      <td className="border border-slate-300 py-2 px-3 text-center text-slate-600">{idx + 1}</td>
-                      <td className="border border-slate-300 py-2 px-3 font-semibold">
-                        {it.name} {it.huid ? <span className="ml-1.5 text-[10px] font-mono text-amber-800 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">HUID: {it.huid}</span> : ''}
-                      </td>
-                      <td className="border border-slate-300 py-2 px-3 text-center">{it.purity || '22K'}</td>
-                      <td className="border border-slate-300 py-2 px-3 text-center font-semibold">{qty}</td>
-                      <td className="border border-slate-300 py-2 px-3 text-center font-bold text-amber-800">
-                        {it.netWeight} g
-                      </td>
-                      <td className="border border-slate-300 py-2 px-3 text-right">{inr(it.ratePerGram)}</td>
-                      <td className="border border-slate-300 py-2 px-3 text-right">{inr(it.makingCharge || 0)}</td>
-                      <td className="border border-slate-300 py-2 px-3 text-right font-bold text-slate-900">{inr(lineTotal)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Financial Totals */}
-          <div className="flex flex-col sm:flex-row justify-between items-start text-xs gap-6 mb-6">
-            <div className="w-full sm:w-1/2">
-              {invoice.oldGoldAmount ? (
-                <div className="p-3 border rounded bg-slate-50">
-                  <div className="font-bold text-slate-700 uppercase mb-1">Old Gold Trade-in Credit</div>
-                  <div className="text-sm font-bold text-amber-800">{inr(invoice.oldGoldAmount)}</div>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="w-full sm:w-1/2 max-w-sm ml-auto space-y-1.5 border-t-2 border-slate-300 pt-2">
-              <div className="flex justify-between text-slate-700">
-                <span>Subtotal:</span>
-                <span className="font-semibold">{inr(invoice.subtotal || invoice.total)}</span>
-              </div>
-              {invoice.discount ? (
-                <div className="flex justify-between text-slate-700">
-                  <span>Discount:</span>
-                  <span className="font-semibold text-rose-600">- {inr(invoice.discount)}</span>
-                </div>
-              ) : null}
-              {invoice.gstAmount ? (
-                <div className="flex justify-between text-slate-700">
-                  <span>GST Amount:</span>
-                  <span className="font-semibold">{inr(invoice.gstAmount)}</span>
-                </div>
-              ) : null}
-              <div className="flex justify-between border-t border-slate-300 pt-1.5 font-bold text-sm text-slate-900">
-                <span>Grand Total:</span>
-                <span className="text-emerald-700">{inr(invoice.total)}</span>
-              </div>
-              {invoice.balanceDue ? (
-                <div className="flex justify-between text-rose-700 font-bold border-t border-rose-200 pt-1">
-                  <span>Balance Due:</span>
-                  <span>{inr(invoice.balanceDue)}</span>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="mt-8 border-t border-slate-200 pt-4 text-center text-xs text-slate-600">
-            <InvoiceTerms compact />
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="shrink-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
-          <Button variant="outline" onClick={onClose}>Close</Button>
-          <Button onClick={triggerPrint} className="bg-primary text-white">
-            <Printer className="w-4 h-4 mr-2" /> Print Invoice
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}

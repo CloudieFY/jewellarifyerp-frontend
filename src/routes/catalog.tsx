@@ -375,11 +375,11 @@ export default function CatalogPage() {
             }
           }}>
             <DialogTrigger asChild>
-              <Button className="bg-primary hover:bg-primary/90">
+              <Button data-new-button="true" className="bg-primary hover:bg-primary/90">
                 <Plus className="w-4 h-4 mr-2" /> Add Catalog Item
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-xl" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
+            <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-neutral-50 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
               <DialogHeader>
                 <DialogTitle>{editingId ? "Edit Catalog Item" : "Add New Catalog Item"}</DialogTitle>
                 <DialogDescription>
@@ -640,7 +640,7 @@ export default function CatalogPage() {
       )}
 
       <Dialog open={!!selectedProduct} onOpenChange={(v) => { if (!v) { setSelectedProduct(null); setActiveImageIndex(0); } }}>
-        <DialogContent className="max-w-3xl overflow-hidden p-0 sm:rounded-2xl" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
+        <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-neutral-50 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
           {selectedProduct && (() => {
             const displayImages = selectedProduct.imageUrls?.length ? selectedProduct.imageUrls : (selectedProduct.imageUrl ? [selectedProduct.imageUrl] : []);
             const currentImage = displayImages[activeImageIndex] || displayImages[0];

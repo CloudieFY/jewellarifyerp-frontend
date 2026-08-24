@@ -285,32 +285,33 @@ export default function EmployeesPage() {
 
   return (
     <Layout>
-      <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-3xl sm:text-4xl font-bold font-display tracking-tight text-foreground flex items-center gap-3">
-            <Users className="w-8 h-8 text-amber-600" /> Employees &amp; Payroll Management
+      <header className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl sm:text-3xl font-bold font-display tracking-tight text-foreground flex items-center gap-2.5">
+            <Users className="w-7 h-7 sm:w-8 sm:h-8 text-amber-600 shrink-0" /> <span className="truncate">Employees &amp; Payroll Management</span>
           </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <p className="text-muted-foreground mt-0.5 text-xs sm:text-sm truncate">
             Manage staff profiles, designations, salary disbursements, and printable payslips.
           </p>
         </div>
         {canManage && (
           <Button
-            size="lg"
-            className="w-full sm:w-auto bg-amber-700 hover:bg-amber-800 text-white font-semibold shadow-xs"
+            data-new-button="true"
+            className="shrink-0 bg-amber-700 hover:bg-amber-800 text-white font-semibold shadow-md px-5 py-2 rounded-lg text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap"
             onClick={() => {
               setForm(empty);
               setEditingId(null);
               setOpen(true);
             }}
           >
-            <Plus className="w-5 h-5 mr-2" /> Add New Staff
+            <Plus className="w-4 h-4 shrink-0" />
+            <span>Add New Staff</span>
           </Button>
         )}
       </header>
 
       {/* EXECUTIVE DASHBOARD METRICS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5 mb-5">
         <Card className="border border-border/80 shadow-2xs hover:border-amber-500/30 transition-all">
           <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between text-muted-foreground text-[11px] sm:text-xs font-semibold">
@@ -671,15 +672,14 @@ export default function EmployeesPage() {
 
       {/* NEW / EDIT EMPLOYEE DIALOG */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90vh] overflow-y-auto p-4 sm:p-6" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl flex items-center gap-2">
-              <Users className="w-6 h-6 text-amber-700" />
-              {editingId ? "Edit Employee Profile" : "Register New Staff Member"}
+        <DialogContent className="w-[95vw] sm:max-w-xl max-h-[92vh] overflow-y-auto p-0 border border-rose-300 dark:border-rose-950 bg-background shadow-2xl rounded-xl" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
+          <DialogHeader className="p-3.5 sm:p-4 bg-rose-100/80 dark:bg-slate-900 border-b border-rose-300 dark:border-rose-950 flex items-center justify-between">
+            <DialogTitle className="text-base sm:text-lg font-bold font-sans text-rose-950 dark:text-rose-100 uppercase tracking-wide flex items-center gap-2">
+              <Users className="w-5 h-5 text-rose-700 dark:text-rose-400" />
+              <span>{editingId ? "Edit Employee Profile" : "Register New Staff Member"}</span>
             </DialogTitle>
           </DialogHeader>
-
-          <div className="space-y-4 py-2 text-sm">
+          <div className="p-4 sm:p-6 space-y-4">
             <div>
               <Label className="text-xs font-semibold text-muted-foreground uppercase">Employee Full Name *</Label>
               <Input

@@ -93,6 +93,7 @@ function App() {
                 <Routes>
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/billing" element={<BillingPage />} />
+                  <Route path="/estimate" element={<BillingPage />} />
                   <Route path="/sales" element={<SalesPage />} />
                   <Route path="/dues" element={<DuesPage />} />
                   <Route path="/inventory" element={<InventoryPage />} />

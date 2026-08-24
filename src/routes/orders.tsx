@@ -1,17 +1,16 @@
 import { useState, useMemo, useEffect } from "react";
-import { useFormKeyboardNav } from "@/lib/useFormKeyboardNav";
+import { handleGridArrowNav } from "@/hooks/useGlobalKeyboard";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { inr, type Order, type Karigar } from "@/lib/storage";
 import { useDebounce, triggerPrint } from "@/lib/utils";
 import { useTenantAPI } from "@/lib/api";
-import { Plus, Trash2, Pencil, Printer, Search, Package, CheckCircle2, Award, Scale, DollarSign, Image as ImageIcon } from "lucide-react";
+import { Plus, Trash2, Pencil, Printer, Search } from "lucide-react";
 import { toast } from "sonner";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 import { format } from "date-fns";
@@ -50,11 +49,7 @@ export default function OrdersPage() {
   const debouncedSearchCust = useDebounce(searchCust, 300);
   const [searchKar, setSearchKar] = useState("");
   const debouncedSearchKar = useDebounce(searchKar, 300);
-
-  // Catalog Item Search State for Order Form
-  const [searchCatalogItem, setSearchCatalogItem] = useState("");
-  const debouncedSearchCatalog = useDebounce(searchCatalogItem, 300);
-  const [selectedCatalogItem, setSelectedCatalogItem] = useState<any | null>(null);
+  const [_selectedCatalogItem, setSelectedCatalogItem] = useState<any | null>(null);
 
   // Auto-open modal if navigated from catalog with ?createForItem=...
   useEffect(() => {
@@ -71,7 +66,6 @@ export default function OrdersPage() {
   }, [inventoryList]);
 
   const handleSelectCatalogItem = (item: any) => {
-    setSelectedCatalogItem(item);
     const metalVal = (item.metalType || item.category || "Gold") as Order["metal"];
     const purityVal = item.purity || "22K";
     const desc = `${item.name} (${item.category} ${purityVal}) - Net Wt: ${item.netWeight || 0}g${item.huid ? ` [HUID: ${item.huid}]` : ''}`;
@@ -92,18 +86,6 @@ export default function OrdersPage() {
     }));
     toast.success(`Catalog item "${item.name}" attached to Order!`);
   };
-
-  const matchedCatalogItems = useMemo(() => {
-    if (!debouncedSearchCatalog.trim()) return [];
-    const q = debouncedSearchCatalog.toLowerCase().trim();
-    return inventoryList.filter((i: any) =>
-      (i.name || "").toLowerCase().includes(q) ||
-      (i.barcode || "").toLowerCase().includes(q) ||
-      (i.huid || "").toLowerCase().includes(q) ||
-      (i.itemCode || "").toLowerCase().includes(q) ||
-      (i.category || "").toLowerCase().includes(q)
-    );
-  }, [inventoryList, debouncedSearchCatalog]);
 
   const [newCust, setNewCust] = useState({ name: "", phone: "", phone2: "", address: "" });
   const [viewingReceipt, setViewingReceipt] = useState<Order | null>(null);
@@ -216,8 +198,6 @@ export default function OrdersPage() {
     }
   };
 
-  const handleKeyNav = useFormKeyboardNav(save);
-
   const setStatus = async (id: string, status: Order["status"]) => {
     const order = list.find(r => r.id === id || (r as any)._id === id);
     if (order) {
@@ -264,313 +244,295 @@ export default function OrdersPage() {
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button size="lg" className="w-full sm:w-auto bg-primary text-white" onClick={() => { setForm(empty); setNewCust({ name: "", phone: "", phone2: "", address: "" }); setEditingId(null); setSearchCust(""); setSearchKar(""); setSelectedCatalogItem(null); }}>
+              <Button data-new-button="true" size="lg" className="w-full sm:w-auto bg-primary text-white" onClick={() => { setForm(empty); setNewCust({ name: "", phone: "", phone2: "", address: "" }); setEditingId(null); setSearchCust(""); setSearchKar(""); setSelectedCatalogItem(null); }}>
                 <Plus className="w-4 h-4 mr-2" /> New Custom Order
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto p-4 sm:p-6" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
-              <DialogHeader className="border-b pb-3">
-                <DialogTitle className="font-display text-xl">{editingId ? "Edit Custom Order" : "Create New Custom Jewellery Order"}</DialogTitle>
+            <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-slate-100 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleGridArrowNav}>
+              {/* Header Banner - Matches Software Theme */}
+              <DialogHeader className="p-3 sm:p-4 bg-white dark:bg-slate-950 border-b border-slate-300 dark:border-slate-800 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <DialogTitle className="text-base sm:text-xl font-bold font-display text-slate-900 dark:text-slate-100 uppercase tracking-wide flex items-center gap-2">
+                    <span>CUSTOM JEWELLERY ORDER ERP MASTER</span>
+                  </DialogTitle>
+                  <Badge className="bg-amber-500/20 text-amber-900 dark:text-amber-300 border border-amber-300 text-[10px] uppercase tracking-wider font-bold">
+                    FULL DESKTOP SUITE
+                  </Badge>
+                </div>
+                <Badge className="hidden sm:inline-flex bg-amber-600 text-white font-bold text-xs uppercase px-3 py-1 shadow-sm">
+                  Desktop ERP View
+                </Badge>
               </DialogHeader>
 
-              <div className="space-y-4 py-2">
-                {/* SECTION 1: CUSTOMER SELECTION */}
-                <div className="bg-muted/30 p-3.5 rounded-xl border space-y-3">
-                  <div className="font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                    Customer Details
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs">Search Customer</Label>
+              <div className="p-3 sm:p-5 space-y-4 overflow-y-auto flex-1 bg-slate-50 dark:bg-slate-900">
+                {/* 1. TOP ERP CONTROL HEADER PANEL */}
+                <div className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 p-3 rounded-lg flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm shadow-2xs">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-800 dark:text-slate-200">Date:</span>
                       <Input
-                        placeholder="Search name, mobile, or address..."
-                        value={searchCust}
-                        onChange={(e) => {
-                          setSearchCust(e.target.value);
-                          const match = customers.find(c => c.mobile === e.target.value || (c as any).phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase() || (c.address || "").toLowerCase().includes(e.target.value.toLowerCase()));
-                          if (match) setForm({ ...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || "" });
-                        }}
+                        type="date"
+                        value={form.date}
+                        onChange={e => setForm({ ...form, date: e.target.value })}
+                        className="h-8 text-xs bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 w-32 font-mono font-bold text-center"
                       />
                     </div>
-                    <div>
-                      <Label className="text-xs">Customer *</Label>
-                      <Select value={form.customerMobile || form.customerName || ""} onValueChange={(val) => {
-                        if (val === "NEW") {
-                          setForm({ ...form, customerMobile: "NEW", customerName: "", customerAddress: "" });
-                        } else {
-                          const match = customers.find(c => (c.mobile || (c as any).phone || c.name) === val);
-                          if (match) setForm({ ...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || "" });
-                        }
-                      }}>
-                        <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
-                          {customers.filter(c => c.name.toLowerCase().includes(debouncedSearchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(debouncedSearchCust) || (c.address || "").toLowerCase().includes(debouncedSearchCust.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
-                            <SelectItem key={c._id || c.id} value={c.mobile || (c as any).phone || c.name}>{c.name} {c.mobile || (c as any).phone ? `· ${c.mobile || (c as any).phone}` : ""}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
 
-                  {form.customerMobile === "NEW" && (
-                    <div className="p-3 rounded-md bg-primary/5 border border-primary/20 text-sm space-y-3 mt-2">
-                      <div className="space-y-1.5"><Label className="text-xs">Full Name *</Label><Input value={newCust.name} onChange={e => setNewCust({ ...newCust, name: e.target.value })} className="h-8 bg-background" /></div>
-                      <div className="space-y-1.5"><Label className="text-xs">Mobile No (optional)</Label><Input value={newCust.phone} onChange={e => setNewCust({ ...newCust, phone: e.target.value })} className="h-8 bg-background" /></div>
-                      <div className="space-y-1.5"><Label className="text-xs">Address *</Label><Input value={newCust.address} onChange={e => setNewCust({ ...newCust, address: e.target.value })} className="h-8 bg-background" /></div>
-                    </div>
-                  )}
-
-                  <div>
-                    <Field label="Customer Address" v={form.customerAddress || ""} on={v => setForm({ ...form, customerAddress: v })} />
-                  </div>
-                </div>
-
-                {/* SECTION 2: CATALOG SEARCH & PICKER */}
-                <div className="bg-linear-to-r from-amber-500/10 via-primary/5 to-amber-500/10 p-3.5 rounded-xl border border-amber-500/20 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                      <Package className="w-4 h-4 text-amber-600" /> Search & Attach From Inventory Catalog
-                    </Label>
-                    {selectedCatalogItem && (
-                      <Button type="button" variant="ghost" size="sm" className="h-6 text-[11px] text-muted-foreground hover:text-rose-600" onClick={() => setSelectedCatalogItem(null)}>
-                        Clear Selection
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-2.5 text-muted-foreground" />
-                    <Input
-                      placeholder="Search catalog by Item Name, Barcode, HUID, SKU..."
-                      value={searchCatalogItem}
-                      onChange={(e) => setSearchCatalogItem(e.target.value)}
-                      className="pl-9 h-9 text-xs bg-background"
-                    />
-                  </div>
-
-                  {debouncedSearchCatalog.trim() !== "" && matchedCatalogItems.length > 0 && (
-                    <div className="max-h-48 overflow-y-auto border rounded-lg bg-background divide-y shadow-md">
-                      {matchedCatalogItems.slice(0, 5).map((item: any) => (
-                        <div
-                          key={item._id || item.id}
-                          className="p-2.5 hover:bg-muted/50 cursor-pointer flex items-center justify-between text-xs transition-colors"
-                          onClick={() => {
-                            handleSelectCatalogItem(item);
-                            setSearchCatalogItem("");
-                          }}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            {item.imageUrl ? (
-                              <img src={item.imageUrl} alt={item.name} className="w-8 h-8 object-cover rounded border" />
-                            ) : (
-                              <div className="w-8 h-8 rounded bg-muted flex items-center justify-center font-bold text-[10px] text-muted-foreground">
-                                JW
-                              </div>
-                            )}
-                            <div>
-                              <div className="font-semibold text-foreground">{item.name}</div>
-                              <div className="text-[11px] text-muted-foreground">
-                                {item.category} • {item.purity} • Net Wt: {item.netWeight || 0}g {item.huid ? `• HUID: ${item.huid}` : ''}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-bold text-emerald-700">{inr(item.sellingPrice || Math.round((item.netWeight || 0) * (item.ratePerGram || 7200)))}</div>
-                            <Badge variant="outline" className="text-[10px] py-0 px-1.5">{item.stock || 0} in stock</Badge>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {selectedCatalogItem && (
-                    <div className="p-2.5 bg-background rounded-lg border flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <div>
-                          <span className="font-bold text-foreground">{selectedCatalogItem.name}</span>
-                          <span className="text-muted-foreground ml-2">({selectedCatalogItem.category} {selectedCatalogItem.purity} - {selectedCatalogItem.netWeight}g)</span>
-                        </div>
-                      </div>
-                      <Badge className="bg-emerald-600 text-white">Catalog Item Attached</Badge>
-                    </div>
-                  )}
-                </div>
-
-                {/* SECTION 3: JEWELLERY SPECIFICATIONS & WEIGHTS */}
-                <div className="bg-muted/30 p-3.5 rounded-xl border space-y-3">
-                  <div className="font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                    <Scale className="w-3.5 h-3.5 text-blue-600" /> Order Specifications & Weights
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="col-span-2">
-                      <Field label="Item Description / Design Title *" v={form.itemDescription} on={v => setForm({ ...form, itemDescription: v })} />
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-800 dark:text-slate-200">Order No.:</span>
+                      <Input
+                        readOnly
+                        value={form.orderNo || "Auto"}
+                        className="h-8 text-xs bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 w-24 font-mono font-bold text-center"
+                      />
                     </div>
 
-                    <div>
-                      <Label className="text-xs">Metal Type</Label>
-                      <select className="w-full h-9 border rounded-md px-3 bg-background text-xs mt-1" value={form.metal} onChange={e => setForm({ ...form, metal: e.target.value as Order["metal"] })}>
-                        <option value="Gold">Gold</option>
-                        <option value="Silver">Silver</option>
-                        <option value="Diamond">Diamond</option>
-                        <option value="Platinum">Platinum</option>
-                        <option value="Other">Other</option>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-800 dark:text-slate-200">Due Date:</span>
+                      <Input
+                        type="date"
+                        value={form.dueDate || ""}
+                        onChange={e => setForm({ ...form, dueDate: e.target.value })}
+                        className="h-8 text-xs bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 w-32 font-mono font-bold text-center"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-800 dark:text-slate-200">Customer:</span>
+                      <select
+                        value={form.customerMobile || form.customerName || ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "NEW") {
+                            setForm({ ...form, customerMobile: "NEW", customerName: "", customerAddress: "" });
+                          } else {
+                            const match = customers.find(c => (c.mobile || (c as any).phone || c.name) === val);
+                            if (match) setForm({ ...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || "" });
+                          }
+                        }}
+                        className="h-8 w-56 text-xs sm:text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-bold rounded-md px-2 text-slate-900 dark:text-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      >
+                        <option value="" disabled>Select Party / Customer</option>
+                        <option value="NEW" className="font-bold text-amber-600">+ Create New Customer</option>
+                        {customers.filter(c => c.name.toLowerCase().includes(debouncedSearchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(debouncedSearchCust) || (c.address || "").toLowerCase().includes(debouncedSearchCust.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
+                          <option key={c._id || c.id} value={c.mobile || (c as any).phone || c.name}>{c.name} {c.mobile || (c as any).phone ? `· ${c.mobile || (c as any).phone}` : ""}</option>
+                        ))}
                       </select>
                     </div>
 
-                    <Field label="Purity (e.g. 22K 91.6%)" v={form.purity} on={v => setForm({ ...form, purity: v })} />
-
-                    <Field label="Expected Gross Wt (g)" type="number" v={String(form.expectedGrossWeight || "")} on={v => setForm({ ...form, expectedGrossWeight: +v })} />
-                    <Field label="Expected Pure Net Wt (g)" type="number" v={String(form.expectedNetWeight || "")} on={v => setForm({ ...form, expectedNetWeight: +v })} />
-
-                    <Field label="Size / Length (e.g. Ring 14 / Bangle 2.4)" v={form.sizeLength || ""} on={v => setForm({ ...form, sizeLength: v })} />
-
-                    <div className="flex items-center gap-2 mt-5">
-                      <input
-                        type="checkbox"
-                        id="hmkReq"
-                        checked={form.hallmarkRequired ?? true}
-                        onChange={e => setForm({ ...form, hallmarkRequired: e.target.checked })}
-                        className="rounded border-gray-300 text-primary focus:ring-primary w-4 h-4"
-                      />
-                      <label htmlFor="hmkReq" className="text-xs font-medium cursor-pointer">
-                        HUID Hallmark Certification Required
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* SECTION 4: METAL RATE LOCK DETAILS */}
-                <div className="bg-amber-50/60 border border-amber-200 p-3.5 rounded-xl space-y-3">
-                  <div className="font-semibold text-xs uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
-                    <Award className="w-3.5 h-3.5 text-amber-700" /> Metal Rate Booking & Rate Lock
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs">Rate Lock Status</Label>
-                      <Select value={form.rateLockStatus || "Locked"} onValueChange={(v: any) => setForm({ ...form, rateLockStatus: v })}>
-                        <SelectTrigger className="h-9 text-xs bg-background mt-1"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Locked">Rate Locked at Order Booking</SelectItem>
-                          <SelectItem value="Open">Rate Open (Market Rate at Delivery)</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-800 dark:text-slate-200">Karigar:</span>
+                      <select
+                        value={form.karigarId || ""}
+                        onChange={(e) => setForm({ ...form, karigarId: e.target.value })}
+                        className="h-8 w-44 text-xs sm:text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-bold rounded-md px-2 text-slate-900 dark:text-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      >
+                        <option value="unassigned">Unassigned</option>
+                        {karigars.filter(k => k.name.toLowerCase().includes(debouncedSearchKar.toLowerCase()) || (k.mobile || "").includes(debouncedSearchKar) || (k.address || "").toLowerCase().includes(debouncedSearchKar.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(k => (
+                          <option key={k._id || k.id} value={k._id || k.id}>{k.name} ({k.specialty || "Artisan"})</option>
+                        ))}
+                      </select>
                     </div>
 
-                    <Field label="Booked Gold Rate (₹/g)" type="number" v={String(form.lockedGoldRate || 7200)} on={v => setForm({ ...form, lockedGoldRate: +v })} />
+                    <Input
+                      placeholder="Special order booking narration..."
+                      value={form.note || ""}
+                      onChange={e => setForm({ ...form, note: e.target.value })}
+                      className="h-8 w-60 bg-white dark:bg-slate-900 text-xs sm:text-sm font-semibold border-slate-300 dark:border-slate-700"
+                    />
                   </div>
                 </div>
 
-                {/* SECTION 5: OLD GOLD / SCRAP ADVANCE TRADE-IN */}
-                <div className="bg-emerald-50/60 border border-emerald-200 p-3.5 rounded-xl space-y-3">
-                  <div className="font-semibold text-xs uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
-                    <DollarSign className="w-3.5 h-3.5 text-emerald-700" /> Old Gold Advance / Scrap Deposit
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <Field label="Old Gold Wt (g)" type="number" v={String(form.oldGoldWeight || "")} on={v => setForm({ ...form, oldGoldWeight: +v })} />
-                    <Field label="Old Gold Purity" v={form.oldGoldPurity || "22K"} on={v => setForm({ ...form, oldGoldPurity: v })} />
-                    <Field label="Old Gold Valuation Credit ₹" type="number" v={String(form.oldGoldValuation || "")} on={v => setForm({ ...form, oldGoldValuation: +v })} />
-                  </div>
+                {/* 2. MAIN CUSTOM ORDER ITEMS GRID TABLE (MATCHING DESKTOP ERP SPREADSHEET SCREENSHOT) */}
+                <div className="overflow-x-auto border-2 border-slate-400 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-md">
+                  <table className="w-full text-xs sm:text-sm border-collapse min-w-[1400px]">
+                    <thead className="bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-slate-100 uppercase font-black border-b-2 border-slate-400 dark:border-slate-700">
+                      <tr>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 text-left min-w-44">Item Description / Title</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-center">Metal</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-20 text-center">Purity</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-center">Size</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-right">Est.Gr.Wt</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-right">Est.Net.Wt</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-right">Booked Rate</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-right">Old Gold Wt</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-28 text-right">Old Gold Cr.</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-28 text-right bg-amber-100 dark:bg-amber-950/80 font-bold">Est. Total ₹</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-28 text-right">Adv. Cash ₹</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-32 text-right bg-amber-200 dark:bg-amber-900/90 font-black">Est. Balance ₹</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-20 text-center">HUID</th>
+                      </tr>
+                    </thead>
+                    <tbody className="font-mono text-xs sm:text-sm">
+                      <tr className="hover:bg-sky-50/50 dark:hover:bg-slate-800/60 border-b border-slate-300 dark:border-slate-700">
+                        <td className="p-0 border border-slate-300 dark:border-slate-700">
+                          <input
+                            value={form.itemDescription}
+                            onChange={e => setForm({ ...form, itemDescription: e.target.value })}
+                            placeholder="e.g. Traditional Gold Bridal Necklace 22K"
+                            className="w-full h-9 px-2 text-xs sm:text-sm font-bold font-sans bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                          />
+                        </td>
+                        <td className="p-0 border border-slate-300 dark:border-slate-700 text-center">
+                          <select
+                            className="w-full h-9 px-1 text-xs sm:text-sm font-bold text-center bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 cursor-pointer"
+                            value={form.metal}
+                            onChange={e => setForm({ ...form, metal: e.target.value as Order["metal"] })}
+                          >
+                            <option value="Gold">Gold</option>
+                            <option value="Silver">Silver</option>
+                            <option value="Diamond">Diamond</option>
+                            <option value="Platinum">Platinum</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </td>
+                        <td className="p-0 border border-slate-300 dark:border-slate-700">
+                          <input
+                            value={form.purity}
+                            onChange={e => setForm({ ...form, purity: e.target.value })}
+                            className="w-full h-9 px-1 text-xs sm:text-sm font-bold text-center bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                            placeholder="22K"
+                          />
+                        </td>
+                        <td className="p-0 border border-slate-300 dark:border-slate-700">
+                          <input
+                            value={form.sizeLength || ""}
+                            onChange={e => setForm({ ...form, sizeLength: e.target.value })}
+                            className="w-full h-9 px-1 text-xs sm:text-sm font-bold text-center bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                            placeholder="Ring 14"
+                          />
+                        </td>
+                        <td className="p-0 border border-slate-300 dark:border-slate-700">
+                          <input
+                            type="number"
+                            step="0.001"
+                            value={String(form.expectedGrossWeight || "")}
+                            onChange={e => setForm({ ...form, expectedGrossWeight: +e.target.value })}
+                            className="w-full h-9 px-1.5 text-right font-mono text-xs sm:text-sm font-black bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                          />
+                        </td>
+                        <td className="p-0 border border-slate-300 dark:border-slate-700">
+                          <input
+                            type="number"
+                            step="0.001"
+                            value={String(form.expectedNetWeight || "")}
+                            onChange={e => setForm({ ...form, expectedNetWeight: +e.target.value })}
+                            className="w-full h-9 px-1.5 text-right font-mono text-xs sm:text-sm font-black bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                          />
+                        </td>
+                        <td className="p-0 border border-slate-300 dark:border-slate-700">
+                          <input
+                            type="number"
+                            value={String(form.lockedGoldRate || 7200)}
+                            onChange={e => setForm({ ...form, lockedGoldRate: +e.target.value })}
+                            className="w-full h-9 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                          />
+                        </td>
+                        <td className="p-0 border border-slate-300 dark:border-slate-700">
+                          <input
+                            type="number"
+                            step="0.001"
+                            value={String(form.oldGoldWeight || "")}
+                            onChange={e => setForm({ ...form, oldGoldWeight: +e.target.value })}
+                            className="w-full h-9 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                          />
+                        </td>
+                        <td className="p-0 border border-slate-300 dark:border-slate-700">
+                          <input
+                            type="number"
+                            value={String(form.oldGoldValuation || "")}
+                            onChange={e => setForm({ ...form, oldGoldValuation: +e.target.value })}
+                            className="w-full h-9 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80 text-emerald-600"
+                          />
+                        </td>
+                        <td className="p-0 border border-slate-300 dark:border-slate-700">
+                          <input
+                            type="number"
+                            value={String(form.estimatedTotalAmount || form.fixedPrice || "")}
+                            onChange={e => setForm({ ...form, estimatedTotalAmount: +e.target.value, fixedPrice: +e.target.value })}
+                            className="w-full h-9 px-1.5 text-right font-mono text-xs sm:text-sm font-black bg-amber-100/80 dark:bg-amber-950/50 border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600"
+                          />
+                        </td>
+                        <td className="p-0 border border-slate-300 dark:border-slate-700">
+                          <input
+                            type="number"
+                            value={String(form.advancePaid || "")}
+                            onChange={e => setForm({ ...form, advancePaid: +e.target.value })}
+                            className="w-full h-9 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                          />
+                        </td>
+                        <td className="p-2 border border-slate-300 dark:border-slate-700 text-right bg-amber-200/80 dark:bg-amber-900/70 font-black text-sm sm:text-base text-slate-950 dark:text-white">
+                          {inr(Math.max(0, (form.estimatedTotalAmount || form.fixedPrice || 0) - (form.advancePaid || 0) - (form.oldGoldValuation || 0)))}
+                        </td>
+                        <td className="p-1 border border-slate-300 dark:border-slate-700 text-center">
+                          <input
+                            type="checkbox"
+                            checked={form.hallmarkRequired ?? true}
+                            onChange={e => setForm({ ...form, hallmarkRequired: e.target.checked })}
+                            className="w-4 h-4 rounded text-amber-600 cursor-pointer"
+                          />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
 
-                {/* SECTION 6: FINANCIAL BREAKDOWN */}
-                <div className="bg-muted/30 p-3.5 rounded-xl border space-y-3">
-                  <div className="font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                    Financials & Advance Payments
+                {/* 3. ATTACHMENT & DESIGN REFERENCE PANEL */}
+                <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-300 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3 text-xs shadow-2xs">
+                  <div className="flex items-center gap-2 flex-1 min-w-[280px]">
+                    <span className="font-bold text-slate-800 dark:text-slate-200">Sample Design Sketch:</span>
+                    <Input type="file" accept="image/*" className="bg-white dark:bg-slate-900 text-xs border-slate-300 dark:border-slate-700 h-8 flex-1" onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = () => setForm({ ...form, sampleImageUrl: reader.result as string });
+                        reader.readAsDataURL(file);
+                      }
+                    }} />
                   </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <Field label="Est. Total Amount ₹" type="number" v={String(form.estimatedTotalAmount || form.fixedPrice || "")} on={v => setForm({ ...form, estimatedTotalAmount: +v, fixedPrice: +v })} />
-                    <Field label="Cash Advance Paid ₹" type="number" v={String(form.advancePaid || "")} on={v => setForm({ ...form, advancePaid: +v })} />
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Estimated Balance Due ₹</Label>
-                      <div className="h-9 px-3 border rounded-md bg-muted flex items-center font-bold text-rose-700 text-sm mt-1">
-                        {inr(Math.max(0, (form.estimatedTotalAmount || form.fixedPrice || 0) - (form.advancePaid || 0) - (form.oldGoldValuation || 0)))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* SECTION 7: SAMPLE DESIGN PHOTO UPLOAD */}
-                <div className="bg-muted/30 p-3.5 rounded-xl border space-y-2">
-                  <Label className="text-xs font-semibold flex items-center gap-1.5">
-                    <ImageIcon className="w-3.5 h-3.5" /> Sample Design Image / Reference Sketch Upload
-                  </Label>
-                  <Input type="file" accept="image/*" className="bg-background text-xs" onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onload = () => setForm({ ...form, sampleImageUrl: reader.result as string });
-                      reader.readAsDataURL(file);
-                    }
-                  }} />
                   {form.sampleImageUrl && (
-                    <div className="mt-2 relative w-24 h-24 border rounded-md overflow-hidden bg-background">
-                      <img src={form.sampleImageUrl} alt="Sample Design" className="w-full h-full object-cover" />
-                    </div>
+                    <img src={form.sampleImageUrl} alt="Sketch" className="h-9 w-9 object-cover rounded border border-amber-500" />
                   )}
                 </div>
+              </div>
 
-                {/* SECTION 8: KARIGAR ASSIGNMENT & DATES */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <Field label="Order Date" type="date" v={form.date} on={v => setForm({ ...form, date: v })} />
-                  <Field label="Expected Delivery Due Date" type="date" v={form.dueDate || ""} on={v => setForm({ ...form, dueDate: v })} />
-                  <div>
-                    <Label className="text-xs">Assign Karigar / Artisan</Label>
-                    <Select value={form.karigarId || ""} onValueChange={val => setForm({ ...form, karigarId: val })}>
-                      <SelectTrigger className="h-9 text-xs bg-background mt-1.5"><SelectValue placeholder="Unassigned" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="unassigned">Unassigned</SelectItem>
-                        {karigars.filter(k => k.name.toLowerCase().includes(debouncedSearchKar.toLowerCase()) || (k.mobile || "").includes(debouncedSearchKar) || (k.address || "").toLowerCase().includes(debouncedSearchKar.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(k => (
-                          <SelectItem key={k._id || k.id} value={k._id || k.id}>{k.name} ({k.specialty || "Artisan"})</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+              {/* Bottom Desktop Control Action Bar - Matching Software Theme */}
+              <div className="border-t border-slate-300 dark:border-slate-800 p-3 bg-slate-200/90 dark:bg-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    type="button"
+                    onClick={save}
+                    className="bg-amber-600 hover:bg-amber-700 text-white font-black text-xs sm:text-sm uppercase px-4 h-8.5 shadow-sm"
+                  >
+                    {editingId ? "Save Changes" : "Save Order"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setOpen(false)}
+                    className="h-8.5 text-xs sm:text-sm font-bold uppercase border-slate-300 bg-white"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => { setForm(empty); setSearchCust(""); setSearchKar(""); setSelectedCatalogItem(null); }}
+                    className="h-8.5 text-xs sm:text-sm font-bold uppercase text-red-700 border-slate-300 bg-white hover:bg-red-50"
+                  >
+                    Delete / Clear
+                  </Button>
                 </div>
 
-                <div><Field label="Special Order Notes / Instructions" v={form.note || ""} on={v => setForm({ ...form, note: v })} /></div>
-
-                {/* SECTION 9: SIGNATURES */}
-                <div className="bg-muted/40 p-4 rounded-lg border border-border">
-                  <Label className="text-muted-foreground font-normal block mb-3 text-xs">Customer & Shop Signatures (Optional)</Label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-xs">Customer Signature</Label>
-                      <Input type="file" accept="image/*" className="bg-background mt-1 text-xs" onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = () => setForm({ ...form, customerSignature: reader.result as string });
-                          reader.readAsDataURL(file);
-                        }
-                      }} />
-                      {form.customerSignature && <img src={form.customerSignature} alt="Customer Signature" className="mt-2 h-14 object-contain" />}
-                    </div>
-                    <div>
-                      <Label className="text-xs">Authorized Signatory</Label>
-                      <Input type="file" accept="image/*" className="bg-background mt-1 text-xs" onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = () => setForm({ ...form, authorizedSignatory: reader.result as string });
-                          reader.readAsDataURL(file);
-                        }
-                      }} />
-                      {form.authorizedSignatory && <img src={form.authorizedSignatory} alt="Authorized Signatory" className="mt-2 h-14 object-contain" />}
-                    </div>
-                  </div>
+                <div className="flex items-center gap-3 bg-white dark:bg-slate-900 px-4 py-1.5 rounded-lg border-2 border-amber-500 font-mono font-black text-xs sm:text-sm text-slate-900 dark:text-white">
+                  <span>Est Total: <strong className="text-slate-900 dark:text-white">{inr(form.estimatedTotalAmount || form.fixedPrice || 0)}</strong></span>
+                  <span className="text-slate-300">|</span>
+                  <span>Adv: <strong className="text-emerald-600">{inr((form.advancePaid || 0) + (form.oldGoldValuation || 0))}</strong></span>
+                  <span className="text-slate-300">|</span>
+                  <span>Balance Due: <strong className="text-amber-600 text-sm sm:text-lg">{inr(Math.max(0, (form.estimatedTotalAmount || form.fixedPrice || 0) - (form.advancePaid || 0) - (form.oldGoldValuation || 0)))}</strong></span>
                 </div>
               </div>
 
-              <div className="border-t pt-3 flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button onClick={save} className="bg-primary text-white">{editingId ? "Save Changes" : "Save Order"}</Button>
-              </div>
             </DialogContent>
           </Dialog>
         </header>
@@ -813,41 +775,12 @@ export default function OrdersPage() {
               </div>
             )}
           </CardContent>
-      </Card>
+        </Card>
       </div>
 
       {viewingReceipt && <OrderInvoiceModal order={viewingReceipt} onClose={() => setViewingReceipt(null)} />}
     </Layout>
   );
-}
-
-function Field({ label, v, on, type = "text" }: { label: string; v: string; on: (v: string) => void; type?: string }) {
-  const [focused, setFocused] = useState(false);
-
-  if (type === "date") {
-    let displayValue = v;
-    if (!focused && v) {
-      const parts = v.split('-');
-      if (parts.length === 3) {
-        displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
-      }
-    }
-    return (
-      <div className="space-y-1.5">
-        <Label className="text-xs">{label}</Label>
-        <Input
-          type={focused ? "date" : "text"}
-          placeholder="DD/MM/YYYY"
-          value={displayValue}
-          onChange={(e) => on(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          className="w-full h-9 text-xs"
-        />
-      </div>
-    );
-  }
-  return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={e => on(e.target.value)} className="h-9 text-xs" /></div>;
 }
 
 function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => void }) {

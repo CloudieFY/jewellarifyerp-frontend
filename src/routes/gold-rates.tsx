@@ -141,7 +141,7 @@ export default function GoldRatesPage() {
           <DialogTrigger asChild>
             <Button size="lg">Edit Rates</Button>
           </DialogTrigger>
-          <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto p-4 sm:p-6" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
+          <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-neutral-50 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyNav}>
             <DialogHeader>
               <DialogTitle>Update Metal Rates</DialogTitle>
             </DialogHeader>
