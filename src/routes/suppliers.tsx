@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useLocalState, inr, type Purchase, type Supplier, type SupplierTransaction } from "@/lib/storage";
-import { useDebounce } from "@/lib/utils";
+import { useDebounce, triggerPrint } from "@/lib/utils";
 import { useApiMutation } from "@/hooks/useApi";
 import { useTenantAPI } from "@/lib/api";
 import { Plus, Trash2, Pencil, Search, Loader2, BookOpen, Eye, Wallet, ShoppingBag, ClipboardList, AlertCircle, BarChart3, Truck, Building2, Coins, Sparkles, Printer, UserCheck } from "lucide-react";
@@ -21,6 +21,8 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   PieChart, Pie, Cell, Legend,
 } from "recharts";
+
+import { ShopHeader } from "@/components/InvoiceBranding";
 
 const PIE_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#f43f5e", "#a855f7", "#ec4899", "#64748b"];
 
@@ -847,7 +849,7 @@ export default function SuppliersPage() {
                   {/* ERP Footer Action Toolbar */}
                   <DialogFooter className="p-3.5 bg-slate-100 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex gap-2">
-                      <Button variant="outline" onClick={() => window.print()} className="h-9 text-xs gap-1 bg-white border-slate-300">
+                      <Button variant="outline" onClick={() => triggerPrint()} className="h-9 text-xs gap-1 bg-white border-slate-300">
                         <Printer className="w-3.5 h-3.5" /> Print
                       </Button>
                       <Button variant="outline" onClick={() => { setForm(empty); setEditingId(null); }} className="h-9 text-xs bg-white border-slate-300">
@@ -1138,13 +1140,25 @@ export default function SuppliersPage() {
           {detailSupplier && (
             <>
               <DialogHeader className="p-3.5 sm:p-4 bg-amber-500/10 dark:bg-amber-950/40 border-b border-amber-200 dark:border-slate-800 flex items-center justify-between pr-8">
-                <DialogTitle className="text-base sm:text-xl font-bold font-sans text-amber-950 dark:text-amber-100 flex items-center gap-2">
-                  <BookOpen className="w-6 h-6 text-amber-600" /> {detailSupplier.name}
-                  <span className="text-xs font-mono bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-amber-300">A/c: {detailSupplier.acNo || "1001"}</span>
-                </DialogTitle>
-                <DialogDescription className="text-xs text-amber-900/80 dark:text-amber-300">
-                  Comprehensive Dual Metal &amp; Cash Flow Ledger, Purchase History &amp; Orders.
-                </DialogDescription>
+                <div className="flex items-center justify-between gap-4 w-full">
+                  <div>
+                    <DialogTitle className="text-base sm:text-xl font-bold font-sans text-amber-950 dark:text-amber-100 flex items-center gap-2">
+                      <BookOpen className="w-6 h-6 text-amber-600" /> {detailSupplier.name}
+                      <span className="text-xs font-mono bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-amber-300">A/c: {detailSupplier.acNo || "1001"}</span>
+                    </DialogTitle>
+                    <DialogDescription className="text-xs text-amber-900/80 dark:text-amber-300 mt-0.5">
+                      Comprehensive Dual Metal &amp; Cash Flow Ledger, Purchase History &amp; Orders.
+                    </DialogDescription>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => triggerPrint()}
+                    className="h-8 text-xs gap-1.5 bg-amber-600 text-white hover:bg-amber-700 font-semibold shadow-2xs shrink-0"
+                  >
+                    <Printer className="w-3.5 h-3.5" /> Print Statement
+                  </Button>
+                </div>
               </DialogHeader>
 
               <div className="p-4 sm:p-5 space-y-4">
@@ -1529,6 +1543,98 @@ export default function SuppliersPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ISOLATED PRINTABLE SUPPLIER STATEMENT */}
+      <div id="printable-supplier-statement" className="print-section hidden print:block text-slate-900 bg-white p-6">
+        <ShopHeader documentLabel="SUPPLIER ACCOUNT STATEMENT" compact />
+
+        <div className="border-b-2 border-slate-300 pb-3 mb-4 flex justify-between items-start text-xs">
+          <div>
+            <div className="text-base font-bold text-slate-900 uppercase">
+              {detailSupplier?.name || form.name || "Supplier Account"}
+            </div>
+            <div className="text-slate-600 mt-0.5">
+              A/c No: <strong>{detailSupplier?.acNo || form.acNo || "1001"}</strong> | Mobile: <strong>{detailSupplier?.mobile || form.mobile || "—"}</strong>
+            </div>
+            {(detailSupplier?.address || form.address) && (
+              <div className="text-slate-600 mt-0.5">Address: {detailSupplier?.address || form.address}</div>
+            )}
+            {(detailSupplier?.gstNumber || form.gstNumber) && (
+              <div className="text-slate-600 mt-0.5">GSTIN: {detailSupplier?.gstNumber || form.gstNumber}</div>
+            )}
+          </div>
+          <div className="text-right">
+            <div className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">Statement Date</div>
+            <div className="font-mono text-xs font-semibold">{formatDate(new Date())}</div>
+            <div className="text-[11px] text-slate-600 mt-1 font-mono">
+              Category: {detailSupplier?.category || form.category || "Wholesale"}
+            </div>
+          </div>
+        </div>
+
+        {/* Balances Summary Box */}
+        <div className="grid grid-cols-3 gap-3 bg-amber-50/50 border border-amber-200 p-3 rounded-lg mb-4 text-xs font-mono">
+          <div>
+            <span className="text-[10px] text-amber-900 font-bold uppercase block">Gold Fine Balance</span>
+            <strong className="text-sm text-amber-700">{((detailSupplier || form).balanceGold || 0).toFixed(3)} g</strong>
+          </div>
+          <div>
+            <span className="text-[10px] text-slate-700 font-bold uppercase block">Silver Fine Balance</span>
+            <strong className="text-sm text-slate-800">{((detailSupplier || form).balanceSilver || 0).toFixed(3)} g</strong>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] text-rose-900 font-bold uppercase block">Cash Outstanding</span>
+            <strong className="text-sm text-rose-700">{inr((detailSupplier || form).outstanding || 0)}</strong>
+          </div>
+        </div>
+
+        {/* Transactions Table */}
+        <table className="w-full text-xs font-mono border-collapse border border-slate-300 mb-6">
+          <thead>
+            <tr className="bg-slate-100 border-b border-slate-300 font-bold uppercase text-[10px] text-slate-800">
+              <th className="p-2 border border-slate-300 text-left">Date / Ref</th>
+              <th className="p-2 border border-slate-300 text-left">Particulars</th>
+              <th className="p-2 border border-slate-300 text-center">Flow Type</th>
+              <th className="p-2 border border-slate-300 text-right bg-amber-50">Gold Fine (g)</th>
+              <th className="p-2 border border-slate-300 text-right bg-slate-50">Silver Fine (g)</th>
+              <th className="p-2 border border-slate-300 text-right bg-rose-50">Cash Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {((detailSupplier || form).transactions || []).length === 0 ? (
+              <tr><td colSpan={6} className="text-center py-6 text-slate-500 font-sans">No transaction records logged.</td></tr>
+            ) : (
+              ((detailSupplier || form).transactions || []).map((tx: any, idx: number) => (
+                <tr key={idx} className="border-b border-slate-200">
+                  <td className="p-2 border border-slate-200 font-bold">
+                    {formatDate(tx.date)}
+                    {tx.refNo && <div className="text-[10px] text-slate-500">{tx.refNo}</div>}
+                  </td>
+                  <td className="p-2 border border-slate-200 font-sans">{tx.note || "Transaction Record"}</td>
+                  <td className="p-2 border border-slate-200 text-center font-bold">
+                    {tx.type === "Credit" ? "Credit (Cr)" : "Debit (Dr)"}
+                  </td>
+                  <td className="p-2 border border-slate-200 text-right font-bold text-amber-700">
+                    {(tx.goldWeight || (tx.metal === "Gold" ? tx.weight : 0) || 0) > 0 ? `${(tx.goldWeight || tx.weight || 0).toFixed(3)} g` : "—"}
+                  </td>
+                  <td className="p-2 border border-slate-200 text-right font-bold text-slate-800">
+                    {(tx.silverWeight || (tx.metal === "Silver" ? tx.weight : 0) || 0) > 0 ? `${(tx.silverWeight || tx.weight || 0).toFixed(3)} g` : "—"}
+                  </td>
+                  <td className="p-2 border border-slate-200 text-right font-bold text-rose-700">
+                    {(tx.amount || 0) > 0 ? inr(tx.amount || 0) : "—"}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+
+        {/* Signatures */}
+        <div className="mt-12 grid grid-cols-2 gap-12 text-center text-xs font-bold uppercase tracking-wider">
+          <div className="border-t border-slate-400 pt-2">Supplier Signature</div>
+          <div className="border-t border-slate-400 pt-2">Authorized Signatory / Accountant</div>
+        </div>
+      </div>
     </Layout>
   );
 }

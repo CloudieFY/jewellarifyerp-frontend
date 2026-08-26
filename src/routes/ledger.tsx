@@ -30,6 +30,11 @@ import {
   Hammer,
   UserCheck,
   RotateCcw,
+  Building2,
+  Coins,
+  Scale,
+  CreditCard,
+  Search,
 } from "lucide-react";
 import { DIRECT_EXPENSE_CATEGORIES } from "@/routes/expenses";
 import { ShopHeader } from "@/components/InvoiceBranding";
@@ -39,10 +44,20 @@ export default function LedgerPage() {
   const { tenantSession } = useAuth();
   const authUser = tenantSession?.user;
 
-  const [viewMode, setViewMode] = useState<"daily" | "monthly">("daily");
+  // View Mode: Supports all MMI Jewellery Ledger types
+  const [viewMode, setViewMode] = useState<
+    "daily" | "monthly" | "customer" | "supplier" | "karigar" | "bank_cash" | "fine_metal" | "girvi"
+  >("daily");
+
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
   const [filterType, setFilterType] = useState<string>("All");
+
+  // Party Selection Filters for MMI Party Ledgers
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("all");
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>("all");
+  const [selectedKarigarId, setSelectedKarigarId] = useState<string>("all");
+  const [partySearch, setPartySearch] = useState<string>("");
 
   const targetDateStr = useMemo(() => new Date(selectedDate).toDateString(), [selectedDate]);
 
@@ -53,12 +68,12 @@ export default function LedgerPage() {
   const { data: repairs = [], isLoading: loadingRepairs } = useApi<Repair[]>(["repairs"], () => api.repairs.getAll());
   const { data: customers = [], isLoading: loadingCustomers } = useApi<Customer[]>(["customers"], () => api.customers.getAll());
   const { data: purchases = [], isLoading: loadingPurchases } = useApi<any[]>(["purchases"], () => api.purchases.getAll());
+  const { data: suppliers = [], isLoading: loadingSuppliers } = useApi<any[]>(["suppliers"], () => api.suppliers.getAll());
   const { data: employees = [], isLoading: loadingEmployees } = useApi<any[]>(["employees"], () => api.employees.getAll());
   const { data: girviList = [], isLoading: loadingGirvi } = useApi<any[]>(["girvi"], () => api.girvi.getAll());
   const { data: advances = [], isLoading: loadingAdvances } = useApi<any[]>(["advances"], () => api.advances.getAll());
   const { data: karigars = [], isLoading: loadingKarigars } = useApi<any[]>(["karigars"], () => api.karigars.getAll());
   const { data: salesReturns = [] } = useApi<any[]>(["salesReturns"], () => api.salesReturns.getAll());
-
 
   const isOperator = authUser?.role === "operator";
   const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type !== "GST" : i.type === "GST"), [allInvoices, isOperator]);
@@ -75,7 +90,7 @@ export default function LedgerPage() {
     return payments;
   }, [employees]);
 
-  const isLoading = loadingInvoices || loadingExpenses || loadingOrders || loadingRepairs || loadingCustomers || loadingPurchases || loadingEmployees || loadingGirvi || loadingAdvances || loadingKarigars;
+  const isLoading = loadingInvoices || loadingExpenses || loadingOrders || loadingRepairs || loadingCustomers || loadingPurchases || loadingSuppliers || loadingEmployees || loadingGirvi || loadingAdvances || loadingKarigars;
 
   // Daily entries
   const allDailyEntries = useMemo(() => {
@@ -168,7 +183,6 @@ export default function LedgerPage() {
         }
       }
     });
-
 
     customers.forEach(c => {
       if (c.createdAt && new Date(c.createdAt).toDateString() === targetDateStr) {
@@ -330,7 +344,6 @@ export default function LedgerPage() {
       }
     });
 
-
     customers.forEach(c => {
       if (!c.createdAt) return;
       const isoDate = new Date(c.createdAt).toISOString().slice(0, 10);
@@ -415,6 +428,212 @@ export default function LedgerPage() {
     return Object.values(map).sort((a, b) => b.date.localeCompare(a.date));
   }, [monthlyEntries]);
 
+  // --------------------------------------------------------------------------
+  // MMI CUSTOMER PARTY LEDGER COMPUTATIONS (Grahak Khata)
+  // --------------------------------------------------------------------------
+  const filteredCustomersList = useMemo(() => {
+    if (!partySearch) return customers;
+    const q = partySearch.toLowerCase();
+    return customers.filter(
+      (c) =>
+        (c.name || "").toLowerCase().includes(q) ||
+        (c.phone || c.mobile || "").includes(q)
+    );
+  }, [customers, partySearch]);
+
+  const customerLedgerData = useMemo(() => {
+    if (selectedCustomerId === "all") {
+      // Summary of all customers
+      return customers.map((c: any) => {
+        const custInvoices = invoices.filter((i) => i.customerName === c.name || (i as any).phone === c.phone || (i as any).customerPhone === c.phone);
+        const custReturns = salesReturns.filter((r: any) => r.customerName === c.name);
+        const custAdvances = advances.filter((a: any) => a.customerName === c.name || a.name === c.name);
+
+        const totalSales = custInvoices.reduce((s, i) => s + (i.total || 0), 0);
+        const totalPaid = custInvoices.reduce((s, i) => s + ((i.total || 0) - (i.balanceDue || 0)), 0);
+        const totalRefunds = custReturns.reduce((s: any, r: any) => s + (r.totalRefund || 0), 0);
+        const totalAdv = custAdvances.reduce((s: any, a: any) => s + (a.amount || 0), 0);
+
+        const netBalance = c.balance || (totalSales - totalPaid - totalAdv + totalRefunds);
+
+        // Fine Weight
+        let goldWeightGrams = 0;
+        let silverWeightGrams = 0;
+        custInvoices.forEach((inv) => {
+          (inv.items || []).forEach((item: any) => {
+            const wt = Number(item.netWt || item.netWeight || item.weight || 0);
+            if ((item.metal || "").toLowerCase().includes("silver") || (item.purity || "").toLowerCase().includes("silver")) {
+              silverWeightGrams += wt;
+            } else {
+              goldWeightGrams += wt;
+            }
+          });
+        });
+
+        return {
+          id: c.id || c._id,
+          name: c.name,
+          phone: c.phone || c.mobile || "—",
+          city: c.city || c.address || "—",
+          totalSales,
+          totalPaid,
+          netBalance,
+          goldWeightGrams,
+          silverWeightGrams,
+          lastDate: custInvoices[0]?.createdAt || c.createdAt || new Date(),
+        };
+      });
+    }
+
+    // Specific Customer Statement
+    const selectedCust = customers.find((c: any) => (c.id || c._id) === selectedCustomerId);
+    if (!selectedCust) return [];
+
+    const name = selectedCust.name;
+    const phone = selectedCust.phone || selectedCust.mobile;
+
+    const statement: any[] = [];
+
+    invoices
+      .filter((i) => i.customerName === name || (i as any).phone === phone || (i as any).customerPhone === phone)
+      .forEach((inv) => {
+        statement.push({
+          date: inv.createdAt,
+          voucherNo: inv.number,
+          type: "Sales Invoice",
+          desc: `Bill #${inv.number} — Items: ${(inv.items || []).map((it: any) => it.name).join(", ")}`,
+          debit: inv.total, // Customer owes money
+          credit: (inv.total || 0) - (inv.balanceDue || 0), // Payment received
+          netWt: (inv.items || []).reduce((s: number, it: any) => s + Number(it.netWt || it.netWeight || 0), 0),
+          mode: inv.paymentMode || "Cash",
+        });
+      });
+
+    salesReturns
+      .filter((r: any) => r.customerName === name)
+      .forEach((ret: any) => {
+        statement.push({
+          date: ret.createdAt || ret.date,
+          voucherNo: ret.returnNo || "RET",
+          type: "Sales Return",
+          desc: `Sales Return (Bill #${ret.invoiceNumber || ""})`,
+          debit: 0,
+          credit: ret.totalRefund || 0,
+          netWt: 0,
+          mode: ret.refundMode || "Cash",
+        });
+      });
+
+    advances
+      .filter((a: any) => a.customerName === name || a.name === name)
+      .forEach((adv: any) => {
+        statement.push({
+          date: adv.date || adv.createdAt,
+          voucherNo: adv.receiptNo || "ADV",
+          type: "Customer Advance",
+          desc: `Advance Received: ${adv.note || adv.remarks || ""}`,
+          debit: 0,
+          credit: adv.amount || 0,
+          netWt: 0,
+          mode: adv.paymentMode || adv.mode || "Cash",
+        });
+      });
+
+    return statement.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [selectedCustomerId, customers, invoices, salesReturns, advances]);
+
+  // --------------------------------------------------------------------------
+  // MMI SUPPLIER / DEALER LEDGER COMPUTATIONS (Kharidar Khata)
+  // --------------------------------------------------------------------------
+  const supplierLedgerData = useMemo(() => {
+    if (selectedSupplierId === "all") {
+      return suppliers.map((sup: any) => {
+        const supPurchases = rolePurchases.filter((p) => p.supplierName === sup.name);
+        const totalPurchased = supPurchases.reduce((s, p) => s + (p.total || 0), 0);
+        const totalPaid = supPurchases.filter((p) => p.paymentMode !== "Credit").reduce((s, p) => s + (p.total || 0), 0);
+        const netBalance = totalPurchased - totalPaid;
+
+        return {
+          id: sup.id || sup._id,
+          name: sup.name,
+          phone: sup.phone || sup.mobile || "—",
+          company: sup.companyName || sup.gstNo || "—",
+          totalPurchased,
+          totalPaid,
+          netBalance,
+          lastDate: supPurchases[0]?.date || sup.createdAt || new Date(),
+        };
+      });
+    }
+
+    const selectedSup = suppliers.find((s: any) => (s.id || s._id) === selectedSupplierId);
+    if (!selectedSup) return [];
+
+    const statement: any[] = [];
+    rolePurchases
+      .filter((p) => p.supplierName === selectedSup.name)
+      .forEach((pur) => {
+        statement.push({
+          date: pur.date,
+          billNo: pur.billNo,
+          type: pur.isReturned ? "Purchase Return" : "Purchase Bill",
+          desc: `Purchase Bill #${pur.billNo} — ${pur.itemsDescription || "Stock purchase"}`,
+          credit: pur.total, // We owe supplier
+          debit: pur.paymentMode !== "Credit" ? pur.total : 0, // Paid to supplier
+          fineGoldGrams: pur.fineGoldWeight || 0,
+          fineSilverGrams: pur.fineSilverWeight || 0,
+          mode: pur.paymentMode || "Cash",
+        });
+      });
+
+    return statement.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [selectedSupplierId, suppliers, rolePurchases]);
+
+  // --------------------------------------------------------------------------
+  // MMI KARIGAR ARTISAN LEDGER COMPUTATIONS (Karigar Khata)
+  // --------------------------------------------------------------------------
+  const karigarLedgerData = useMemo(() => {
+    if (selectedKarigarId === "all") {
+      return karigars.map((kar: any) => {
+        const issuedGold = Number(kar.fineGoldIssued || kar.issuedGoldGrams || 0);
+        const receivedGold = Number(kar.fineGoldReceived || kar.receivedGoldGrams || 0);
+        const netGoldBalance = issuedGold - receivedGold;
+
+        const totalLabor = Number(kar.laborCharges || kar.jobWorkAmount || 0);
+        const paidLabor = Number(kar.laborPaid || 0);
+        const netLaborDue = totalLabor - paidLabor;
+
+        return {
+          id: kar.id || kar._id,
+          name: kar.name || kar.karigarName,
+          phone: kar.phone || kar.mobile || "—",
+          specialization: kar.specialization || kar.skill || "Artisan",
+          issuedGold,
+          receivedGold,
+          netGoldBalance,
+          totalLabor,
+          paidLabor,
+          netLaborDue,
+        };
+      });
+    }
+
+    const selectedKar = karigars.find((k: any) => (k.id || k._id) === selectedKarigarId);
+    if (!selectedKar) return [];
+
+    return [
+      {
+        date: selectedKar.createdAt || selectedKar.date || new Date(),
+        task: selectedKar.taskDescription || selectedKar.item || "Job Work Assignment",
+        issuedGold: Number(selectedKar.fineGoldIssued || selectedKar.issuedGoldGrams || 0),
+        receivedGold: Number(selectedKar.fineGoldReceived || selectedKar.receivedGoldGrams || 0),
+        wastage: Number(selectedKar.wastageGrams || 0),
+        laborCharges: Number(selectedKar.laborCharges || selectedKar.jobWorkAmount || 0),
+        status: selectedKar.status || "Completed",
+      },
+    ];
+  }, [selectedKarigarId, karigars]);
+
   // Export Ledger CSV
   const handleDownloadCSV = () => {
     const entriesToExport = viewMode === "daily" ? dailyEntries : monthlyEntries;
@@ -496,20 +715,32 @@ export default function LedgerPage() {
         }
       `}</style>
 
-      <div className="print:hidden">
+      <div className="print:hidden space-y-6">
         {/* Header */}
-        <header className="flex flex-col md:flex-row items-start md:items-end justify-between gap-4 mb-6">
+        <header className="flex flex-col md:flex-row items-start md:items-end justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-display font-bold">{viewMode === "daily" ? "Daily Ledger & Daybook" : "Monthly Cashflow Ledger"}</h1>
+            <div className="flex items-center gap-2 mb-1">
+              <Badge className="bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40 text-xs font-mono">
+                ✨ MMI Jewellery Ledger Suite
+              </Badge>
+            </div>
+            <h1 className="text-3xl font-display font-black tracking-tight text-slate-900 dark:text-slate-100">
+              {viewMode === "daily" && "Daily Daybook & Rokad Register"}
+              {viewMode === "monthly" && "Monthly Cashflow Ledger"}
+              {viewMode === "customer" && "Customer Party Ledger (Grahak Khata)"}
+              {viewMode === "supplier" && "Supplier / Dealer Ledger (Kharidar Khata)"}
+              {viewMode === "karigar" && "Karigar Artisan Work Ledger"}
+              {viewMode === "bank_cash" && "Bank & Cash Book"}
+              {viewMode === "fine_metal" && "Fine Metal Weight Ledger (Gold/Silver g)"}
+              {viewMode === "girvi" && "Girvi Loan Ledger (Pawn Khata)"}
+            </h1>
             <p className="text-muted-foreground text-sm mt-0.5">
-              {viewMode === "daily"
-                ? "Consolidated view of all daily sales, purchases, direct/indirect expenses & advances."
-                : "Comprehensive monthly cashflow, day-by-day trajectory & expense breakdown."}
+              Comprehensive Indian Jewellery ERP Khata accounting suite — track Cash ₹, Fine Metal Weight (g), Deposits & Withdrawals.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-            {viewMode === "daily" ? (
+            {viewMode === "daily" && (
               <div className="space-y-1 w-full sm:w-auto">
                 <Label className="text-xs font-semibold">Select Date</Label>
                 <Input
@@ -519,7 +750,9 @@ export default function LedgerPage() {
                   className="w-full sm:w-44 bg-background h-9 text-xs font-mono"
                 />
               </div>
-            ) : (
+            )}
+
+            {viewMode === "monthly" && (
               <div className="space-y-1 w-full sm:w-auto">
                 <Label className="text-xs font-semibold">Select Month</Label>
                 <Input
@@ -536,78 +769,136 @@ export default function LedgerPage() {
               <Button onClick={handleDownloadCSV} variant="outline" className="h-9 text-xs font-semibold">
                 <FileSpreadsheet className="w-4 h-4 mr-1.5 text-emerald-600" /> Export CSV
               </Button>
-              <Button onClick={triggerPrint} className="h-9 text-xs bg-primary text-white font-semibold">
+              <Button onClick={triggerPrint} className="h-9 text-xs bg-amber-600 hover:bg-amber-700 text-white font-semibold">
                 <Printer className="w-4 h-4 mr-1.5" /> Print / PDF
               </Button>
             </div>
           </div>
         </header>
 
-        {/* Mode Switcher Tabs & Transaction Filters */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div className="flex bg-muted/80 p-1 rounded-xl border w-fit">
+        {/* MMI LEDGER MODE SWITCHER NAVIGATION BAR */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-card border border-amber-500/20 rounded-2xl p-2 shadow-sm">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none min-w-max w-full sm:w-auto">
             <button
-              className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 ${
-                viewMode === "daily"
-                  ? "bg-background shadow-xs text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
               onClick={() => setViewMode("daily")}
-            >
-              <Calendar className="w-4 h-4 text-emerald-600" /> Daily Daybook
-            </button>
-            <button
-              className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-2 ${
-                viewMode === "monthly"
-                  ? "bg-background shadow-xs text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === "daily"
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
               }`}
-              onClick={() => setViewMode("monthly")}
             >
-              <BookOpen className="w-4 h-4 text-blue-600" /> Monthly Ledger
+              <Calendar className="w-3.5 h-3.5" /> Daily Daybook
+            </button>
+
+            <button
+              onClick={() => setViewMode("monthly")}
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === "monthly"
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" /> Monthly Ledger
+            </button>
+
+            <button
+              onClick={() => setViewMode("customer")}
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === "customer"
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" /> Customer Khata
+            </button>
+
+            <button
+              onClick={() => setViewMode("supplier")}
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === "supplier"
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
+              }`}
+            >
+              <Building2 className="w-3.5 h-3.5" /> Dealer Khata
+            </button>
+
+            <button
+              onClick={() => setViewMode("karigar")}
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === "karigar"
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
+              }`}
+            >
+              <Hammer className="w-3.5 h-3.5" /> Karigar Khata
+            </button>
+
+            <button
+              onClick={() => setViewMode("bank_cash")}
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === "bank_cash"
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
+              }`}
+            >
+              <CreditCard className="w-3.5 h-3.5" /> Bank/Cash
+            </button>
+
+            <button
+              onClick={() => setViewMode("fine_metal")}
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === "fine_metal"
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
+              }`}
+            >
+              <Scale className="w-3.5 h-3.5" /> Fine Weight (g)
+            </button>
+
+            <button
+              onClick={() => setViewMode("girvi")}
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === "girvi"
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
+              }`}
+            >
+              <Landmark className="w-3.5 h-3.5" /> Girvi Loan
             </button>
           </div>
 
-          {/* Transaction Type Filters */}
-          <div className="flex items-center gap-1.5 bg-card border rounded-lg p-1 text-xs">
-            <Filter className="w-3.5 h-3.5 text-muted-foreground ml-1.5 mr-0.5" />
-            <button
-              onClick={() => setFilterType("All")}
-              className={`px-2.5 py-1 rounded-md transition-colors ${filterType === "All" ? "bg-primary text-white font-bold" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setFilterType("Inflow")}
-              className={`px-2.5 py-1 rounded-md transition-colors ${filterType === "Inflow" ? "bg-emerald-600 text-white font-bold" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Inflows
-            </button>
-            <button
-              onClick={() => setFilterType("Outflow")}
-              className={`px-2.5 py-1 rounded-md transition-colors ${filterType === "Outflow" ? "bg-rose-600 text-white font-bold" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Outflows
-            </button>
-            <button
-              onClick={() => setFilterType("Direct")}
-              className={`px-2.5 py-1 rounded-md transition-colors ${filterType === "Direct" ? "bg-amber-600 text-white font-bold" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Direct Exp
-            </button>
-            <button
-              onClick={() => setFilterType("Indirect")}
-              className={`px-2.5 py-1 rounded-md transition-colors ${filterType === "Indirect" ? "bg-purple-600 text-white font-bold" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Indirect Exp
-            </button>
-          </div>
+          {/* Transaction Filter Buttons Bar */}
+          {(viewMode === "daily" || viewMode === "monthly") && (
+            <div className="flex items-center gap-1 bg-background border rounded-lg p-1 text-[11px] shrink-0">
+              <Filter className="w-3 h-3 text-muted-foreground ml-1" />
+              <button
+                onClick={() => setFilterType("All")}
+                className={`px-2 py-0.5 rounded transition-colors ${filterType === "All" ? "bg-amber-600 text-white font-bold" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setFilterType("Inflow")}
+                className={`px-2 py-0.5 rounded transition-colors ${filterType === "Inflow" ? "bg-emerald-600 text-white font-bold" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Inflows
+              </button>
+              <button
+                onClick={() => setFilterType("Outflow")}
+                className={`px-2 py-0.5 rounded transition-colors ${filterType === "Outflow" ? "bg-rose-600 text-white font-bold" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Outflows
+              </button>
+            </div>
+          )}
         </div>
 
-        {viewMode === "daily" ? (
+        {/* VIEW 1: DAILY DAYBOOK */}
+        {viewMode === "daily" && (
           <>
             {/* Daily KPI Metrics */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
               <Card className="border">
                 <CardContent className="pt-5">
                   <div className="text-xs text-muted-foreground font-semibold flex items-center gap-1 uppercase">
@@ -730,10 +1021,13 @@ export default function LedgerPage() {
               </CardContent>
             </Card>
           </>
-        ) : (
+        )}
+
+        {/* VIEW 2: MONTHLY CASHFLOW LEDGER */}
+        {viewMode === "monthly" && (
           <>
             {/* Monthly KPI Metrics */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
               <Card className="border">
                 <CardContent className="pt-5">
                   <div className="text-xs text-muted-foreground font-semibold flex items-center gap-1 uppercase">
@@ -787,37 +1081,37 @@ export default function LedgerPage() {
               </Card>
             </div>
 
-            {/* Day-by-Day Summary Table */}
-            <Card className="shadow-sm border mb-6">
-              <CardHeader className="border-b bg-muted/20 py-4">
-                <CardTitle className="text-base font-bold font-display flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-blue-600" /> Day-by-Day Monthly Trajectory ({selectedMonth})
+            {/* Monthly Day-by-Day Trajectory Table */}
+            <Card className="shadow-sm border">
+              <CardHeader className="border-b bg-muted/20 py-3">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-blue-600" /> Day-by-Day Monthly Trajectory ({selectedMonth})
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[600px]">
-                    <thead className="text-left text-xs font-bold uppercase tracking-wider text-muted-foreground border-b bg-muted/30">
+                  <table className="w-full text-xs min-w-[600px]">
+                    <thead className="text-left font-bold uppercase tracking-wider text-muted-foreground border-b bg-muted/30">
                       <tr>
-                        <th className="py-3 px-4">Date</th>
-                        <th className="py-3 text-center">Transactions</th>
-                        <th className="py-3 text-right text-emerald-600">Total In (+)</th>
-                        <th className="py-3 text-right text-rose-600">Total Out (-)</th>
-                        <th className="py-3 px-4 text-right">Day Net Cashflow</th>
+                        <th className="py-2.5 px-4">Date</th>
+                        <th className="py-2.5 text-center">Transactions</th>
+                        <th className="py-2.5 text-right text-emerald-600">Total In (+)</th>
+                        <th className="py-2.5 text-right text-rose-600">Total Out (-)</th>
+                        <th className="py-2.5 px-4 text-right">Day Net Cashflow</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border">
+                    <tbody className="divide-y font-mono">
                       {monthlyDailySummary.map((day) => {
                         const net = day.totalIn - day.totalOut;
                         return (
                           <tr key={day.date} className="hover:bg-muted/30 transition-colors">
-                            <td className="py-3 px-4 font-mono font-bold text-xs">{formatDate(day.date)}</td>
-                            <td className="py-3 text-center">
-                              <Badge variant="outline" className="text-xs">{day.count} entries</Badge>
+                            <td className="py-2 px-4 font-bold">{formatDate(day.date)}</td>
+                            <td className="py-2 text-center">
+                              <Badge variant="outline" className="text-[10px]">{day.count} entries</Badge>
                             </td>
-                            <td className="py-3 text-right font-mono text-emerald-600 font-semibold">{inr(day.totalIn)}</td>
-                            <td className="py-3 text-right font-mono text-rose-600 font-semibold">{inr(day.totalOut)}</td>
-                            <td className={`py-3 px-4 text-right font-mono font-bold ${net >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                            <td className="py-2 text-right font-bold text-emerald-600">{inr(day.totalIn)}</td>
+                            <td className="py-2 text-right font-bold text-rose-600">{inr(day.totalOut)}</td>
+                            <td className={`py-2 px-4 text-right font-bold ${net >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                               {inr(net)}
                             </td>
                           </tr>
@@ -829,11 +1123,11 @@ export default function LedgerPage() {
               </CardContent>
             </Card>
 
-            {/* Full Monthly Entries Table */}
+            {/* Monthly Table */}
             <Card className="shadow-sm border">
               <CardHeader className="border-b bg-muted/20 py-4">
                 <CardTitle className="text-base font-bold font-display flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-purple-600" /> All Monthly Ledger Entries
+                  <BookOpen className="w-5 h-5 text-purple-600" /> All Monthly Ledger Entries ({selectedMonth})
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
@@ -883,15 +1177,477 @@ export default function LedgerPage() {
             </Card>
           </>
         )}
+
+        {/* VIEW 3: MMI CUSTOMER PARTY LEDGER (GRAHAK KHATA) */}
+        {viewMode === "customer" && (
+          <div className="space-y-4">
+            {/* Customer Search & Select Bar */}
+            <Card className="border p-4 bg-muted/10">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <Users className="w-5 h-5 text-amber-600" />
+                  <div>
+                    <h3 className="font-bold text-sm">Select Customer Party Khata</h3>
+                    <p className="text-xs text-muted-foreground">View individual customer sales, payments, advances & metal balances</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="w-4 h-4 absolute left-3 top-2.5 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder="Search customer name or phone..."
+                      value={partySearch}
+                      onChange={(e) => setPartySearch(e.target.value)}
+                      className="pl-9 h-9 text-xs"
+                    />
+                  </div>
+                  <select
+                    value={selectedCustomerId}
+                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    className="h-9 px-3 text-xs font-bold rounded-md border border-input bg-background w-full sm:w-48"
+                  >
+                    <option value="all">-- All Customers ({customers.length}) --</option>
+                    {filteredCustomersList.map((c: any) => (
+                      <option key={c.id || c._id} value={c.id || c._id}>
+                        {c.name} ({c.phone || c.mobile || "—"})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </Card>
+
+            {/* Customer Table View */}
+            {selectedCustomerId === "all" ? (
+              <Card className="border shadow-sm">
+                <CardHeader className="py-3 border-b bg-muted/20">
+                  <CardTitle className="text-sm font-bold flex items-center justify-between">
+                    <span>Customer Ledger Balances Summary</span>
+                    <Badge variant="outline">{customers.length} Total Customers</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/40 uppercase font-bold text-muted-foreground border-b text-left">
+                      <tr>
+                        <th className="p-3">Customer Name</th>
+                        <th className="p-3">Phone</th>
+                        <th className="p-3 text-right">Total Purchases</th>
+                        <th className="p-3 text-right text-emerald-600">Total Paid</th>
+                        <th className="p-3 text-right text-rose-600">Cash Due Balance</th>
+                        <th className="p-3 text-right text-amber-600">Gold (g)</th>
+                        <th className="p-3 text-right text-slate-600">Silver (g)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y font-mono">
+                      {customerLedgerData.map((c: any) => (
+                        <tr key={c.id} className="hover:bg-muted/30">
+                          <td className="p-3 font-sans font-bold text-slate-900 dark:text-slate-100">{c.name}</td>
+                          <td className="p-3">{c.phone}</td>
+                          <td className="p-3 text-right font-bold">{inr(c.totalSales)}</td>
+                          <td className="p-3 text-right font-bold text-emerald-600">{inr(c.totalPaid)}</td>
+                          <td className={`p-3 text-right font-bold ${c.netBalance > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                            {inr(c.netBalance)}
+                          </td>
+                          <td className="p-3 text-right font-bold text-amber-600">{c.goldWeightGrams ? `${c.goldWeightGrams.toFixed(2)}g` : "—"}</td>
+                          <td className="p-3 text-right font-bold text-slate-600">{c.silverWeightGrams ? `${c.silverWeightGrams.toFixed(2)}g` : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border shadow-sm">
+                <CardHeader className="py-3 border-b bg-muted/20">
+                  <CardTitle className="text-sm font-bold flex items-center justify-between">
+                    <span>Customer Particulars Statement ({customers.find((c: any) => (c.id || c._id) === selectedCustomerId)?.name})</span>
+                    <Badge className="bg-amber-600">{customerLedgerData.length} Statement Rows</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/40 uppercase font-bold text-muted-foreground border-b text-left">
+                      <tr>
+                        <th className="p-3">Date</th>
+                        <th className="p-3">Voucher #</th>
+                        <th className="p-3">Type</th>
+                        <th className="p-3">Particulars & Items</th>
+                        <th className="p-3">Mode</th>
+                        <th className="p-3 text-right text-rose-600">Debit (Udhar ₹)</th>
+                        <th className="p-3 text-right text-emerald-600">Credit (Jama ₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y font-mono">
+                      {customerLedgerData.map((row: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-muted/30">
+                          <td className="p-3 font-sans">{formatDate(row.date)}</td>
+                          <td className="p-3 font-bold">{row.voucherNo}</td>
+                          <td className="p-3 font-sans">{row.type}</td>
+                          <td className="p-3 font-sans">{row.desc}</td>
+                          <td className="p-3">{row.mode}</td>
+                          <td className="p-3 text-right font-bold text-rose-600">{row.debit ? inr(row.debit) : "—"}</td>
+                          <td className="p-3 text-right font-bold text-emerald-600">{row.credit ? inr(row.credit) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* VIEW 4: SUPPLIER / DEALER LEDGER (KHARIDAR KHATA) */}
+        {viewMode === "supplier" && (
+          <div className="space-y-4">
+            <Card className="border p-4 bg-muted/10">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Building2 className="w-5 h-5 text-amber-600" />
+                  <div>
+                    <h3 className="font-bold text-sm">Supplier & Bullion Dealer Khata</h3>
+                    <p className="text-xs text-muted-foreground">Track bullion purchases, dealer payments & fine metal balances</p>
+                  </div>
+                </div>
+
+                <select
+                  value={selectedSupplierId}
+                  onChange={(e) => setSelectedSupplierId(e.target.value)}
+                  className="h-9 px-3 text-xs font-bold rounded-md border border-input bg-background w-full sm:w-64"
+                >
+                  <option value="all">-- All Suppliers ({suppliers.length}) --</option>
+                  {suppliers.map((s: any) => (
+                    <option key={s.id || s._id} value={s.id || s._id}>
+                      {s.name} ({s.companyName || s.phone || "Dealer"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </Card>
+
+            <Card className="border shadow-sm">
+              <CardHeader className="py-3 border-b bg-muted/20">
+                <CardTitle className="text-sm font-bold flex items-center justify-between">
+                  <span>Supplier Purchase Ledger Summary</span>
+                  <Badge variant="outline">{supplierLedgerData.length} Records</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40 uppercase font-bold text-muted-foreground border-b text-left">
+                    <tr>
+                      <th className="p-3">{selectedSupplierId === "all" ? "Supplier Name" : "Date"}</th>
+                      <th className="p-3">{selectedSupplierId === "all" ? "Company / GST" : "Bill #"}</th>
+                      <th className="p-3">{selectedSupplierId === "all" ? "Phone" : "Type"}</th>
+                      <th className="p-3 text-right">{selectedSupplierId === "all" ? "Total Purchases" : "Credit (We Owe)"}</th>
+                      <th className="p-3 text-right text-emerald-600">{selectedSupplierId === "all" ? "Total Paid" : "Debit (Paid)"}</th>
+                      <th className="p-3 text-right text-amber-600">{selectedSupplierId === "all" ? "Net Payable Balance" : "Payment Mode"}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y font-mono">
+                    {supplierLedgerData.map((row: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-muted/30">
+                        <td className="p-3 font-sans font-bold">{selectedSupplierId === "all" ? row.name : formatDate(row.date)}</td>
+                        <td className="p-3">{selectedSupplierId === "all" ? row.company : row.billNo}</td>
+                        <td className="p-3 font-sans">{selectedSupplierId === "all" ? row.phone : row.type}</td>
+                        <td className="p-3 text-right font-bold">{inr(selectedSupplierId === "all" ? row.totalPurchased : row.credit)}</td>
+                        <td className="p-3 text-right font-bold text-emerald-600">{inr(selectedSupplierId === "all" ? row.totalPaid : row.debit)}</td>
+                        <td className="p-3 text-right font-bold text-amber-600">
+                          {selectedSupplierId === "all" ? inr(row.netBalance) : row.mode}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* VIEW 5: KARIGAR ARTISAN WORK LEDGER */}
+        {viewMode === "karigar" && (
+          <div className="space-y-4">
+            <Card className="border p-4 bg-muted/10">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Hammer className="w-5 h-5 text-amber-600" />
+                  <div>
+                    <h3 className="font-bold text-sm">Karigar Job Work & Metal Issue Khata</h3>
+                    <p className="text-xs text-muted-foreground">Monitor gold/silver issued to artisans, wastage, and labor crafting charges</p>
+                  </div>
+                </div>
+
+                <select
+                  value={selectedKarigarId}
+                  onChange={(e) => setSelectedKarigarId(e.target.value)}
+                  className="h-9 px-3 text-xs font-bold rounded-md border border-input bg-background w-full sm:w-64"
+                >
+                  <option value="all">-- All Karigars ({karigars.length}) --</option>
+                  {karigars.map((k: any) => (
+                    <option key={k.id || k._id} value={k.id || k._id}>
+                      {k.name || k.karigarName} ({k.specialization || "Artisan"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </Card>
+
+            <Card className="border shadow-sm">
+              <CardHeader className="py-3 border-b bg-muted/20">
+                <CardTitle className="text-sm font-bold flex items-center justify-between">
+                  <span>Karigar Fine Metal & Labor Ledger Summary</span>
+                  <Badge variant="outline">{karigarLedgerData.length} Karigars</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40 uppercase font-bold text-muted-foreground border-b text-left">
+                    <tr>
+                      <th className="p-3">{selectedKarigarId === "all" ? "Karigar Name" : "Date"}</th>
+                      <th className="p-3">{selectedKarigarId === "all" ? "Specialization" : "Task / Item"}</th>
+                      <th className="p-3 text-right text-rose-600">{selectedKarigarId === "all" ? "Gold Issued (g)" : "Issued Gold"}</th>
+                      <th className="p-3 text-right text-emerald-600">{selectedKarigarId === "all" ? "Gold Received (g)" : "Received Gold"}</th>
+                      <th className="p-3 text-right text-amber-600">{selectedKarigarId === "all" ? "Net Gold Bal with Karigar" : "Wastage (g)"}</th>
+                      <th className="p-3 text-right">{selectedKarigarId === "all" ? "Labor Due (₹)" : "Labor Charges"}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y font-mono">
+                    {karigarLedgerData.map((row: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-muted/30">
+                        <td className="p-3 font-sans font-bold">{selectedKarigarId === "all" ? row.name : formatDate(row.date)}</td>
+                        <td className="p-3 font-sans">{selectedKarigarId === "all" ? row.specialization : row.task}</td>
+                        <td className="p-3 text-right font-bold text-rose-600">{row.issuedGold ? `${row.issuedGold.toFixed(3)}g` : "0g"}</td>
+                        <td className="p-3 text-right font-bold text-emerald-600">{row.receivedGold ? `${row.receivedGold.toFixed(3)}g` : "0g"}</td>
+                        <td className="p-3 text-right font-bold text-amber-600">
+                          {selectedKarigarId === "all" ? `${(row.netGoldBalance || 0).toFixed(3)}g` : `${(row.wastage || 0).toFixed(3)}g`}
+                        </td>
+                        <td className="p-3 text-right font-bold">{inr(selectedKarigarId === "all" ? row.netLaborDue : row.laborCharges)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* VIEW 6: BANK & CASH BOOK LEDGER */}
+        {viewMode === "bank_cash" && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Card className="border bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/20 dark:to-slate-900">
+                <CardContent className="p-5 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">Total Cash Receipts (Jama)</span>
+                    <div className="text-3xl font-black font-mono mt-1 text-emerald-600">
+                      {inr(allDailyEntries.filter((e) => e.mode === "Cash").reduce((s, e) => s + e.in, 0))}
+                    </div>
+                  </div>
+                  <Coins className="w-8 h-8 text-emerald-500/40" />
+                </CardContent>
+              </Card>
+
+              <Card className="border bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/20 dark:to-slate-900">
+                <CardContent className="p-5 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-blue-800 dark:text-blue-300 uppercase tracking-wider">Total Bank / Online UPI Receipts</span>
+                    <div className="text-3xl font-black font-mono mt-1 text-blue-600">
+                      {inr(allDailyEntries.filter((e) => e.mode !== "Cash" && e.mode !== "—").reduce((s, e) => s + e.in, 0))}
+                    </div>
+                  </div>
+                  <CreditCard className="w-8 h-8 text-blue-500/40" />
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="border shadow-sm">
+              <CardHeader className="py-3 border-b bg-muted/20">
+                <CardTitle className="text-sm font-bold flex items-center justify-between">
+                  <span>Bank & Cash Movement Journal</span>
+                  <Badge variant="outline">{allDailyEntries.length} Today's Entries</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40 uppercase font-bold text-muted-foreground border-b text-left">
+                    <tr>
+                      <th className="p-3">Time</th>
+                      <th className="p-3">Payment Mode</th>
+                      <th className="p-3">Particulars / Source</th>
+                      <th className="p-3 text-right text-emerald-600">Cash In (₹)</th>
+                      <th className="p-3 text-right text-rose-600">Cash Out (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y font-mono">
+                    {allDailyEntries.map((e: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-muted/30">
+                        <td className="p-3 font-sans">{formatDate(e.date || e.time)}</td>
+                        <td className="p-3"><Badge variant="outline">{e.mode}</Badge></td>
+                        <td className="p-3 font-sans">{e.desc}</td>
+                        <td className="p-3 text-right font-bold text-emerald-600">{e.in ? inr(e.in) : "—"}</td>
+                        <td className="p-3 text-right font-bold text-rose-600">{e.out ? inr(e.out) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* VIEW 7: FINE METAL WEIGHT LEDGER */}
+        {viewMode === "fine_metal" && (
+          <div className="space-y-4">
+            <Card className="border p-4 bg-muted/10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Scale className="w-5 h-5 text-amber-600" />
+                  <div>
+                    <h3 className="font-bold text-sm">Fine Metal Weight Flow Ledger (Gold & Silver Grams)</h3>
+                    <p className="text-xs text-muted-foreground">Consolidated physical fine weight audit across sales, bullion purchases & karigar metal transfers</p>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="border shadow-sm">
+              <CardHeader className="py-3 border-b bg-muted/20">
+                <CardTitle className="text-sm font-bold flex items-center justify-between">
+                  <span>Fine Metal Weight Audit Log</span>
+                  <Badge className="bg-amber-600 font-mono">Physical Stock Log</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40 uppercase font-bold text-muted-foreground border-b text-left">
+                    <tr>
+                      <th className="p-3">Voucher / Bill #</th>
+                      <th className="p-3">Party Name</th>
+                      <th className="p-3">Transaction Type</th>
+                      <th className="p-3 text-right text-amber-600">Gold Net Wt (g)</th>
+                      <th className="p-3 text-right text-slate-600">Silver Net Wt (g)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y font-mono">
+                    {invoices.slice(0, 15).map((inv: any, idx: number) => {
+                      let gWt = 0;
+                      let sWt = 0;
+                      (inv.items || []).forEach((it: any) => {
+                        const wt = Number(it.netWt || it.netWeight || it.weight || 0);
+                        if ((it.metal || "").toLowerCase().includes("silver")) sWt += wt;
+                        else gWt += wt;
+                      });
+
+                      return (
+                        <tr key={idx} className="hover:bg-muted/30">
+                          <td className="p-3 font-bold">{inv.number}</td>
+                          <td className="p-3 font-sans font-bold">{inv.customerName}</td>
+                          <td className="p-3 font-sans">Sales Invoice</td>
+                          <td className="p-3 text-right font-bold text-amber-600">{gWt ? `${gWt.toFixed(3)}g` : "—"}</td>
+                          <td className="p-3 text-right font-bold text-slate-600">{sWt ? `${sWt.toFixed(3)}g` : "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* VIEW 8: GIRVI LOAN KHATA */}
+        {viewMode === "girvi" && (
+          <div className="space-y-4">
+            <Card className="border p-4 bg-muted/10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Landmark className="w-5 h-5 text-amber-600" />
+                  <div>
+                    <h3 className="font-bold text-sm">Girvi Loan & Pawn Asset Khata</h3>
+                    <p className="text-xs text-muted-foreground">Gold/Silver mortgage loans disbursed, interest income, pledged ornament weights & status</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="font-mono">{girviList.length} Active Girvi Tickets</Badge>
+              </div>
+            </Card>
+
+            <Card className="border shadow-sm">
+              <CardHeader className="py-3 border-b bg-muted/20">
+                <CardTitle className="text-sm font-bold">Girvi Pawn Register Log</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40 uppercase font-bold text-muted-foreground border-b text-left">
+                    <tr>
+                      <th className="p-3">Ticket #</th>
+                      <th className="p-3">Pledger / Customer</th>
+                      <th className="p-3">Issue Date</th>
+                      <th className="p-3 text-right text-rose-600">Loan Principal (₹)</th>
+                      <th className="p-3 text-right text-amber-600">Pledged Net Wt (g)</th>
+                      <th className="p-3 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y font-mono">
+                    {girviList.map((g: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-muted/30">
+                        <td className="p-3 font-bold">#{g.ticketNo || g.number || idx + 1}</td>
+                        <td className="p-3 font-sans font-bold">{g.customerName || g.pledgerName || "Customer"}</td>
+                        <td className="p-3 font-sans">{formatDate(g.date || g.createdAt || new Date())}</td>
+                        <td className="p-3 text-right font-bold text-rose-600">{inr(g.loanAmount || g.principalAmount || 0)}</td>
+                        <td className="p-3 text-right font-bold text-amber-600">{g.netWeight ? `${g.netWeight}g` : "—"}</td>
+                        <td className="p-3 text-center">
+                          <Badge className={g.status === "Released" ? "bg-emerald-600" : "bg-amber-600"}>
+                            {g.status || "Active"}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                    {girviList.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="p-8 text-center text-muted-foreground font-sans">
+                          No Girvi pawn loan entries recorded yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
 
       {/* ISOLATED PRINTABLE LEDGER STATEMENT */}
       <div id="printable-ledger-statement" className="print-section hidden print:block text-slate-900 bg-white p-6">
-        <ShopHeader documentLabel={viewMode === "daily" ? "Daily Daybook Statement" : "Monthly Cashflow Statement"} compact />
+        <ShopHeader
+          documentLabel={
+            viewMode === "supplier"
+              ? "Supplier Ledger Statement"
+              : viewMode === "customer"
+              ? "Customer Ledger Statement"
+              : viewMode === "karigar"
+              ? "Karigar Work Ledger Statement"
+              : viewMode === "daily"
+              ? "Daily Daybook Statement"
+              : "Ledger Statement"
+          }
+          compact
+        />
 
         <div className="text-center my-3 border-b border-slate-300 pb-3">
           <h2 className="text-base font-bold uppercase tracking-wider">
-            {viewMode === "daily" ? `Daybook Ledger Statement (${formatDate(selectedDate)})` : `Monthly Cashflow Statement (${selectedMonth})`}
+            {viewMode === "supplier"
+              ? "Supplier Account Ledger Statement"
+              : viewMode === "customer"
+              ? "Customer Account Ledger Statement"
+              : viewMode === "karigar"
+              ? "Karigar Work Ledger Statement"
+              : viewMode === "daily"
+              ? `Daybook Ledger Statement (${formatDate(selectedDate)})`
+              : `Monthly Cashflow Statement (${selectedMonth})`}
           </h2>
           <div className="text-xs text-slate-600 font-semibold mt-0.5">Filter: {filterType} Transactions</div>
         </div>

@@ -45,6 +45,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { useGlobalKeyboard, useActiveShortcuts } from "@/hooks/useGlobalKeyboard";
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { CommandPaletteDialog } from "@/components/CommandPaletteDialog";
+import { HeaderGoldRatesDialog } from "@/components/HeaderGoldRatesDialog";
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 
@@ -456,7 +457,8 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
 
           {/* Right — actions */}
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <HeaderGoldRatesDialog />
 
             <LanguageSwitcher />
             <ThemeToggle />

@@ -1,5 +1,5 @@
 import { Layout } from "@/components/Layout";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,12 +16,14 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { handleGridArrowNav } from "@/hooks/useGlobalKeyboard";
-import { Plus, Trash2, Printer, Receipt, Pencil, Search, Calendar, Calculator, Scale, Palette, AlertCircle, NotebookPen, Send, ScanBarcode, Coins } from "lucide-react";
+import { Plus, Trash2, Printer, Receipt, Pencil, Search, Calendar, Calculator, Scale, Palette, AlertCircle, NotebookPen, Send, ScanBarcode, Coins, Boxes, UserCheck, UserPlus } from "lucide-react";
 import { WhatsAppIcon } from "@/components/WhatsAppIcon";
 import {
   inr,
@@ -90,41 +92,6 @@ function dedupeInvoices(arr: any[]) {
   return Array.from(m.values());
 }
 
-function isProductMatchingBillMetal(p: any, billMetal: "Gold" | "Silver"): boolean {
-  const mType = (p.metalType || "").toLowerCase();
-  const cat = (p.category || "").toLowerCase();
-  const name = (p.name || "").toLowerCase();
-  const purity = (p.purity || "").toLowerCase();
-
-  const isSilver =
-    mType.includes("silver") ||
-    mType.includes("chandi") ||
-    cat.includes("silver") ||
-    cat.includes("chandi") ||
-    name.includes("silver") ||
-    name.includes("chandi") ||
-    purity.includes("925") ||
-    purity.includes("999") ||
-    purity.includes("800");
-
-  const isGold =
-    mType.includes("gold") ||
-    cat.includes("gold") ||
-    name.includes("gold") ||
-    purity.includes("22k") ||
-    purity.includes("18k") ||
-    purity.includes("24k") ||
-    purity.includes("14k");
-
-  if (billMetal === "Silver") {
-    if (isGold && !isSilver) return false;
-    return isSilver || !isGold;
-  } else {
-    if (isSilver && !isGold) return false;
-    return true;
-  }
-}
-
 export default function BillingPage() {
   const api = useTenantAPI();
   const queryClient = useQueryClient();
@@ -154,6 +121,43 @@ export default function BillingPage() {
   const updateOrderMutation = useApiMutation((data: { id: string; body: any }) => api.orders.update(data.id, data.body), ["orders"]);
   const updateRepairMutation = useApiMutation((data: { id: string; body: any }) => api.repairs.update(data.id, data.body), ["repairs"]);
   const createCustomerMutation = useApiMutation((data: any) => api.customers.create(data), ["customers"]);
+
+  const [showAddCustModal, setShowAddCustModal] = useState(false);
+  const [newQuickCust, setNewQuickCust] = useState({ name: "", phone: "", phone2: "", address: "", gstNumber: "" });
+
+  const handleSaveQuickCustomer = async () => {
+    if (!newQuickCust.name.trim()) {
+      toast.error("Customer Name is required");
+      return;
+    }
+    try {
+      const payload = {
+        name: newQuickCust.name.trim(),
+        mobile: newQuickCust.phone.trim() || "0000000000",
+        phone: newQuickCust.phone.trim() || "0000000000",
+        phone2: newQuickCust.phone2.trim() || "",
+        address: newQuickCust.address.trim() || "Local",
+        gstNumber: newQuickCust.gstNumber.trim() || "",
+        group: "CUSTOMER",
+      };
+      const created = await createCustomerMutation.mutateAsync(payload);
+      const newId = created._id || created.id;
+      setCustomerId(newId);
+      setCustSearchText(created.name);
+      setCustomerGstin(created.gstNumber || "");
+      setNewCust({
+        name: created.name,
+        phone: created.phone || created.mobile || "",
+        address: created.address || "Local",
+        gstNumber: created.gstNumber || "",
+      });
+      setShowAddCustModal(false);
+      setNewQuickCust({ name: "", phone: "", phone2: "", address: "", gstNumber: "" });
+      toast.success(`Customer "${created.name}" created and selected!`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create customer");
+    }
+  };
 
   const [viewing, setViewing] = useState<Invoice | null>(null);
   const [open, setOpen] = useState(false);
@@ -221,6 +225,7 @@ export default function BillingPage() {
   const isOperator = authUser?.role === "operator" || (authUser as any)?.billingMode === "NON-GST" || (authUser as any)?.accountType === "non_gst";
 
   const location = useLocation();
+  const navigate = useNavigate();
   const isEstimateRoute = location.pathname.includes("/estimate") || location.search.includes("type=estimate") || isOperator;
   const [type, setType] = useState<"GST" | "NON-GST">(isEstimateRoute ? "NON-GST" : "GST");
 
@@ -234,8 +239,96 @@ export default function BillingPage() {
   }, [location.pathname, location.search, isOperator]);
   const [customerId, setCustomerId] = useState<string>("");
   const [customerGstin, setCustomerGstin] = useState<string>("");
+  const [customBillNo, setCustomBillNo] = useState<string>("");
+  const [isManualBillNo, setIsManualBillNo] = useState<boolean>(false);
   const [searchCust, setSearchCust] = useState("");
   const debouncedSearchCust = useDebounce(searchCust, 300);
+  const [custSearchText, setCustSearchText] = useState("");
+  const [showCustDropdown, setShowCustDropdown] = useState(false);
+  const custDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const getAutoBillNo = (billType: "GST" | "NON-GST", allInvoices: any[], currentEditingId?: string | null) => {
+    const used = new Set<number>();
+
+    (allInvoices || []).forEach((inv) => {
+      if ((inv._id || inv.id) === currentEditingId) return;
+      if (inv.type !== billType) return;
+
+      const numStr = (inv.billNo || "").toString().trim() || (inv.number || "").toString().trim();
+      const cleanNum = numStr.replace(/\D/g, "");
+      if (cleanNum && /^\d+$/.test(cleanNum)) {
+        const val = parseInt(cleanNum, 10);
+        if (val > 0) used.add(val);
+      }
+    });
+
+    let nextSeq = 1;
+    while (used.has(nextSeq)) {
+      nextSeq += 1;
+    }
+
+    return String(nextSeq);
+  };
+
+  useEffect(() => {
+    if (open && !editingId && !isManualBillNo) {
+      setCustomBillNo(getAutoBillNo(type, invoices, null));
+    }
+  }, [open, type, invoices, editingId, isManualBillNo]);
+
+  const isBillNoDuplicate = useMemo(() => {
+    const trimmed = customBillNo.trim().toLowerCase();
+    if (!trimmed) return false;
+
+    return (invoices || []).some((inv) => {
+      if (editingId && (inv._id === editingId || inv.id === editingId)) return false;
+
+      const invNum = (inv.number || "").toString().toLowerCase().trim();
+      const invBillNo = (inv.billNo || "").toString().toLowerCase().trim();
+
+      if (invNum === trimmed || invBillNo === trimmed) return true;
+
+      if (/^\d+$/.test(trimmed) && inv.type === type) {
+        const cleanNum = invNum.replace(/^[^\d]+/, "");
+        if (cleanNum && Number(cleanNum) === Number(trimmed)) return true;
+      }
+
+      return false;
+    });
+  }, [customBillNo, invoices, editingId, type]);
+
+  useEffect(() => {
+    if (customerId && customerId !== "NEW") {
+      const c = customers.find((x) => (x._id || x.id) === customerId);
+      if (c && !custSearchText) {
+        setCustSearchText(c.name || "");
+      }
+    } else if (!customerId) {
+      setCustSearchText("");
+    }
+  }, [customerId, customers]);
+
+  useEffect(() => {
+    const handleClickOutsideCust = (e: MouseEvent) => {
+      if (custDropdownRef.current && !custDropdownRef.current.contains(e.target as Node)) {
+        setShowCustDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutsideCust);
+    return () => document.removeEventListener("mousedown", handleClickOutsideCust);
+  }, []);
+
+  const matchingCustomers = useMemo(() => {
+    const q = custSearchText.toLowerCase().trim();
+    if (!q) return customers.slice(0, 20);
+    return customers.filter((c) => {
+      const name = (c.name || "").toLowerCase();
+      const phone = ((c.mobile || (c as any).phone) || "").toLowerCase();
+      const gstin = ((c as any).gstNumber || "").toLowerCase();
+      const address = ((c as any).address || (c as any).city || "").toLowerCase();
+      return name.includes(q) || phone.includes(q) || gstin.includes(q) || address.includes(q);
+    }).slice(0, 25);
+  }, [customers, custSearchText]);
   const [searchProd, setSearchProd] = useState("");
   const debouncedSearchProd = useDebounce(searchProd, 300);
   const [items, setItems] = useState<EditableInvoiceItem[]>(createDefaultBlankItems());
@@ -456,7 +549,6 @@ export default function BillingPage() {
   }, [date]);
   // Traditional Desktop ERP Billing Mode & Voucher Action Modules
   const [erpViewMode, setErpViewMode] = useState<boolean>(true);
-  const [groupType, setGroupType] = useState<string>("CUSTOMER");
   const [goodsDelivered, setGoodsDelivered] = useState<boolean>(true);
   const [finalVoucher, setFinalVoucher] = useState<boolean>(true);
 
@@ -504,6 +596,145 @@ export default function BillingPage() {
   const [customItemSearch, setCustomItemSearch] = useState("");
   const debouncedCustomItemSearch = useDebounce(customItemSearch, 300);
   const isGst = type === "GST";
+
+  const [activeItemDropdownIdx, setActiveItemDropdownIdx] = useState<number | null>(null);
+  const [activeItemSearchText, setActiveItemSearchText] = useState("");
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState("All");
+
+  const sidebarRef = useRef<HTMLDivElement | null>(null);
+
+  const dropdownMatchingProducts = useMemo(() => {
+    const query = activeItemSearchText.toLowerCase().trim();
+    return products.filter((p) => {
+      if (activeCategoryFilter !== "All") {
+        const catLower = (p.category || "").toLowerCase();
+        const filterLower = activeCategoryFilter.toLowerCase();
+        const purityLower = (p.purity || "").toLowerCase();
+        const metalLower = (p.metalType || "").toLowerCase();
+        const nameLower = (p.name || "").toLowerCase();
+
+        if (filterLower === "gold") {
+          const isGold = catLower.includes("gold") || purityLower.includes("k") || purityLower.includes("gold") || metalLower.includes("gold") || nameLower.includes("gold");
+          if (!isGold) return false;
+        } else if (filterLower === "silver") {
+          const isSilver = catLower.includes("silver") || catLower.includes("chandi") || purityLower.includes("925") || purityLower.includes("silver") || metalLower.includes("silver") || nameLower.includes("silver");
+          if (!isSilver) return false;
+        } else if (filterLower === "diamond") {
+          const isDiamond = catLower.includes("diamond") || metalLower.includes("diamond") || nameLower.includes("diamond");
+          if (!isDiamond) return false;
+        } else if (!catLower.includes(filterLower) && !nameLower.includes(filterLower)) {
+          return false;
+        }
+      }
+
+      if (!query) return true;
+
+      const pName = (p.name || "").toLowerCase();
+      const pBc = (p.barcode || "").toLowerCase();
+      const pSku = (p.sku || "").toLowerCase();
+      const pHuid = (p.huid || "").toLowerCase();
+      const pId = (p._id || p.id || "").toLowerCase();
+      const pPurity = (p.purity || "").toLowerCase();
+      const pCat = (p.category || "").toLowerCase();
+
+      return (
+        pName.includes(query) ||
+        pBc.includes(query) ||
+        pSku.includes(query) ||
+        pHuid.includes(query) ||
+        pId.includes(query) ||
+        pPurity.includes(query) ||
+        pCat.includes(query)
+      );
+    }).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }, [products, activeItemSearchText, activeCategoryFilter]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && activeItemDropdownIdx !== null) {
+        setActiveItemDropdownIdx(null);
+      }
+      if (e.key === "Enter" && activeItemDropdownIdx !== null) {
+        if (dropdownMatchingProducts.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          selectProductForInvoiceRow(activeItemDropdownIdx, dropdownMatchingProducts[0]);
+          setActiveItemDropdownIdx(null);
+          toast.success(`✓ Selected: ${dropdownMatchingProducts[0].name}`);
+        } else {
+          setActiveItemDropdownIdx(null);
+        }
+      }
+    };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        activeItemDropdownIdx !== null &&
+        sidebarRef.current &&
+        !sidebarRef.current.contains(e.target as Node)
+      ) {
+        const target = e.target as HTMLElement;
+        if (!target.closest("input") && !target.closest("button[title='Open Inventory Table']")) {
+          setActiveItemDropdownIdx(null);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [activeItemDropdownIdx, dropdownMatchingProducts]);
+
+  const selectProductForInvoiceRow = (rowIdx: number, p: any) => {
+    let currentRate = p.costPrice || p.ratePerGram || 0;
+    if (latestRates && p.category !== "Diamond" && p.category !== "Other") {
+      const purityUpper = (p.purity || "").toUpperCase();
+      if (purityUpper.includes("24K") && latestRates.gold24) currentRate = latestRates.gold24;
+      else if (purityUpper.includes("22K") && latestRates.gold22) currentRate = latestRates.gold22;
+      else if (purityUpper.includes("20K") && latestRates.gold20) currentRate = latestRates.gold20;
+      else if (purityUpper.includes("18K") && latestRates.gold18) currentRate = latestRates.gold18;
+      else if ((p.category === "Silver" || purityUpper.includes("SILVER") || purityUpper.includes("925")) && latestRates.silver) currentRate = latestRates.silver;
+    }
+
+    const purityUpper = (p.purity || "").toUpperCase();
+    let tunchPct = 91.6;
+    if (purityUpper.includes("24K")) tunchPct = 99.9;
+    else if (purityUpper.includes("22K")) tunchPct = 91.6;
+    else if (purityUpper.includes("20K")) tunchPct = 83.3;
+    else if (purityUpper.includes("18K")) tunchPct = 75.0;
+    else if (purityUpper.includes("14K")) tunchPct = 58.5;
+    else if (purityUpper.includes("SILVER") || purityUpper.includes("925") || p.category === "Silver") tunchPct = 92.5;
+
+    const grWt = p.grossWeight !== undefined ? p.grossWeight : p.netWeight;
+    const stoneWt = p.stoneWeight || 0;
+    const netWt = p.netWeight !== undefined ? p.netWeight : Math.max(0, grWt - stoneWt);
+    const tagVal = p.barcode || p.sku || p.huid || (p._id || p.id || "").slice(-6);
+
+    updateItem(rowIdx, {
+      productId: p._id || p.id,
+      tagNo: tagVal,
+      name: p.name,
+      purity: p.purity || "22K",
+      unit: p.unit || "GM",
+      qty: 1,
+      grossWeight: grWt,
+      stoneWeight: stoneWt,
+      netWeight: netWt,
+      tunch: p.tunch || tunchPct,
+      ratePerGram: currentRate,
+      makingCharge: p.labourCharges || p.makingCharge || 0,
+      makingChargeType: p.makingChargeType === "percentage" ? "PERCENTAGE" : p.makingChargeType === "fixed" ? "FIXED" : "PER_GRAM",
+      makingChargePct: p.makingChargePct || 0,
+      makingChargeValue: p.labourCharges || p.makingCharge || 0,
+      otherCharges: p.otherCharges || 0,
+      huid: p.huid || "",
+    } as any);
+
+    setActiveItemDropdownIdx(null);
+  };
 
   const addProduct = (pid: string) => {
     console.log("Billing: addProduct called", pid);
@@ -623,7 +854,7 @@ export default function BillingPage() {
             return pBc === searchTag || pSku === searchTag || pHuid === searchTag || pId.endsWith(searchTag) || pId === searchTag;
           }
           if (searchName !== "") {
-            return pName === searchName || pBc === searchName || pHuid === searchName || (pName.length >= 3 && searchName.length >= 3 && pName.includes(searchName));
+            return pName === searchName || pBc === searchName || pHuid === searchName;
           }
           return false;
         });
@@ -655,18 +886,18 @@ export default function BillingPage() {
             ...item,
             ...patch,
             productId: matchedProduct._id || matchedProduct.id,
-            name: matchedProduct.name,
-            tagNo: matchedProduct.barcode || matchedProduct.sku || matchedProduct.huid || (matchedProduct._id || matchedProduct.id).slice(-6),
-            purity: matchedProduct.purity || "22K",
-            grossWeight: grWt,
-            stoneWeight: stWt,
-            netWeight: netWt,
-            tunch: tunchPct,
-            ratePerGram: currentRate || item.ratePerGram,
+            name: patch.name !== undefined ? patch.name : matchedProduct.name,
+            tagNo: (patch as any).tagNo !== undefined ? (patch as any).tagNo : (matchedProduct.barcode || matchedProduct.sku || matchedProduct.huid || (matchedProduct._id || matchedProduct.id).slice(-6)),
+            purity: matchedProduct.purity || item.purity || "22K",
+            grossWeight: item.grossWeight || grWt,
+            stoneWeight: item.stoneWeight || stWt,
+            netWeight: item.netWeight || netWt,
+            tunch: (item as any).tunch || tunchPct,
+            ratePerGram: item.ratePerGram || currentRate,
             makingChargeValue: (matchedProduct as any).makingChargeValue ?? (matchedProduct as any).makingChargePct ?? item.makingChargeValue ?? 0,
             makingChargeType: (matchedProduct as any).makingChargeType || item.makingChargeType || "PERCENTAGE",
-            gstPct: matchedProduct.gstPct || (type === "GST" ? 3 : 0),
-            huid: matchedProduct.huid || "",
+            gstPct: matchedProduct.gstPct || item.gstPct || (type === "GST" ? 3 : 0),
+            huid: (patch as any).huid || matchedProduct.huid || item.huid || "",
           } as any;
           return updated;
         }
@@ -790,15 +1021,19 @@ export default function BillingPage() {
     setNewCust({ name: "", phone: "", address: "", gstNumber: "" });
     setCustomItemSearch("");
     setOpenCustomItemDialog(false);
+    setCustomBillNo("");
+    setIsManualBillNo(false);
   };
 
   const handlePrintDraftBill = () => {
     const activeCustomer = customers.find((c) => (c._id || c.id) === customerId);
     const draftInv: any = {
       id: editingId || `DRAFT-${Date.now()}`,
-      number: editingId
-        ? (invoices.find((i) => (i._id || i.id) === editingId)?.number || "BILL-101")
-        : `EST-${Date.now().toString().slice(-4)}`,
+      number: customBillNo.trim()
+        ? (/^\d+$/.test(customBillNo.trim()) ? `${isGst ? "GST-" : "INV-"}${customBillNo.trim().padStart(4, "0")}` : customBillNo.trim())
+        : (editingId
+          ? (invoices.find((i) => (i._id || i.id) === editingId)?.number || "BILL-101")
+          : `EST-${Date.now().toString().slice(-4)}`),
       date: date || formatDDMMYYYY(new Date()),
       type: isGst ? "GST" : "Estimate",
       seriesType: isGst ? "TAX INVOICE" : "ESTIMATE",
@@ -878,14 +1113,33 @@ export default function BillingPage() {
         return;
       }
 
-      // 5. Shortcut to jump cursor directly to Item Table on Billing page: Alt+I or F4
-      if (
-        e.key === "F4" ||
-        (e.altKey && e.key.toLowerCase() === "i")
-      ) {
+      // 5. Shortcut for Alt+I:
+      // - If form is open -> focus form TAG# field
+      // - If form is closed -> open Inventory page
+      if (e.altKey && e.key.toLowerCase() === "i") {
         e.preventDefault();
         e.stopPropagation();
-        e.stopImmediatePropagation();
+
+        if (open) {
+          if (firstItemInputRef.current) {
+            firstItemInputRef.current.focus();
+            firstItemInputRef.current.select?.();
+          } else {
+            const firstInput = document.querySelector("#erp-item-table-container input, #erp-item-table-container select") as HTMLElement;
+            firstInput?.focus();
+          }
+          toast.info("🎯 Focused on Form TAG# Field (Alt+I)");
+        } else {
+          navigate("/inventory");
+          toast.info("📦 Opening Inventory Page... (Alt+I)");
+        }
+        return;
+      }
+
+      // 6. Shortcut to focus Item Table TAG field: F4
+      if (e.key === "F4") {
+        e.preventDefault();
+        e.stopPropagation();
         if (firstItemInputRef.current) {
           firstItemInputRef.current.focus();
           firstItemInputRef.current.select?.();
@@ -893,7 +1147,7 @@ export default function BillingPage() {
           const firstInput = document.querySelector("#erp-item-table-container input, #erp-item-table-container select") as HTMLElement;
           firstInput?.focus();
         }
-        toast.info("🎯 Cursor focused directly on Item Table (Alt+I / F4)");
+        toast.info("🎯 Cursor focused directly on Item Table (F4)");
         return;
       }
 
@@ -936,6 +1190,7 @@ export default function BillingPage() {
     editingId,
     invoices,
     customers,
+    open,
   ]);
 
   const editInvoice = (inv: any) => {
@@ -1001,6 +1256,9 @@ export default function BillingPage() {
     setLinkedOrderId(inv.linkedOrderId || "");
     const invDate = inv.createdAt ? (typeof inv.createdAt === 'string' ? new Date(inv.createdAt) : new Date(inv.createdAt)) : new Date();
     setDate(formatDDMMYYYY(invDate));
+    const displayBillNo = inv.billNo || (inv.number ? inv.number.replace(/^[^\d]+/, "") : "") || (inv._id || inv.id || "").slice(-4);
+    setCustomBillNo(displayBillNo);
+    setIsManualBillNo(true);
     console.log("Billing: editInvoice - date set", formatDDMMYYYY(invDate));
     setOpen(true);
     console.log("Billing: editInvoice end");
@@ -1018,27 +1276,41 @@ export default function BillingPage() {
     let custMobile = "";
     let custAddress = "";
 
-    if (customerId === "NEW") {
-      if (!newCust.name || !newCust.address) {
-        toast.error("New customer's name and address are required.");
+    if (customerId === "NEW" || !customerId) {
+      const activeName = (custSearchText || newCust.name || "").trim();
+      if (!activeName) {
+        toast.error("Customer / Party Name is required.");
         return;
       }
       try {
-        const newCustomer = await createCustomerMutation.mutateAsync(newCust);
+        const payload = {
+          name: activeName,
+          phone: newCust.phone || "",
+          address: newCust.address || "Local",
+          gstNumber: customerGstin || ""
+        };
+        const newCustomer = await createCustomerMutation.mutateAsync(payload);
         custId = newCustomer._id || newCustomer.id;
         custName = newCustomer.name;
         custMobile = newCustomer.phone;
         custAddress = newCustomer.address;
       } catch (error: any) {
-        toast.error(error?.message || "Failed to create new customer.");
-        return;
+        // Fallback to local name/phone if API mutation fails
+        custName = activeName;
+        custMobile = newCust.phone || "";
+        custAddress = newCust.address || "Local";
       }
     } else {
       const cust = customers.find((c) => (c._id || c.id) === customerId);
-      if (!cust) { toast.error("Selected customer not found."); return; }
-      custName = cust.name;
-      custMobile = cust.mobile || cust.phone || "";
-      custAddress = cust.address || "";
+      if (!cust) {
+        custName = (custSearchText || newCust.name || "Customer").trim();
+        custMobile = newCust.phone || "";
+        custAddress = newCust.address || "Local";
+      } else {
+        custName = (custSearchText || cust.name).trim();
+        custMobile = newCust.phone || cust.mobile || cust.phone || "";
+        custAddress = newCust.address || cust.address || "Local";
+      }
     }
 
     const existingInv = editingId ? invoices.find(i => (i._id || i.id) === editingId) : null;
@@ -1110,15 +1382,27 @@ export default function BillingPage() {
       }
     }
 
-    let newNumber = existingInv ? existingInv.number : "";
-    if (!existingInv) {
-      const typeInvoices = invoices.filter(i => i.type === type && !i.number?.startsWith("MAN-"));
+    let effectiveBillNo = customBillNo.trim();
+    if (!effectiveBillNo) {
+      effectiveBillNo = getAutoBillNo(type, invoices, editingId);
+    }
+
+    if (isBillNoDuplicate) {
+      toast.error(`Bill No. "${effectiveBillNo}" already exists! Please use a unique bill number.`);
+      return;
+    }
+
+    let newNumber = "";
+    if (/^\d+$/.test(effectiveBillNo)) {
       const prefix = type === "GST" ? "GST-" : "INV-";
-      newNumber = prefix + (typeInvoices.length + 1).toString().padStart(4, "0");
+      newNumber = `${prefix}${effectiveBillNo.padStart(4, "0")}`;
+    } else {
+      newNumber = effectiveBillNo;
     }
 
     const inv: any = {
-      ...(editingId ? { number: newNumber } : {}),
+      number: newNumber,
+      billNo: effectiveBillNo,
       type,
       customerId: custId,
       customerName: custName,
@@ -1468,24 +1752,176 @@ export default function BillingPage() {
                 <div className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 p-3 rounded-lg flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm">
                   {/* Account & Party Details */}
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button type="button" size="sm" variant="outline" className="h-8 text-xs bg-white dark:bg-slate-900 border-slate-300 font-bold px-3" onClick={() => setCustomerId("NEW")}>
+                    <Button type="button" size="sm" variant="outline" className="h-8 text-xs bg-white dark:bg-slate-900 border-slate-300 font-bold px-3 hover:bg-amber-100 text-amber-900" onClick={() => {
+                      setNewQuickCust({ name: custSearchText.trim() || "", phone: "", phone2: "", address: "", gstNumber: "" });
+                      setShowAddCustModal(true);
+                    }}>
                       New A/c
                     </Button>
+                    <div className="flex items-center gap-1.5 relative" ref={custDropdownRef}>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 text-xs sm:text-sm shrink-0">Account:</span>
+                      
+                      <div className="relative w-64">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none z-10" />
+                        <Input
+                          type="text"
+                          placeholder="Type Name, Mobile, GSTIN to search..."
+                          value={custSearchText}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCustSearchText(val);
+                            setShowCustDropdown(true);
+                            if (!val || !val.trim()) {
+                              setCustomerId("");
+                              setCustomerGstin("");
+                              setNewCust({ name: "", phone: "", address: "", gstNumber: "" });
+                              return;
+                            }
+                            setNewCust(prev => ({ ...prev, name: val }));
+                            const cleanVal = val.trim().toLowerCase();
+                            const matched = customers.find((c) => {
+                              const cName = (c.name || "").trim().toLowerCase();
+                              const cPhone = ((c.mobile || (c as any).phone) || "").trim();
+                              return cName === cleanVal || cPhone === cleanVal;
+                            });
+                            if (matched) {
+                              setCustomerId(matched._id || matched.id);
+                              if ((matched as any).gstNumber) {
+                                setCustomerGstin((matched as any).gstNumber);
+                              }
+                            } else {
+                              setCustomerId("NEW");
+                            }
+                          }}
+                          onFocus={() => setShowCustDropdown(true)}
+                          className="h-8 pl-8 pr-7 bg-white dark:bg-slate-900 text-xs font-bold border-slate-300 dark:border-slate-700 shadow-2xs focus-visible:ring-amber-500"
+                        />
+
+                        {/* Clear Button */}
+                        {custSearchText && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustSearchText("");
+                              setCustomerId("");
+                              setCustomerGstin("");
+                              setNewCust({ name: "", phone: "", address: "", gstNumber: "" });
+                              setShowCustDropdown(true);
+                            }}
+                            className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-bold z-10"
+                          >
+                            ✕
+                          </button>
+                        )}
+
+                        {/* Searchable Autocomplete Dropdown List */}
+                        {showCustDropdown && (
+                          <div className="absolute top-full left-0 mt-1 w-80 max-h-64 overflow-y-auto bg-white dark:bg-slate-900 border-2 border-amber-500 rounded-xl shadow-2xl z-[150] divide-y divide-slate-100 dark:divide-slate-800 animate-in fade-in-50 duration-150">
+                            {/* Create New Customer Option */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNewQuickCust({ name: custSearchText.trim() || "", phone: "", phone2: "", address: "", gstNumber: "" });
+                                setShowAddCustModal(true);
+                                setShowCustDropdown(false);
+                              }}
+                              className="w-full text-left p-2.5 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 flex items-center gap-2 transition-colors cursor-pointer"
+                            >
+                              <Plus className="w-4 h-4 text-amber-600" />
+                              <span>+ Create New Customer / Party ({custSearchText || "New"})</span>
+                            </button>
+
+                            {matchingCustomers.length === 0 ? (
+                              <div className="p-3 text-center text-xs text-slate-500 dark:text-slate-400 font-medium">
+                                No existing customer found matching "{custSearchText}". A new customer record will be created.
+                              </div>
+                            ) : (
+                              matchingCustomers.map((c) => {
+                                const isSelected = (c._id || c.id) === customerId;
+                                return (
+                                  <div
+                                    key={c._id || c.id}
+                                    onClick={() => {
+                                      setCustomerId(c._id || c.id);
+                                      setCustSearchText(c.name);
+                                      setNewCust({
+                                        name: c.name,
+                                        phone: c.mobile || (c as any).phone || "",
+                                        address: c.address || (c as any).city || "",
+                                        gstNumber: (c as any).gstNumber || ""
+                                      });
+                                      if ((c as any).gstNumber) {
+                                        setCustomerGstin((c as any).gstNumber);
+                                      }
+                                      setShowCustDropdown(false);
+                                    }}
+                                    className={`p-2.5 text-xs cursor-pointer transition-colors flex items-center justify-between gap-2 ${
+                                      isSelected
+                                        ? "bg-amber-100 dark:bg-amber-950 font-bold"
+                                        : "hover:bg-slate-100 dark:hover:bg-slate-800/80"
+                                    }`}
+                                  >
+                                    <div>
+                                      <div className="font-bold text-slate-900 dark:text-slate-100 text-xs flex items-center gap-1.5">
+                                        <span>{c.name}</span>
+                                        <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-300">✓ Customer</Badge>
+                                      </div>
+                                      {((c as any).address || (c as any).city) && (
+                                        <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[180px]">
+                                          {(c as any).address || (c as any).city}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="flex flex-col items-end gap-0.5 shrink-0">
+                                      {(c.mobile || (c as any).phone) && (
+                                        <Badge variant="outline" className="text-[10px] font-mono font-bold bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                          {c.mobile || (c as any).phone}
+                                        </Badge>
+                                      )}
+                                      {(c as any).gstNumber && (
+                                        <span className="text-[9px] font-mono text-blue-600 dark:text-blue-400 font-bold">
+                                          GST: {(c as any).gstNumber}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Editable Mobile Number Input */}
                     <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-slate-800 dark:text-slate-200 text-xs sm:text-sm">Account:</span>
-                      <select
-                        value={customerId}
-                        onChange={(e) => handleCustomerSelect(e.target.value)}
-                        className="h-8 w-52 bg-white dark:bg-slate-900 text-xs sm:text-sm border border-slate-300 dark:border-slate-700 rounded-md font-bold px-2 text-slate-900 dark:text-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
-                      >
-                        <option value="" disabled>Select Party / Customer</option>
-                        <option value="NEW" className="font-bold text-amber-600">+ Create New Customer</option>
-                        {customers.map((c) => (
-                          <option key={c._id || c.id} value={c._id || c.id}>
-                            {c.name} · {c.mobile || (c as any).phone}
-                          </option>
-                        ))}
-                      </select>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 text-xs sm:text-sm">Mobile:</span>
+                      <Input
+                        type="text"
+                        placeholder="Mobile No."
+                        value={customerId === "NEW" ? newCust.phone : (selectedCust?.mobile || (selectedCust as any)?.phone || newCust.phone || "")}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setNewCust(prev => ({ ...prev, phone: val }));
+                        }}
+                        className="h-8 w-32 bg-white dark:bg-slate-900 text-xs font-mono font-bold border-slate-300 dark:border-slate-700 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    {/* Editable Address Input */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-800 dark:text-slate-200 text-xs sm:text-sm">City/Address:</span>
+                      <Input
+                        type="text"
+                        placeholder="Address / City"
+                        value={customerId === "NEW" ? newCust.address : (selectedCust?.address || (selectedCust as any)?.city || newCust.address || "")}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setNewCust(prev => ({ ...prev, address: val }));
+                        }}
+                        className="h-8 w-36 bg-white dark:bg-slate-900 text-xs font-bold border-slate-300 dark:border-slate-700 focus:ring-amber-500"
+                      />
                     </div>
 
                     {isGst && (
@@ -1499,23 +1935,6 @@ export default function BillingPage() {
                         />
                       </div>
                     )}
-
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-slate-800 dark:text-rose-200 text-xs sm:text-sm">Group#:</span>
-                      <select
-                        value={groupType}
-                        onChange={(e) => setGroupType(e.target.value)}
-                        className="h-8 w-28 bg-white dark:bg-slate-900 text-xs sm:text-sm border border-rose-300 dark:border-slate-700 rounded-md font-bold uppercase px-2 text-slate-900 dark:text-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
-                      >
-                        <option value="CUSTOMER">CUSTOMER</option>
-                        <option value="SUPPLIER">SUPPLIER</option>
-                        <option value="KARIGAR">KARIGAR</option>
-                        <option value="GIRVI">GIRVI</option>
-                        <option value="GENERAL">GENERAL</option>
-                      </select>
-                    </div>
-
-                    <Button type="button" size="sm" variant="outline" className="h-8 text-xs font-bold px-3 bg-white dark:bg-slate-900 border-rose-300">Search</Button>
                   </div>
 
                   {/* Series, Date & Bill Controls */}
@@ -1539,9 +1958,30 @@ export default function BillingPage() {
                       <Input value={date} onChange={(e) => setDate(e.target.value)} className="h-8 w-28 bg-white dark:bg-slate-900 text-xs sm:text-sm border-rose-300 font-mono text-center font-bold" />
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-slate-800 dark:text-rose-200 text-xs sm:text-sm">Bill No.:</span>
-                      <Input value={editingId ? editingId.slice(-4) : "3"} readOnly className="h-8 w-20 bg-white dark:bg-slate-900 text-xs sm:text-sm border-rose-300 font-mono text-center font-bold" />
+                    <div className="flex flex-col gap-0.5 relative">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-slate-800 dark:text-rose-200 text-xs sm:text-sm shrink-0">Bill No.:</span>
+                        <Input
+                          type="text"
+                          value={customBillNo}
+                          onChange={(e) => {
+                            setCustomBillNo(e.target.value);
+                            setIsManualBillNo(true);
+                          }}
+                          onFocus={(e) => e.target.select()}
+                          placeholder="Auto/Manual"
+                          className={`h-8 w-24 text-xs sm:text-sm font-mono text-center font-bold transition-colors ${
+                            isBillNoDuplicate
+                              ? "bg-red-50 dark:bg-red-950/80 text-red-700 dark:text-red-300 border-2 border-red-500 focus-visible:ring-red-500"
+                              : "bg-white dark:bg-slate-900 border-rose-300 dark:border-slate-700 focus-visible:ring-amber-500"
+                          }`}
+                        />
+                      </div>
+                      {isBillNoDuplicate && (
+                        <div className="absolute top-full left-0 mt-1 whitespace-nowrap z-[120] bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-lg flex items-center gap-1 animate-in fade-in-50">
+                          <span>⚠️ Bill No. "${customBillNo}" already exists! Use a different number.</span>
+                        </div>
+                      )}
                     </div>
 
                     <label className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-800 dark:text-rose-200 cursor-pointer">
@@ -1571,6 +2011,7 @@ export default function BillingPage() {
                         <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-right">Gr.Wt.</th>
                         <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-20 text-right">Less</th>
                         <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-right">Net.Wt.</th>
+                        <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-20 text-right bg-amber-50/80 dark:bg-amber-950/50 font-bold text-amber-900 dark:text-amber-200">Wst %</th>
                         <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-20 text-right">Tunch</th>
                         <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-24 text-right">Rate</th>
                         <th className="p-1.5 border border-slate-300 dark:border-slate-700 w-20 text-right">Dia.Wt.</th>
@@ -1593,8 +2034,9 @@ export default function BillingPage() {
                         const itemType = (it as any).itemType || (it.netWeight < 0 ? "P" : "S");
                         const grWt = (it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight;
                         const stoneWt = (it as any).stoneWeight || 0;
+                        const wstPct = (it as any).wastagePct !== undefined ? (it as any).wastagePct : ((it as any).wst || 0);
                         const tunchPct = (it as any).tunch || ((it.purity || "").includes("22K") ? 91.6 : (it.purity || "").includes("18K") ? 75.0 : 100);
-                        const fineWt = (it.netWeight * tunchPct) / 100;
+                        const fineWt = ((it.netWeight * (1 + wstPct / 100)) * tunchPct) / 100;
 
                         return (
                           <tr key={i} className="hover:bg-sky-50/50 dark:hover:bg-slate-800/60 border-b border-slate-300 dark:border-slate-700">
@@ -1611,24 +2053,85 @@ export default function BillingPage() {
                               </select>
                             </td>
                             <td className="p-0 border border-slate-300 dark:border-slate-700">
-                              <input ref={i === 0 ? firstItemInputRef : undefined} list="erp-inventory-tags" value={(it as any).tagNo || (it.productId.toLowerCase().startsWith("manual") ? "" : it.productId.slice(-6))} onChange={(e) => updateItem(i, { tagNo: e.target.value } as any)} className="w-full h-8.5 px-2 text-xs sm:text-sm font-bold font-mono uppercase bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" placeholder="TAG#" />
-                              <datalist id="erp-inventory-tags">
-                                {products.map((p) => (
-                                  <option key={p._id || p.id} value={p.barcode || p.sku || p.huid || (p._id || p.id).slice(-6)}>
-                                    {p.name} · {p.purity} · Wt: {p.netWeight}g
-                                  </option>
-                                ))}
-                              </datalist>
+                              <div className="flex items-center">
+                                <input
+                                  ref={i === 0 ? firstItemInputRef : undefined}
+                                  value={(it as any).tagNo || (it.productId.toLowerCase().startsWith("manual") ? "" : it.productId.slice(-6))}
+                                  onChange={(e) => {
+                                    updateItem(i, { tagNo: e.target.value } as any);
+                                    setActiveItemSearchText(e.target.value);
+                                    if (activeItemDropdownIdx !== i) setActiveItemDropdownIdx(i);
+                                  }}
+                                  onFocus={() => {
+                                    setActiveItemSearchText((it as any).tagNo || "");
+                                    setActiveItemDropdownIdx(i);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      if (activeItemDropdownIdx === i && dropdownMatchingProducts.length > 0) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        selectProductForInvoiceRow(i, dropdownMatchingProducts[0]);
+                                        setActiveItemDropdownIdx(null);
+                                        toast.success(`✓ Selected: ${dropdownMatchingProducts[0].name}`);
+                                      }
+                                    }
+                                  }}
+                                  className="w-full h-8.5 px-2 text-xs sm:text-sm font-bold font-mono uppercase bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                                  placeholder="TAG#"
+                                />
+                                <button
+                                  type="button"
+                                  title="Open Inventory Table"
+                                  onClick={() => {
+                                    setActiveItemSearchText((it as any).tagNo || "");
+                                    setActiveItemDropdownIdx(activeItemDropdownIdx === i ? null : i);
+                                  }}
+                                  className="px-1 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer"
+                                >
+                                  <Search className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </td>
-                            <td className="p-0 border border-slate-300 dark:border-slate-700">
-                              <input list="erp-inventory-names" value={it.name} onChange={(e) => updateItem(i, { name: e.target.value })} className="w-full h-8.5 px-2 text-xs sm:text-sm font-bold font-sans bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" placeholder="Item Name" />
-                              <datalist id="erp-inventory-names">
-                                {products.map((p) => (
-                                  <option key={p._id || p.id} value={p.name}>
-                                    {p.barcode || p.huid ? `${p.name} [${p.barcode || p.huid}]` : p.name} · {p.purity} · Wt: {p.netWeight}g
-                                  </option>
-                                ))}
-                              </datalist>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700 relative">
+                              <div className="flex items-center">
+                                <input
+                                  value={it.name}
+                                  onChange={(e) => {
+                                    updateItem(i, { name: e.target.value });
+                                    setActiveItemSearchText(e.target.value);
+                                    if (activeItemDropdownIdx !== i) setActiveItemDropdownIdx(i);
+                                  }}
+                                  onFocus={() => {
+                                    setActiveItemSearchText(it.name || "");
+                                    setActiveItemDropdownIdx(i);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      if (activeItemDropdownIdx === i && dropdownMatchingProducts.length > 0) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        selectProductForInvoiceRow(i, dropdownMatchingProducts[0]);
+                                        setActiveItemDropdownIdx(null);
+                                        toast.success(`✓ Selected: ${dropdownMatchingProducts[0].name}`);
+                                      }
+                                    }
+                                  }}
+                                  className="w-full h-8.5 px-2 text-xs sm:text-sm font-bold font-sans bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                                  placeholder="Item Name"
+                                />
+                                <button
+                                  type="button"
+                                  title="Open Inventory Table"
+                                  onClick={() => {
+                                    setActiveItemSearchText(it.name || "");
+                                    setActiveItemDropdownIdx(activeItemDropdownIdx === i ? null : i);
+                                  }}
+                                  className="px-1 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer"
+                                >
+                                  <Search className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </td>
                             <td className="p-0 border border-slate-300 dark:border-slate-700">
                               <select
@@ -1685,6 +2188,19 @@ export default function BillingPage() {
                             </td>
                             <td className="p-0 border border-slate-300 dark:border-slate-700">
                               <input type="number" step="0.001" value={it.netWeight || ""} onChange={(e) => { const v = Number(e.target.value) || 0; updateItem(i, recalcMaking(it, { netWeight: v, grossWeight: v + stoneWt })); }} className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-black bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" />
+                            </td>
+                            <td className="p-0 border border-slate-300 dark:border-slate-700">
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={(it as any).wastagePct !== undefined && (it as any).wastagePct !== 0 ? (it as any).wastagePct : ((it as any).wst || "")}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value) || 0;
+                                  updateItem(i, { wastagePct: v, wst: v } as any);
+                                }}
+                                className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-bold text-amber-800 dark:text-amber-300 bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
+                                placeholder="0"
+                              />
                             </td>
                             <td className="p-0 border border-slate-300 dark:border-slate-700">
                               <input type="number" step="0.01" value={tunchPct || ""} onChange={(e) => updateItem(i, { tunch: Number(e.target.value) || 0 } as any)} className="w-full h-8.5 px-1.5 text-right font-mono text-xs sm:text-sm font-black text-amber-700 dark:text-amber-400 bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80" />
@@ -2355,80 +2871,143 @@ export default function BillingPage() {
                   <div className="space-y-3">
                     <div className="space-y-1.5">
                       <Label className="text-xs">Customer</Label>
-                      <Select
-                        value={customerId}
-                        onValueChange={(val) => {
-                          handleCustomerSelect(val);
-                        }}
-                      >
-                        <SelectTrigger className="bg-background">
-                          <SelectValue placeholder="Select customer" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
-                          {customers
-                            .filter(
-                              (c) =>
-                                c.name.toLowerCase().includes(debouncedSearchCust.toLowerCase()) ||
-                                (c.mobile || c.phone || "").includes(debouncedSearchCust) ||
-                                (c.address || "").toLowerCase().includes(debouncedSearchCust.toLowerCase())
-                            )
-                            .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
-                            .map((c) => (
-                              <SelectItem key={c._id || c.id} value={c._id || c.id}>
-                                {c.name} · {c.mobile || (c as any).phone}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex-1">
+                          <Select
+                            value={customerId}
+                            onValueChange={(val) => {
+                              if (val === "NEW") {
+                                setNewQuickCust({ name: custSearchText || searchCust || "", phone: "", phone2: "", address: "", gstNumber: "" });
+                                setShowAddCustModal(true);
+                              } else {
+                                handleCustomerSelect(val);
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="bg-background">
+                              <SelectValue placeholder="Select customer" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="NEW" className="font-semibold text-primary">➕ + Create / Add New Customer</SelectItem>
+                              {customers
+                                .filter(
+                                  (c) =>
+                                    c.name.toLowerCase().includes(debouncedSearchCust.toLowerCase()) ||
+                                    (c.mobile || c.phone || "").includes(debouncedSearchCust) ||
+                                    (c.address || "").toLowerCase().includes(debouncedSearchCust.toLowerCase())
+                                )
+                                .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+                                .map((c) => (
+                                  <SelectItem key={c._id || c.id} value={c._id || c.id}>
+                                    {c.name} · {c.mobile || (c as any).phone}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-10 px-2.5 text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300 flex items-center gap-1 shrink-0 cursor-pointer"
+                          onClick={() => {
+                            setNewQuickCust({ name: custSearchText || searchCust || "", phone: "", phone2: "", address: "", gstNumber: "" });
+                            setShowAddCustModal(true);
+                          }}
+                        >
+                          <UserPlus className="w-3.5 h-3.5" /> + New
+                        </Button>
+                      </div>
                     </div>
 
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Invoice Date</Label>
-                      <div className="relative">
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="text"
-                            className="bg-background h-8 w-40"
-                            value={date}
-                            onChange={(e) => {
-                              setDate(e.target.value);
-                              console.log("Billing: date input changed", e.target.value);
-                            }}
-                            onFocus={() => setShowCalendar(true)}
-                            placeholder="DD/MM/YYYY"
-                          />
-                          <button type="button" aria-label="Toggle date picker" onClick={() => setShowCalendar(s => !s)} className="h-8 w-8 inline-flex items-center justify-center rounded border bg-background">
-                            <Calendar className="w-4 h-4" />
-                          </button>
-                        </div>
-                        {showCalendar && (
-                          <div ref={calendarRef} className="absolute z-50 bg-white border rounded shadow p-2 mt-2">
-                            <DayPicker
-                              mode="single"
-                              selected={parseDDMMYYYY(date) || undefined}
-                              onSelect={(d) => {
-                                if (d) {
-                                  const formatted = formatDDMMYYYY(d);
-                                  console.log("Billing: calendar selected", formatted);
-                                  setDate(formatted);
-                                  setShowCalendar(false);
-                                }
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold">Invoice Date</Label>
+                        <div className="relative">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="text"
+                              className="bg-background h-8 w-full font-bold"
+                              value={date}
+                              onChange={(e) => {
+                                setDate(e.target.value);
+                                console.log("Billing: date input changed", e.target.value);
                               }}
+                              onFocus={() => setShowCalendar(true)}
+                              placeholder="DD/MM/YYYY"
                             />
+                            <button type="button" aria-label="Toggle date picker" onClick={() => setShowCalendar(s => !s)} className="h-8 w-8 inline-flex items-center justify-center rounded border bg-background shrink-0">
+                              <Calendar className="w-4 h-4" />
+                            </button>
+                          </div>
+                          {showCalendar && (
+                            <div ref={calendarRef} className="absolute z-50 bg-white border rounded shadow p-2 mt-2">
+                              <DayPicker
+                                mode="single"
+                                selected={parseDDMMYYYY(date) || undefined}
+                                onSelect={(d) => {
+                                  if (d) {
+                                    const formatted = formatDDMMYYYY(d);
+                                    console.log("Billing: calendar selected", formatted);
+                                    setDate(formatted);
+                                    setShowCalendar(false);
+                                  }
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 relative">
+                        <Label className="text-xs font-bold">Bill No. (Auto / Manual)</Label>
+                        <Input
+                          type="text"
+                          value={customBillNo}
+                          onChange={(e) => {
+                            setCustomBillNo(e.target.value);
+                            setIsManualBillNo(true);
+                          }}
+                          onFocus={(e) => e.target.select()}
+                          placeholder="Auto/Manual Bill No"
+                          className={`h-8 w-full font-mono text-center font-bold transition-colors ${
+                            isBillNoDuplicate
+                              ? "bg-red-50 text-red-700 border-2 border-red-500 focus-visible:ring-red-500"
+                              : "bg-background border-slate-300 focus-visible:ring-amber-500"
+                          }`}
+                        />
+                        {isBillNoDuplicate && (
+                          <div className="absolute top-full left-0 mt-1 whitespace-nowrap z-[120] bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-lg">
+                            <span>⚠️ Bill No. "${customBillNo}" already exists!</span>
                           </div>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground">Use the date picker or enter DD/MM/YYYY (future dates blocked)</p>
                     </div>
 
                     {customerId === "NEW" && (
-                      <div className="p-3 rounded-md bg-primary/5 border border-primary/20 text-sm space-y-3 mt-2">
-                        <h4 className="text-xs font-bold text-primary uppercase">New Customer Details</h4>
-                        <div className="space-y-1.5"><Label className="text-xs">Full Name *</Label><Input value={newCust.name} onChange={e => setNewCust({...newCust, name: e.target.value})} className="h-8 bg-background" /></div>
-                        <div className="space-y-1.5"><Label className="text-xs">Mobile No (optional)</Label><Input value={newCust.phone} onChange={e => setNewCust({...newCust, phone: e.target.value})} className="h-8 bg-background" /></div>
-                        <div className="space-y-1.5"><Label className="text-xs">GSTIN (B2B optional)</Label><Input value={newCust.gstNumber || ""} onChange={e => { const val = e.target.value.toUpperCase(); setNewCust({...newCust, gstNumber: val}); setCustomerGstin(val); }} placeholder="22AAAAA0000A1Z5" className="h-8 bg-background font-mono text-xs uppercase" /></div>
-                        <div className="space-y-1.5"><Label className="text-xs">Address *</Label><Input value={newCust.address} onChange={e => setNewCust({...newCust, address: e.target.value})} className="h-8 bg-background" /></div>
+                      <div className="p-3 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-300 text-sm space-y-3 mt-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-amber-900 dark:text-amber-200 uppercase flex items-center gap-1.5">
+                            <span>✨ New Customer Details (Created automatically on Save)</span>
+                          </h4>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-7 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
+                            onClick={() => {
+                              setNewQuickCust({ name: custSearchText || newCust.name || "", phone: newCust.phone || "", phone2: "", address: newCust.address || "", gstNumber: newCust.gstNumber || "" });
+                              setShowAddCustModal(true);
+                            }}
+                          >
+                            ➕ Open Customer Form Modal
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                          <div><Label className="text-xs font-bold">Full Name *</Label><Input value={newCust.name} onChange={e => setNewCust({...newCust, name: e.target.value})} className="h-8 bg-white dark:bg-slate-900 font-bold" /></div>
+                          <div><Label className="text-xs font-bold">Mobile No</Label><Input value={newCust.phone} onChange={e => setNewCust({...newCust, phone: e.target.value})} className="h-8 bg-white dark:bg-slate-900 font-mono" /></div>
+                          <div><Label className="text-xs font-bold">GSTIN (Optional)</Label><Input value={newCust.gstNumber || ""} onChange={e => { const val = e.target.value.toUpperCase(); setNewCust({...newCust, gstNumber: val}); setCustomerGstin(val); }} placeholder="22AAAAA0000A1Z5" className="h-8 bg-white dark:bg-slate-900 font-mono text-xs uppercase" /></div>
+                          <div><Label className="text-xs font-bold">Address / City</Label><Input value={newCust.address} onChange={e => setNewCust({...newCust, address: e.target.value})} className="h-8 bg-white dark:bg-slate-900" /></div>
+                        </div>
                       </div>
                     )}
 
@@ -2646,8 +3225,6 @@ export default function BillingPage() {
                             const query = searchProd.toLowerCase().trim();
                           const matches = products.filter(
                             (p) => {
-                              if (!isGst && (p.gstPct || 0) > 0) return false;
-                              if (!isProductMatchingBillMetal(p, billMetal)) return false;
                               return (
                                 p.name.toLowerCase().includes(query) ||
                                 (p.barcode || "").toLowerCase() === query ||
@@ -2692,8 +3269,6 @@ export default function BillingPage() {
                           {products
                             .filter(
                               (p) => {
-                                if (!isGst && (p.gstPct || 0) > 0) return false;
-                                if (!isProductMatchingBillMetal(p, billMetal)) return false;
                                 return (
                                   p.name.toLowerCase().includes(debouncedSearchProd.toLowerCase()) ||
                                   (p.barcode || "")
@@ -2720,89 +3295,109 @@ export default function BillingPage() {
                     
                     {/* Custom Item Dialog */}
                     <Dialog open={openCustomItemDialog} onOpenChange={setOpenCustomItemDialog}>
-                      <DialogContent className="w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+                      <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
                         <DialogHeader>
-                          <DialogTitle>Add Custom Item</DialogTitle>
+                          <DialogTitle className="font-display text-lg flex items-center gap-2">
+                            <Boxes className="w-5 h-5 text-amber-600" />
+                            <span>Inventory Item Finder &amp; Catalog</span>
+                          </DialogTitle>
+                          <DialogDescription className="text-xs">
+                            Search inventory items or add a blank custom row to the bill
+                          </DialogDescription>
                         </DialogHeader>
+
                         <div className="space-y-4">
-                          <div>
-                            <Label className="text-sm font-medium mb-2 block">Search Inventory</Label>
-                            <Input
-                              placeholder="Type product name, barcode, or HUID..."
-                              value={customItemSearch}
-                              onChange={(e) => setCustomItemSearch(e.target.value)}
-                              className="bg-background"
-                              autoFocus
-                            />
-                          </div>
-
-                          {debouncedCustomItemSearch.trim() !== "" && (
-                            <div className="max-h-48 overflow-y-auto border rounded-md">
-                              {products
-                                .filter(
-                                  (p) => {
-                                    if (!isGst && (p.gstPct || 0) > 0) return false;
-                                    if (!isProductMatchingBillMetal(p, billMetal)) return false;
-                                    return (
-                                      p.name.toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
-                                      (p.barcode || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
-                                      (p.huid || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase())
-                                    );
-                                  }
-                                )
-                                .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
-                                .map((p) => (
-                                  <div
-                                    key={p._id || p.id}
-                                    onClick={() => addCustomItemFromDialog(p)}
-                                    className="p-3 border-b hover:bg-muted cursor-pointer transition-colors last:border-0"
-                                  >
-                                    <div className="font-medium text-sm">{p.name}</div>
-                                    <div className="text-xs text-muted-foreground flex gap-2">
-                                      {p.barcode && <span>BC: {p.barcode}</span>}
-                                      {p.huid && <span>HUID: {p.huid}</span>}
-                                      <span>{p.purity}</span>
-                                      <span className={p.stock > 0 ? "text-green-600" : "text-red-600"}>
-                                        {p.stock > 0 ? `${p.stock} in stock` : "Out of stock"}
-                                      </span>
-                                    </div>
-                                  </div>
-                                ))}
-                              {products.filter(
-                                (p) => {
-                                  if (!isGst && (p.gstPct || 0) > 0) return false;
-                                  if (!isProductMatchingBillMetal(p, billMetal)) return false;
-                                  return (
-                                    p.name.toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
-                                    (p.barcode || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
-                                    (p.huid || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase())
-                                  );
-                                }
-                              ).length === 0 && (
-                                <div className="p-3 text-sm text-muted-foreground text-center">
-                                  No products found
-                                </div>
-                              )}
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-muted/40 p-3 rounded-lg border">
+                            <div className="relative w-full sm:w-80">
+                              <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-2.5" />
+                              <Input
+                                placeholder="Type item name, tag#, barcode, or HUID..."
+                                value={customItemSearch}
+                                onChange={(e) => setCustomItemSearch(e.target.value)}
+                                className="pl-9 bg-background h-9 text-sm"
+                                autoFocus
+                              />
                             </div>
-                          )}
-
-                          <div className="flex gap-2 pt-4">
                             <Button
                               type="button"
                               variant="outline"
                               onClick={() => addCustomItemFromDialog()}
-                              className="w-full"
+                              className="w-full sm:w-auto font-bold border-amber-500 text-amber-900 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950 cursor-pointer"
                             >
-                              Add Blank Custom Item
+                              <Plus className="w-4 h-4 mr-2" /> Add Blank Manual Item
                             </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              onClick={() => setOpenCustomItemDialog(false)}
-                              className="w-full"
-                            >
-                              Cancel
-                            </Button>
+                          </div>
+
+                          <div className="max-h-80 overflow-y-auto border border-border rounded-lg shadow-inner">
+                            <table className="w-full text-xs text-left border-collapse min-w-[700px]">
+                              <thead className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 uppercase font-black sticky top-0 border-b">
+                                <tr>
+                                  <th className="p-2.5 w-32">Tag # / Barcode</th>
+                                  <th className="p-2.5 min-w-36">Item Name</th>
+                                  <th className="p-2.5 w-24">Category</th>
+                                  <th className="p-2.5 w-20 text-center">Purity</th>
+                                  <th className="p-2.5 w-20 text-right">Gross Wt</th>
+                                  <th className="p-2.5 w-20 text-right">Net Wt</th>
+                                  <th className="p-2.5 w-20 text-center">Stock</th>
+                                  <th className="p-2.5 w-24 text-right">Rate/Price</th>
+                                  <th className="p-2.5 w-20 text-center">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border font-sans">
+                                {products
+                                  .filter((p) => {
+                                    if (!debouncedCustomItemSearch.trim()) return true;
+                                    const q = debouncedCustomItemSearch.toLowerCase();
+                                    return (
+                                      p.name.toLowerCase().includes(q) ||
+                                      (p.barcode || "").toLowerCase().includes(q) ||
+                                      (p.huid || "").toLowerCase().includes(q) ||
+                                      (p.sku || "").toLowerCase().includes(q) ||
+                                      (p.purity || "").toLowerCase().includes(q)
+                                    );
+                                  })
+                                  .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+                                  .map((p) => (
+                                    <tr
+                                      key={p._id || p.id}
+                                      onClick={() => addCustomItemFromDialog(p)}
+                                      className="hover:bg-amber-50 dark:hover:bg-amber-950/60 cursor-pointer transition-colors"
+                                    >
+                                      <td className="p-2.5 font-mono font-bold text-amber-900 dark:text-amber-300">
+                                        <span className="bg-amber-100 dark:bg-amber-950 px-1.5 py-0.5 rounded border border-amber-300/60 text-[11px]">
+                                          {p.barcode || p.sku || p.huid || (p._id || p.id).slice(-6)}
+                                        </span>
+                                      </td>
+                                      <td className="p-2.5 font-bold text-foreground text-sm">{p.name}</td>
+                                      <td className="p-2.5 text-muted-foreground font-medium">{p.category || "Jewellery"}</td>
+                                      <td className="p-2.5 text-center">
+                                        <Badge variant="outline" className="text-[10px] font-mono">
+                                          {p.purity || "22K"}
+                                        </Badge>
+                                      </td>
+                                      <td className="p-2.5 text-right font-mono text-muted-foreground">
+                                        {p.grossWeight || p.netWeight || 0}g
+                                      </td>
+                                      <td className="p-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                        {p.netWeight || 0}g
+                                      </td>
+                                      <td className="p-2.5 text-center font-bold">
+                                        <span className={(p.stock || 1) > 0 ? "text-emerald-600" : "text-rose-600"}>
+                                          {(p.stock || 1)} Pc
+                                        </span>
+                                      </td>
+                                      <td className="p-2.5 text-right font-mono font-bold text-foreground">
+                                        {inr(p.sellingPrice || p.mrp || p.ratePerGram || 0)}
+                                      </td>
+                                      <td className="p-2.5 text-center">
+                                        <Button size="sm" className="h-6 px-2.5 text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer">
+                                          + Add
+                                        </Button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
                       </DialogContent>
@@ -3365,6 +3960,193 @@ export default function BillingPage() {
             </div>
           )}
         </form>
+
+        {/* ======================================================== */}
+        {/* ======================================================== */}
+        {/* INVENTORY ITEM SELECTION DOCKED FLOATING SIDE PANEL     */}
+        {/* ======================================================== */}
+        {activeItemDropdownIdx !== null && (
+          <>
+            {/* Click Outside Transparent Backdrop */}
+            <div
+              className="fixed inset-0 z-40 bg-transparent"
+              onClick={() => setActiveItemDropdownIdx(null)}
+            />
+
+            {/* Right Side Floating Panel */}
+            <div
+              ref={sidebarRef}
+              onClick={(e) => e.stopPropagation()}
+              className="fixed top-20 right-4 bottom-8 z-50 w-[550px] sm:w-[640px] md:w-[720px] lg:w-[780px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-2 border-amber-500 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right-5 duration-200 text-slate-900 dark:text-slate-100 pointer-events-auto"
+            >
+            
+            {/* Panel Header */}
+            <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-amber-50/80 dark:bg-amber-950/50 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold shadow-xs">
+                  <Boxes className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-display font-bold text-sm text-slate-900 dark:text-slate-100">
+                      Inventory Items
+                    </h2>
+                    <Badge variant="outline" className="text-[11px] bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border-amber-400 font-mono font-bold">
+                      Item Row #{activeItemDropdownIdx + 1}
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Driven live by form input field on invoice row #{activeItemDropdownIdx + 1}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-[11px] font-mono font-bold px-2 py-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  {dropdownMatchingProducts.length} items
+                </Badge>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950 font-bold cursor-pointer"
+                  onClick={() => setActiveItemDropdownIdx(null)}
+                >
+                  ✕ Close
+                </Button>
+              </div>
+            </div>
+
+            {/* Category Filter and Live Form Query Bar */}
+            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 shrink-0">
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-1 overflow-x-auto">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1 shrink-0">Category:</span>
+                {["All", "Gold", "Silver", "Diamond", "Other"].map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setActiveCategoryFilter(cat)}
+                    className={`px-2.5 py-0.5 text-xs font-bold rounded-full transition-all cursor-pointer shrink-0 ${
+                      activeCategoryFilter === cat
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {/* Form Input Live Sync Indicator */}
+              <div className="flex items-center gap-1.5 bg-amber-100/70 dark:bg-amber-950/70 border border-amber-300/80 dark:border-amber-700/80 px-2.5 py-0.5 rounded-md text-xs">
+                <Search className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+                <span className="text-slate-600 dark:text-slate-400 text-[11px] font-semibold">Form Input:</span>
+                <span className="font-bold font-mono text-amber-950 dark:text-amber-200">
+                  {activeItemSearchText ? `"${activeItemSearchText}"` : "All"}
+                </span>
+              </div>
+            </div>
+
+            {/* Scrollable Inventory List Table */}
+            <div className="flex-1 overflow-y-auto p-3">
+              <div className="rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden bg-white dark:bg-slate-900">
+                <table className="w-full text-xs text-left border-collapse min-w-[620px]">
+                  <thead className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 uppercase font-black sticky top-0 z-10 border-b border-slate-300 dark:border-slate-700 shadow-2xs">
+                    <tr>
+                      <th className="p-2 w-28">Tag # / Code</th>
+                      <th className="p-2 min-w-36">Item Name</th>
+                      <th className="p-2 w-20">Category</th>
+                      <th className="p-2 w-16 text-center">Purity</th>
+                      <th className="p-2 w-20 text-right">Gross Wt</th>
+                      <th className="p-2 w-20 text-right">Net Wt</th>
+                      <th className="p-2 w-16 text-center">Stock</th>
+                      <th className="p-2 w-24 text-right">Rate/Price</th>
+                      <th className="p-2 w-20 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-sans">
+                    {dropdownMatchingProducts.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="p-10 text-center text-slate-500">
+                          <div className="flex flex-col items-center justify-center gap-1.5">
+                            <Boxes className="w-7 h-7 text-slate-400" />
+                            <span className="font-semibold text-xs">No inventory items match "{activeItemSearchText}"</span>
+                            <p className="text-[11px] text-slate-400">Type in TAG# or Item Name on the form row to search</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      dropdownMatchingProducts.map((p) => (
+                        <tr
+                          key={p._id || p.id}
+                          onClick={() => selectProductForInvoiceRow(activeItemDropdownIdx, p)}
+                          className="hover:bg-amber-50/80 dark:hover:bg-amber-950/60 cursor-pointer transition-colors group"
+                        >
+                          <td className="p-2 font-mono font-bold text-amber-900 dark:text-amber-300">
+                            <span className="bg-amber-100 dark:bg-amber-950 px-1.5 py-0.5 rounded border border-amber-300/60 text-[10px] group-hover:bg-amber-200 dark:group-hover:bg-amber-900 transition-colors">
+                              {p.barcode || p.sku || p.huid || (p._id || p.id).slice(-6)}
+                            </span>
+                          </td>
+                          <td className="p-2 font-bold text-slate-900 dark:text-slate-100 text-xs">
+                            {p.name}
+                          </td>
+                          <td className="p-2 text-slate-600 dark:text-slate-400 font-medium text-[11px]">
+                            {p.category || "Jewellery"}
+                          </td>
+                          <td className="p-2 text-center">
+                            <Badge variant="outline" className="text-[9px] bg-slate-50 dark:bg-slate-800 font-mono font-bold px-1 py-0">
+                              {p.purity || "22K"}
+                            </Badge>
+                          </td>
+                          <td className="p-2 text-right font-mono text-slate-600 dark:text-slate-400 font-semibold text-[11px]">
+                            {p.grossWeight || p.netWeight || 0}g
+                          </td>
+                          <td className="p-2 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400 text-[11px]">
+                            {p.netWeight || 0}g
+                          </td>
+                          <td className="p-2 text-center font-bold text-[11px]">
+                            <span className={(p.stock || 1) > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
+                              {(p.stock || 1)} Pc
+                            </span>
+                          </td>
+                          <td className="p-2 text-right font-mono font-bold text-slate-900 dark:text-slate-100 text-[11px]">
+                            {inr(p.sellingPrice || p.mrp || p.ratePerGram || 0)}
+                          </td>
+                          <td className="p-2 text-center">
+                            <Button
+                              size="sm"
+                              className="h-6 px-2 text-[11px] bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer shadow-2xs group-hover:scale-105 transition-transform"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                selectProductForInvoiceRow(activeItemDropdownIdx, p);
+                              }}
+                            >
+                              + Select
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Panel Footer */}
+            <div className="px-3 py-2 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-between text-[11px] text-slate-500 shrink-0">
+              <span>Type in TAG# / Item Name box on invoice row to search • Press <kbd className="px-1 py-0.2 bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded font-mono font-bold text-[10px]">Esc</kbd> to close</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setActiveItemDropdownIdx(null)}
+                className="h-6 text-[11px] font-bold cursor-pointer"
+              >
+                Close Panel
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
       </DialogContent>
     </Dialog>
   </div>
@@ -4000,6 +4782,67 @@ export default function BillingPage() {
       </Dialog>
 
       {viewing && <InvoiceModal inv={viewing} isReturned={new Set(salesReturns.map((r: any) => r.invoiceId)).has((viewing as any)._id || (viewing as any).id)} onClose={() => setViewing(null)} />}
+      {/* QUICK CREATE CUSTOMER MODAL */}
+      <Dialog open={showAddCustModal} onOpenChange={setShowAddCustModal}>
+        <DialogContent className="z-[200] pointer-events-auto max-w-md bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-5 rounded-xl border border-slate-300 dark:border-slate-800 shadow-2xl" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-amber-600">
+              <UserCheck className="w-5 h-5" /> Quick Create New Customer
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3.5 pt-2 text-xs">
+            <div>
+              <Label className="text-xs font-bold">Customer Full Name *</Label>
+              <Input
+                placeholder="e.g. Ramesh Sharma"
+                value={newQuickCust.name}
+                onChange={(e) => setNewQuickCust(prev => ({ ...prev, name: e.target.value }))}
+                className="h-9 mt-1 text-xs font-bold bg-slate-50 dark:bg-slate-950"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Mobile Phone Number</Label>
+              <Input
+                placeholder="e.g. 9876543210"
+                value={newQuickCust.phone}
+                onChange={(e) => setNewQuickCust(prev => ({ ...prev, phone: e.target.value }))}
+                className="h-9 mt-1 text-xs font-mono bg-slate-50 dark:bg-slate-950"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">GSTIN (B2B Optional)</Label>
+              <Input
+                placeholder="e.g. 22AAAAA0000A1Z5"
+                value={newQuickCust.gstNumber}
+                onChange={(e) => setNewQuickCust(prev => ({ ...prev, gstNumber: e.target.value.toUpperCase() }))}
+                className="h-9 mt-1 text-xs font-mono uppercase bg-slate-50 dark:bg-slate-950"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">City / Address</Label>
+              <Input
+                placeholder="e.g. Indore MP"
+                value={newQuickCust.address}
+                onChange={(e) => setNewQuickCust(prev => ({ ...prev, address: e.target.value }))}
+                className="h-9 mt-1 text-xs bg-slate-50 dark:bg-slate-950"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-3 border-t">
+              <Button variant="outline" size="sm" onClick={() => setShowAddCustModal(false)} className="h-8 text-xs">
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveQuickCustomer}
+                disabled={createCustomerMutation.isPending || !newQuickCust.name.trim()}
+                className="h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                {createCustomerMutation.isPending ? "Saving..." : "Save & Select Customer"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
@@ -4167,7 +5010,7 @@ export function InvoiceModal({ inv, onClose, isReturned }: { inv: any; onClose: 
             </div>
             <div className={`${invSettings.headerStyle === "centered" ? "text-center mt-2" : "text-right shrink-0"}`}>
               <div className={`inline-block px-3 py-1.5 rounded font-bold uppercase tracking-widest text-xs ${themeAccent.bg} ${themeAccent.text}`}>
-                {getCleanInvoiceTitle(invSettings.invoiceTitle)}
+                {getCleanInvoiceTitle(invSettings.invoiceTitle, isInvoiceGst(inv))}
               </div>
               <div className="text-xs text-slate-600 mt-1.5">Invoice No: <span className="font-bold text-slate-900">{inv.number}</span></div>
               <div className="text-xs text-slate-600">Date: <span className="font-bold text-slate-900">{formatDate(inv.createdAt)}</span></div>

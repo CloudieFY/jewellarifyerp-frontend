@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
-import { calcItem, inr, defaultInvoiceSettings, getCleanInvoiceTitle, type InvoiceSettings, type MakingChargeType } from "@/lib/storage";
+import { calcItem, inr, defaultInvoiceSettings, getCleanInvoiceTitle, isInvoiceGst, type InvoiceSettings, type MakingChargeType } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 
 export function ShopHeader({ documentLabel, compact = false, rightElement }: { documentLabel?: string; compact?: boolean; rightElement?: ReactNode }) {
@@ -92,7 +92,7 @@ export function ThermalInvoiceReceipt({ inv, widthMm }: { inv: any; widthMm: 58 
         </div>
       </div>
       <div className="text-[10px] leading-tight">
-        <div className="font-bold text-center mb-0.5">{inv.type === "GST" ? "TAX INVOICE" : "ESTIMATE INVOICE"}</div>
+        <div className="font-bold text-center mb-0.5">{isInvoiceGst(inv) ? "TAX INVOICE" : "ESTIMATE INVOICE"}</div>
         <div>Invoice: {inv.number}</div>
         <div>Date: {formatDate(inv.createdAt)}</div>
         <div>Customer: {inv.customerName}</div>
@@ -223,7 +223,7 @@ export function CompactA5Invoice({ inv }: { inv: any }) {
         </div>
         <div className="text-right">
           <div className={`inline-block px-2 py-1 rounded font-bold text-xs uppercase tracking-widest ${accent.bg} ${accent.text}`}>
-            {getCleanInvoiceTitle(invSettings.invoiceTitle, inv.type === "GST")}
+            {getCleanInvoiceTitle(invSettings.invoiceTitle, isInvoiceGst(inv))}
           </div>
           <div className="text-[11px] text-slate-600 mt-0.5">Inv #: <span className="font-semibold text-slate-900">{inv.number}</span></div>
           <div className="text-[11px] text-slate-600">Date: <span className="font-semibold text-slate-900">{formatDate(inv.createdAt)}</span></div>
@@ -491,7 +491,7 @@ export function PremiumA4Invoice({ inv }: { inv: any }) {
     <div className="bg-white text-slate-900 p-6 sm:p-8 font-sans text-xs max-w-4xl mx-auto border-2 border-amber-600 rounded-lg shadow-md print:shadow-none print:border-amber-600 print:p-4 print:m-0 relative">
       <div className="bg-gradient-to-r from-amber-700 via-amber-600 to-yellow-600 text-white px-6 py-2.5 rounded-t flex justify-between items-center -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 mb-5">
         <div className="font-bold tracking-widest text-xs uppercase flex items-center gap-2">
-          <span>{inv.type === "GST" ? "❖ TAX INVOICE ❖" : "❖ ESTIMATE INVOICE ❖"}</span>
+          <span>{isInvoiceGst(inv) ? "❖ TAX INVOICE ❖" : "❖ ESTIMATE INVOICE ❖"}</span>
         </div>
         <div className="text-[11px] font-mono font-semibold">
           {shop?.gstNumber ? `GSTIN: ${shop.gstNumber}` : `INV: ${inv.number}`}
@@ -519,7 +519,7 @@ export function PremiumA4Invoice({ inv }: { inv: any }) {
         </div>
         <div className="text-right shrink-0">
           <div className="bg-amber-100 text-amber-950 border border-amber-300 px-3.5 py-1.5 rounded font-bold uppercase tracking-widest text-xs inline-block shadow-sm">
-            {getCleanInvoiceTitle(invSettings.invoiceTitle, inv.type === "GST")}
+            {getCleanInvoiceTitle(invSettings.invoiceTitle, isInvoiceGst(inv))}
           </div>
           <div className="text-xs text-slate-700 font-mono mt-2">Invoice #: <strong className="text-slate-900">{inv.number}</strong></div>
           <div className="text-xs text-slate-700 font-mono">Date: <strong className="text-slate-900">{formatDate(inv.createdAt)}</strong></div>
@@ -908,7 +908,7 @@ export function ModernInvoice({ inv }: { inv: any }) {
         </div>
         <div className="text-right shrink-0">
           <span className="inline-block bg-blue-600 text-white font-bold uppercase tracking-widest px-3 py-1 rounded-md text-xs mb-2">
-            {getCleanInvoiceTitle(invSettings.invoiceTitle)}
+            {getCleanInvoiceTitle(invSettings.invoiceTitle, isInvoiceGst(inv))}
           </span>
           <div className="text-xs font-mono text-slate-300">Invoice: <strong className="text-white">{inv.number}</strong></div>
           <div className="text-xs font-mono text-slate-300">Date: <strong className="text-white">{formatDate(inv.createdAt)}</strong></div>

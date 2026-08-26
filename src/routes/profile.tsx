@@ -90,6 +90,7 @@ export default function ProfilePage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"shop" | "social" | "invoice" | "shortcuts">("shop");
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [shortcutSearch, setShortcutSearch] = useState("");
 
   const activeShortcuts = useActiveShortcuts();
 
@@ -182,8 +183,6 @@ export default function ProfilePage() {
   if (!data?.shop) return <Layout><div className="p-6 text-muted-foreground">No shop profile found.</div></Layout>;
 
   const initials = form.shopName.slice(0, 2).toUpperCase() || "SH";
-
-  const [shortcutSearch, setShortcutSearch] = useState("");
 
   const tabs = [
     { key: "shop",      label: "Shop Details",  icon: Building2 },

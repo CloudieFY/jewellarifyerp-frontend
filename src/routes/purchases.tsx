@@ -16,7 +16,7 @@ import { useDebounce } from "@/lib/utils";
 import { useTenantAPI } from "@/lib/api";
 import {
   Plus, Trash2, ShoppingBag, Eye, Pencil, ClipboardList, RotateCcw, Coins,
-  PackageCheck, BarChart3, Truck, Receipt, X,
+  PackageCheck, BarChart3, Truck, Receipt, X, UserCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -78,8 +78,42 @@ export default function PurchasesPage() {
   const updateMutation = useApiMutation((data: { id: string; body: Partial<Purchase> }) => api.purchases.update(data.id, data.body), ["purchases"]);
   const deleteMutation = useApiMutation((id: string) => api.purchases.remove(id), ["purchases"]);
   const updateSupplierMutation = useApiMutation((data: { id: string; body: Supplier }) => api.suppliers.update(data.id, data.body), ["suppliers"]);
+  const createCustomerMutation = useApiMutation((data: any) => api.customers.create(data), ["customers"]);
   const createInventoryMutation = useApiMutation((data: any) => api.inventory.create(data), ["inventory"]);
   const deleteInventoryMutation = useApiMutation((id: string) => api.inventory.remove(id), ["inventory"]);
+
+  const [showAddCustModal, setShowAddCustModal] = useState(false);
+  const [newQuickCust, setNewQuickCust] = useState({ name: "", phone: "", address: "" });
+
+  const handleSaveQuickCustomer = async () => {
+    if (!newQuickCust.name.trim()) {
+      toast.error("Customer Name is required");
+      return;
+    }
+    try {
+      const payload = {
+        name: newQuickCust.name.trim(),
+        mobile: newQuickCust.phone.trim() || "0000000000",
+        phone: newQuickCust.phone.trim() || "0000000000",
+        address: newQuickCust.address.trim() || "Local",
+        group: "CUSTOMER",
+      };
+      const created = await createCustomerMutation.mutateAsync(payload);
+      const newId = created._id || created.id;
+      setSearchCust(created.name);
+      setOldGoldForm((f: any) => ({
+        ...f,
+        customerId: newId,
+        customerName: created.name,
+        customerMobile: created.mobile || created.phone || "",
+      }));
+      setShowAddCustModal(false);
+      setNewQuickCust({ name: "", phone: "", address: "" });
+      toast.success(`Customer "${created.name}" created and selected!`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create customer");
+    }
+  };
 
   // Applies (or reverses, via type: "Debit") a ledger movement on a supplier — shared by
   // Entry creation, Order receipt and Purchase Returns so the balance math lives in one place.
@@ -2455,23 +2489,51 @@ export default function PurchasesPage() {
                 <tr>
                   <td className="p-2 border-r border-slate-200 dark:border-slate-800">
                     <Input
-                      placeholder="Name, mobile..."
-                      value={searchCust}
+                      placeholder="Type name, mobile..."
+                      value={oldGoldForm.customerName || searchCust}
                       onChange={e => {
-                        setSearchCust(e.target.value);
-                        const match = customers.find(c => c.name.toLowerCase() === e.target.value.toLowerCase() || (c.mobile || c.phone || "").includes(e.target.value));
-                        if (match) setOldGoldForm((f: any) => ({ ...f, customerId: match._id || match.id, customerName: match.name, customerMobile: match.mobile || match.phone || "" }));
+                        const val = e.target.value;
+                        setSearchCust(val);
+                        const cleanVal = val.trim().toLowerCase();
+                        if (!cleanVal) {
+                          setOldGoldForm((f: any) => ({ ...f, customerId: "", customerName: "", customerMobile: "" }));
+                          return;
+                        }
+                        setOldGoldForm((f: any) => ({ ...f, customerName: val }));
+                        const match = customers.find(c =>
+                          (c.name || "").toLowerCase().trim() === cleanVal ||
+                          (c.mobile || c.phone || "").includes(val.trim())
+                        );
+                        if (match) {
+                          setOldGoldForm((f: any) => ({
+                            ...f,
+                            customerId: match._id || match.id,
+                            customerName: match.name,
+                            customerMobile: match.mobile || match.phone || ""
+                          }));
+                        }
                       }}
                       className="h-8 text-xs font-bold bg-slate-50 dark:bg-slate-900"
                     />
                   </td>
                   <td className="p-2 border-r border-slate-200 dark:border-slate-800">
                     <Select value={oldGoldForm.customerId || ""} onValueChange={val => {
+                      if (val === "NEW_CUSTOMER") {
+                        setNewQuickCust({ name: searchCust || oldGoldForm.customerName || "", phone: "", address: "" });
+                        setShowAddCustModal(true);
+                        return;
+                      }
                       const c = customers.find(x => (x._id || x.id) === val);
-                      if (c) setOldGoldForm((f: any) => ({ ...f, customerId: val, customerName: c.name, customerMobile: c.mobile || c.phone || "" }));
+                      if (c) {
+                        setSearchCust(c.name);
+                        setOldGoldForm((f: any) => ({ ...f, customerId: val, customerName: c.name, customerMobile: c.mobile || c.phone || "" }));
+                      }
                     }}>
                       <SelectTrigger className="h-8 text-xs font-bold bg-slate-50 dark:bg-slate-900"><SelectValue placeholder="Select customer" /></SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="NEW_CUSTOMER" className="font-bold text-amber-600 dark:text-amber-400 border-b border-slate-200">
+                          ➕ Create / Add New Customer
+                        </SelectItem>
                         {customers.filter(c => c.name.toLowerCase().includes(debouncedSearchCust.toLowerCase()) || (c.mobile || c.phone || "").includes(debouncedSearchCust)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(c => (
                           <SelectItem key={c._id || c.id} value={(c._id || c.id) as string}>{c.name} · {c.mobile || c.phone}</SelectItem>
                         ))}
@@ -2755,6 +2817,59 @@ export default function PurchasesPage() {
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* QUICK CREATE CUSTOMER MODAL */}
+      <Dialog open={showAddCustModal} onOpenChange={setShowAddCustModal}>
+        <DialogContent className="z-[200] pointer-events-auto max-w-md bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-5 rounded-xl border border-slate-300 dark:border-slate-800 shadow-2xl" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-amber-600">
+              <UserCheck className="w-5 h-5" /> Quick Create New Customer
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3.5 pt-2 text-xs">
+            <div>
+              <Label className="text-xs font-bold">Customer Full Name *</Label>
+              <Input
+                placeholder="e.g. Ramesh Sharma"
+                value={newQuickCust.name}
+                onChange={(e) => setNewQuickCust(prev => ({ ...prev, name: e.target.value }))}
+                className="h-9 mt-1 text-xs font-bold bg-slate-50 dark:bg-slate-950"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Mobile Phone Number</Label>
+              <Input
+                placeholder="e.g. 9876543210"
+                value={newQuickCust.phone}
+                onChange={(e) => setNewQuickCust(prev => ({ ...prev, phone: e.target.value }))}
+                className="h-9 mt-1 text-xs font-mono bg-slate-50 dark:bg-slate-950"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">City / Address</Label>
+              <Input
+                placeholder="e.g. Indore MP"
+                value={newQuickCust.address}
+                onChange={(e) => setNewQuickCust(prev => ({ ...prev, address: e.target.value }))}
+                className="h-9 mt-1 text-xs bg-slate-50 dark:bg-slate-950"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-3 border-t">
+              <Button variant="outline" size="sm" onClick={() => setShowAddCustModal(false)} className="h-8 text-xs">
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveQuickCustomer}
+                disabled={createCustomerMutation.isPending || !newQuickCust.name.trim()}
+                className="h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                {createCustomerMutation.isPending ? "Saving..." : "Save & Select Customer"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </Layout>

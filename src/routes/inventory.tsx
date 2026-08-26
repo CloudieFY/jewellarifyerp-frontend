@@ -20,7 +20,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useState, useRef, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Plus, Trash2, Pencil, Image as ImageIcon, Printer,
   ScanBarcode, Award, Boxes, ArrowLeftRight,
@@ -33,9 +33,7 @@ import { useDebounce } from "@/lib/utils";
 import { useTenantAPI } from "@/lib/api";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import JsBarcode from "jsbarcode";
 import * as XLSX from "xlsx";
-import { useAuth } from "@/lib/auth";
 import { BarcodeTagModal } from "@/components/BarcodeTagModal";
 
 // Extended Product Type Interface
@@ -164,7 +162,6 @@ const emptyProduct: ExtendedProduct = {
 export default function InventoryPage() {
   const api = useTenantAPI();
   const queryClient = useQueryClient();
-  const { tenantSession } = useAuth();
 
   // Queries
   const { data: allItems = [], isLoading: isLoadingItems } = useQuery<ExtendedProduct[]>({
@@ -215,6 +212,7 @@ export default function InventoryPage() {
       queryClient.invalidateQueries({ queryKey: ["inventorySummaryReport"] });
       toast.success("Item saved successfully!");
       setModalOpen(false);
+      setEditingId(null);
     },
     onError: (err: any) => toast.error(`Failed to save item: ${err.message}`)
   });
@@ -226,6 +224,7 @@ export default function InventoryPage() {
       queryClient.invalidateQueries({ queryKey: ["inventorySummaryReport"] });
       toast.success("Item updated successfully!");
       setModalOpen(false);
+      setEditingId(null);
     },
     onError: (err: any) => toast.error(`Failed to update item: ${err.message}`)
   });
@@ -256,6 +255,7 @@ export default function InventoryPage() {
   const [activeMainTab, setActiveMainTab] = useState("stock-list");
   const [activeFormTab, setActiveFormTab] = useState("basic");
   const [formViewMode, setFormViewMode] = useState<"openstock" | "all" | "tabbed">("openstock");
+  const [inventoryLedgerView, setInventoryLedgerView] = useState<"master_stock" | "purity_weight" | "movement" | "tag_audit" | "low_stock">("master_stock");
   const [modalOpen, setModalOpen] = useState(false);
   const [draft, setDraft] = useState<ExtendedProduct>(emptyProduct);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -295,6 +295,15 @@ export default function InventoryPage() {
       const updated = [...prev];
       const item = { ...updated[idx], [field]: val };
 
+      if (field === "stamp") {
+        if (val === "24K" || val === "999") item.tunch = 99.9;
+        else if (val === "22K") item.tunch = 91.6;
+        else if (val === "20K") item.tunch = 83.3;
+        else if (val === "18K") item.tunch = 75.0;
+        else if (val === "14K") item.tunch = 58.5;
+        else if (val === "925") item.tunch = 92.5;
+      }
+
       const gw = Number(item.grossWeight) || 0;
       const less = Number(item.lessWeight) || 0;
       const net = Math.max(0, gw - less);
@@ -304,7 +313,9 @@ export default function InventoryPage() {
       const wastage = Number(item.wastage) || 0;
       const fineWt = parseFloat((net * (tunch + wastage) / 100).toFixed(3));
 
-      const isSilver = (item.stamp && item.stamp.toLowerCase().includes("sil")) || (item.unit && item.unit.toLowerCase().includes("sil"));
+      const isSilver = (item.stamp && item.stamp.toLowerCase().includes("sil")) ||
+                       (item.stamp && (item.stamp.includes("925") || item.stamp.includes("999"))) ||
+                       (item.unit && item.unit.toLowerCase().includes("sil"));
       if (isSilver) {
         item.silFine = fineWt;
         item.goldFine = 0;
@@ -316,7 +327,21 @@ export default function InventoryPage() {
       const rate = Number(item.rate) || 0;
       const lbr = Number(item.labour) || 0;
       const other = Number(item.other) || 0;
-      item.total = Math.round((net * rate) + lbr + other);
+
+      let calcLabour = lbr;
+      if (item.on === "Wt") {
+        calcLabour = lbr * net;
+      } else if (item.on === "%") {
+        calcLabour = (net * rate) * (lbr / 100);
+      } else {
+        calcLabour = lbr;
+      }
+
+      if (field === "total") {
+        item.total = Number(val) || 0;
+      } else {
+        item.total = Math.round((net * rate) + calcLabour + other);
+      }
 
       updated[idx] = item;
       return updated;
@@ -343,24 +368,41 @@ export default function InventoryPage() {
 
     try {
       let savedCount = 0;
+      let updatedCount = 0;
       for (const row of validRows) {
-        const barcode = `STK-${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
+        const rowId = (row as any)._id || (validRows.length === 1 ? editingId : null);
+        const barcode = (row as any).barcode || `STK-${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
+        
+        const lbrRaw = Number(row.labour) || 0;
+        const netWtVal = Number(row.netWeight) || 0;
+        const rateVal = Number(row.rate) || 0;
+        let calcLabour = lbrRaw;
+        if (row.on === "Wt") {
+          calcLabour = lbrRaw * netWtVal;
+        } else if (row.on === "%") {
+          calcLabour = (netWtVal * rateVal) * (lbrRaw / 100);
+        }
+        
         const payload: any = {
+          ...(editingId && draft ? draft : {}),
           name: row.name.toUpperCase(),
           category: (row.stamp.toLowerCase().includes("sil") || row.unit.toLowerCase().includes("sil")) ? "Silver" : "Gold",
-          subcategory: "Ornaments",
+          subcategory: (editingId && draft.subcategory) ? draft.subcategory : "Ornaments",
           purity: row.stamp || "22K",
           unit: row.unit || "Gm",
           stock: Number(row.pcs) || 1,
           initialStock: Number(row.pcs) || 1,
           grossWeight: Number(row.grossWeight) || 0,
           stoneWeight: Number(row.lessWeight) || 0,
-          netWeight: Number(row.netWeight) || 0,
+          netWeight: netWtVal,
           tunch: Number(row.tunch) || 91.6,
           wastage: Number(row.wastage) || 0,
-          costPrice: Number(row.rate) || 0,
-          sellingPrice: Number(row.total) || Math.round((Number(row.netWeight) || 0) * (Number(row.rate) || 0)),
-          labourCharges: Number(row.labour) || 0,
+          costPrice: rateVal,
+          sellingPrice: Number(row.total) || Math.round((netWtVal * rateVal) + calcLabour + Number(row.other || 0)),
+          makingChargeType: row.on === "Wt" ? "per_gram" : row.on === "%" ? "percentage" : "fixed",
+          makingChargePct: row.on === "%" ? lbrRaw : 0,
+          makingCharge: lbrRaw,
+          labourCharges: Math.round(calcLabour),
           otherCharges: Number(row.other) || 0,
           barcode,
           status: "Active",
@@ -370,12 +412,24 @@ export default function InventoryPage() {
           entryDate: openStockHeader.date,
         };
 
-        await createItemMutation.mutateAsync(payload);
-        savedCount++;
+        if (rowId) {
+          await updateItemMutation.mutateAsync({ id: rowId, body: payload });
+          updatedCount++;
+        } else {
+          await createItemMutation.mutateAsync(payload);
+          savedCount++;
+        }
       }
 
-      toast.success(`✓ Saved ${savedCount} OPEN.STOCK item(s) into Inventory stock!`);
+      if (updatedCount > 0 && savedCount === 0) {
+        toast.success(`✓ Updated ${updatedCount} item(s) in Inventory stock!`);
+      } else if (updatedCount > 0 && savedCount > 0) {
+        toast.success(`✓ Updated ${updatedCount} item(s) and saved ${savedCount} new item(s)!`);
+      } else {
+        toast.success(`✓ Saved ${savedCount} OPEN.STOCK item(s) into Inventory stock!`);
+      }
       setModalOpen(false);
+      setEditingId(null);
     } catch (err: any) {
       console.error("Failed to save OPEN.STOCK entry:", err);
       toast.error("Error saving OPEN.STOCK entry.");
@@ -727,6 +781,96 @@ export default function InventoryPage() {
     toast.success("Stock Audit Ledger exported to Excel!");
   };
 
+  // ── MMI Purity & Metal Weight Breakdown Ledger Computation ──
+  const mmiPurityLedgerData = useMemo(() => {
+    const purityMap: Record<string, { count: number; netWt: number; grossWt: number; fineGold: number; fineSilver: number; totalValuation: number }> = {
+      "24K (99.9%)": { count: 0, netWt: 0, grossWt: 0, fineGold: 0, fineSilver: 0, totalValuation: 0 },
+      "22K (91.6%)": { count: 0, netWt: 0, grossWt: 0, fineGold: 0, fineSilver: 0, totalValuation: 0 },
+      "20K (83.3%)": { count: 0, netWt: 0, grossWt: 0, fineGold: 0, fineSilver: 0, totalValuation: 0 },
+      "18K (75.0%)": { count: 0, netWt: 0, grossWt: 0, fineGold: 0, fineSilver: 0, totalValuation: 0 },
+      "14K (58.5%)": { count: 0, netWt: 0, grossWt: 0, fineGold: 0, fineSilver: 0, totalValuation: 0 },
+      "925 Sterling Silver": { count: 0, netWt: 0, grossWt: 0, fineGold: 0, fineSilver: 0, totalValuation: 0 },
+      "999 Fine Silver": { count: 0, netWt: 0, grossWt: 0, fineGold: 0, fineSilver: 0, totalValuation: 0 },
+      "Diamonds & Gemstones": { count: 0, netWt: 0, grossWt: 0, fineGold: 0, fineSilver: 0, totalValuation: 0 },
+      "Other / Imitation": { count: 0, netWt: 0, grossWt: 0, fineGold: 0, fineSilver: 0, totalValuation: 0 },
+    };
+
+    (allItems || []).forEach((item) => {
+      const pcs = typeof item.stock === "number" ? Math.max(0, item.stock) : 1;
+      const gw = (item.grossWeight || 0) * pcs;
+      const nw = (item.netWeight || 0) * pcs;
+      const val = (item.costPrice || item.sellingPrice || 0) * pcs;
+      const pur = (item.purity || "").toUpperCase();
+      const cat = (item.category || "").toUpperCase();
+
+      let targetKey = "Other / Imitation";
+      if (pur.includes("24K") || pur.includes("999 GOLD")) targetKey = "24K (99.9%)";
+      else if (pur.includes("22K") || pur.includes("916")) targetKey = "22K (91.6%)";
+      else if (pur.includes("20K") || pur.includes("833")) targetKey = "20K (83.3%)";
+      else if (pur.includes("18K") || pur.includes("750")) targetKey = "18K (75.0%)";
+      else if (pur.includes("14K") || pur.includes("585")) targetKey = "14K (58.5%)";
+      else if (pur.includes("925") || cat.includes("SILVER")) targetKey = "925 Sterling Silver";
+      else if (pur.includes("999") && cat.includes("SILVER")) targetKey = "999 Fine Silver";
+      else if (cat.includes("DIAMOND") || cat.includes("GEMSTONE")) targetKey = "Diamonds & Gemstones";
+
+      purityMap[targetKey].count += pcs;
+      purityMap[targetKey].grossWt += gw;
+      purityMap[targetKey].netWt += nw;
+      purityMap[targetKey].totalValuation += val;
+
+      if (targetKey.includes("24K")) purityMap[targetKey].fineGold += nw * 0.999;
+      else if (targetKey.includes("22K")) purityMap[targetKey].fineGold += nw * 0.916;
+      else if (targetKey.includes("20K")) purityMap[targetKey].fineGold += nw * 0.833;
+      else if (targetKey.includes("18K")) purityMap[targetKey].fineGold += nw * 0.750;
+      else if (targetKey.includes("14K")) purityMap[targetKey].fineGold += nw * 0.585;
+      else if (targetKey.includes("Silver")) purityMap[targetKey].fineSilver += nw * (targetKey.includes("999") ? 0.999 : 0.925);
+    });
+
+    return Object.entries(purityMap).map(([purity, data]) => ({ purity, ...data }));
+  }, [allItems]);
+
+  // Export MMI Master Stock Register to Excel
+  const exportMasterStockRegisterExcel = () => {
+    if (!allItems.length) return toast.error("No items in stock register to export!");
+
+    const sheetData = [
+      ["Item Name", "Barcode / Tag", "HUID", "Category", "Subcategory", "Purity", "Pcs Qty", "Gross Wt (g)", "Net Wt (g)", "Fine Gold (g)", "Fine Silver (g)", "Cost Rate (INR)", "Total Valuation (INR)", "Location / Tray", "Status"],
+      ...allItems.map((item) => {
+        const pur = (item.purity || "").toUpperCase();
+        const nw = item.netWeight || 0;
+        const isSil = (item.category || "").toUpperCase().includes("SILVER") || pur.includes("925");
+        const fineGold = isSil ? 0 : parseFloat((nw * (pur.includes("24K") ? 0.999 : pur.includes("22K") ? 0.916 : pur.includes("20K") ? 0.833 : pur.includes("18K") ? 0.750 : 0.916)).toFixed(3));
+        const fineSilver = isSil ? parseFloat((nw * (pur.includes("999") ? 0.999 : 0.925)).toFixed(3)) : 0;
+        const val = (item.costPrice || item.sellingPrice || 0) * (item.stock || 1);
+
+        return [
+          item.name,
+          item.barcode || item.itemCode || item.sku || "N/A",
+          item.huid || "N/A",
+          item.category || "Jewellery",
+          item.subcategory || "",
+          item.purity || "22K",
+          item.stock || 0,
+          item.grossWeight || 0,
+          item.netWeight || 0,
+          fineGold,
+          fineSilver,
+          item.costPrice || 0,
+          val,
+          item.tray || item.godown || "Vault",
+          (item.stock || 0) > 0 ? "IN STOCK" : "OUT OF STOCK",
+        ];
+      }),
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+    ws["!cols"] = [{ wch: 25 }, { wch: 15 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 15 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "MMI_Stock_Register");
+    XLSX.writeFile(wb, `MMI_Master_Stock_Register_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success("MMI Master Stock Register exported to Excel!");
+  };
+
 
   // Open Create Modal
   const handleOpenCreate = () => {
@@ -741,8 +885,40 @@ export default function InventoryPage() {
   // Open Edit Modal
   const handleOpenEdit = (item: ExtendedProduct) => {
     setDraft({ ...item });
-    setEditingId(item._id || item.id || null);
+    const targetId = item._id || item.id || null;
+    setEditingId(targetId);
     setActiveFormTab("basic");
+    setFormViewMode("openstock");
+
+    const tunchVal = (item as any).tunch ?? (item.purity === "24K" || item.purity === "999" ? 99.9 : item.purity === "22K" ? 91.6 : item.purity === "20K" ? 83.3 : item.purity === "18K" ? 75.0 : item.purity === "14K" ? 58.5 : item.purity === "925" ? 92.5 : 91.6);
+    const lessWt = Number(item.stoneWeight || 0) + Number(item.diamondWeight || 0) + Number(item.otherWeight || 0);
+    const gw = Number(item.grossWeight) || 0;
+    const netWt = item.netWeight ?? Math.max(0, gw - lessWt);
+    const fine = parseFloat((netWt * (tunchVal + ((item as any).wastage || 0)) / 100).toFixed(3));
+    const isSilver = (item.category && item.category.toLowerCase().includes("sil")) || (item.purity && item.purity.toLowerCase().includes("925")) || (item.purity && item.purity.toLowerCase().includes("999"));
+
+    const rowFromItem = {
+      _id: targetId || undefined,
+      name: (item.name || "").toUpperCase(),
+      stamp: item.purity || "22K",
+      unit: (item as any).unit || "Gm",
+      pcs: item.stock ?? 1,
+      grossWeight: gw,
+      lessWeight: lessWt,
+      netWeight: parseFloat(netWt.toFixed(3)),
+      tunch: tunchVal,
+      wastage: (item as any).wastage || 0,
+      rate: item.costPrice || item.purchaseRate || (item as any).ratePerGram || 0,
+      labour: (item as any).labourCharges || item.makingCharge || 0,
+      on: "Wt",
+      other: item.otherCharges || 0,
+      goldFine: isSilver ? 0 : fine,
+      silFine: isSilver ? fine : 0,
+      total: item.sellingPrice || Math.round((netWt * (item.costPrice || 0)) + (item.makingCharge || 0) + (item.otherCharges || 0)),
+      barcode: item.barcode || "",
+    };
+
+    setOpenStockRows([rowFromItem]);
     setModalOpen(true);
   };
 
@@ -792,153 +968,7 @@ export default function InventoryPage() {
     }));
   };
 
-  // Barcode Generator Canvas Effect
-  const barcodeCanvasRef = useRef<SVGSVGElement>(null);
-  useEffect(() => {
-    if (!tagModalOpen || !selectedTagItem) return;
-    const timer = setTimeout(() => {
-      if (barcodeCanvasRef.current) {
-        try {
-          const barcodeVal =
-            selectedTagItem.barcode ||
-            selectedTagItem.itemCode ||
-            selectedTagItem.sku ||
-            selectedTagItem.huid ||
-            ((selectedTagItem as any)._id
-              ? `TAG-${String((selectedTagItem as any)._id).slice(-8).toUpperCase()}`
-              : "890123456789");
 
-          JsBarcode(barcodeCanvasRef.current, barcodeVal, {
-            format: "CODE128",
-            width: 1.3,
-            height: 42,
-            displayValue: true,
-            fontSize: 11,
-            margin: 2,
-          });
-        } catch (err) {
-          console.error("Barcode generation error:", err);
-        }
-      }
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [tagModalOpen, selectedTagItem]);
-
-  const handlePrintJewelleryTag = () => {
-    if (!selectedTagItem) return;
-    const printWin = window.open("", "_blank", "width=450,height=350");
-    if (!printWin) {
-      // Fallback to standard window print if popup blocked
-      window.print();
-      return;
-    }
-
-    const shopName = tenantSession?.shop?.shopName || "JEWELSHOP ERP";
-    const barcodeVal =
-      selectedTagItem.barcode ||
-      selectedTagItem.itemCode ||
-      selectedTagItem.sku ||
-      selectedTagItem.huid ||
-      ((selectedTagItem as any)._id
-        ? `TAG-${String((selectedTagItem as any)._id).slice(-8).toUpperCase()}`
-        : "890123456789");
-
-    const svgContent = barcodeCanvasRef.current ? barcodeCanvasRef.current.outerHTML : `<div style="font-family:monospace;font-size:14px;font-weight:bold;margin:8px 0;">*${barcodeVal}*</div>`;
-
-    printWin.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Jewellery Tag - ${selectedTagItem.name}</title>
-          <style>
-            @page {
-              size: auto;
-              margin: 0mm;
-            }
-            body {
-              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-              margin: 0;
-              padding: 12px;
-              text-align: center;
-              background: white;
-              color: black;
-              -webkit-print-color-adjust: exact;
-            }
-            .tag-card {
-              border: 2px dashed #000;
-              padding: 12px;
-              border-radius: 8px;
-              display: inline-block;
-              width: 260px;
-              background: #fff;
-              margin: 0 auto;
-            }
-            .shop-title {
-              font-weight: 800;
-              font-size: 13px;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-            }
-            .item-title {
-              font-size: 12px;
-              font-weight: 700;
-              margin: 4px 0 2px 0;
-            }
-            .item-details {
-              font-size: 10px;
-              font-family: monospace;
-              color: #222;
-              margin-bottom: 4px;
-            }
-            .barcode-container {
-              margin: 8px 0;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-            }
-            .barcode-container svg {
-              max-width: 100%;
-              height: auto;
-            }
-            .huid-tag {
-              font-size: 10px;
-              font-family: monospace;
-              font-weight: bold;
-              margin-top: 2px;
-            }
-            .price-tag {
-              font-size: 14px;
-              font-weight: bold;
-              color: #000;
-              margin-top: 4px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="tag-card">
-            <div class="shop-title">${shopName}</div>
-            <div class="item-title">${selectedTagItem.name}</div>
-            <div class="item-details">
-              ${selectedTagItem.category} | ${selectedTagItem.purity} | G: ${selectedTagItem.grossWeight || 0}g | N: ${selectedTagItem.netWeight || 0}g
-            </div>
-            <div class="barcode-container">
-              ${svgContent}
-            </div>
-            ${selectedTagItem.huid ? `<div class="huid-tag">HUID: ${selectedTagItem.huid}</div>` : ''}
-            <div class="price-tag">${inr(selectedTagItem.sellingPrice || 0)}</div>
-          </div>
-          <script>
-            window.onload = function() {
-              window.focus();
-              window.print();
-              setTimeout(function() { window.close(); }, 500);
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    printWin.document.close();
-  };
 
   return (
     <Layout>
@@ -1699,213 +1729,395 @@ export default function InventoryPage() {
         </TabsContent>
 
         {/* ======================================================== */}
-        {/* TAB 6: STOCK LEDGER */}
+        {/* TAB 6: MMI INVENTORY STOCK LEDGERS SUITE */}
         {/* ======================================================== */}
         <TabsContent value="stock-ledger" className="space-y-6">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="shadow-sm border-l-4 border-l-purple-500 bg-card">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-                  <span>Total Audit Log Records</span>
-                  <History className="w-4 h-4 text-purple-600" />
-                </div>
-                <div className="text-2xl font-bold font-mono mt-1">{filteredStockLedger.length}</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">Real-time inventory movements</div>
-              </CardContent>
-            </Card>
+          {/* MMI Stock Ledger Mode Selector Bar */}
+          <div className="flex items-center gap-1.5 bg-card border border-amber-500/20 rounded-2xl p-2 shadow-sm overflow-x-auto scrollbar-none">
+            <button
+              onClick={() => setInventoryLedgerView("master_stock")}
+              className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                inventoryLedgerView === "master_stock"
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
+              }`}
+            >
+              <Boxes className="w-4 h-4" /> Master Stock Register
+            </button>
 
-            <Card className="shadow-sm border-l-4 border-l-rose-500 bg-card">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-                  <span>Total Sold / Deductions</span>
-                  <ArrowUpRight className="w-4 h-4 text-rose-600" />
-                </div>
-                <div className="text-2xl font-bold font-mono text-rose-600 mt-1">
-                  {Math.abs(filteredStockLedger.filter((l: any) => l.qtyChange < 0).reduce((acc: number, l: any) => acc + l.qtyChange, 0))} Pcs
-                </div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">Stock outward to customers</div>
-              </CardContent>
-            </Card>
+            <button
+              onClick={() => setInventoryLedgerView("purity_weight")}
+              className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                inventoryLedgerView === "purity_weight"
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
+              }`}
+            >
+              <Scale className="w-4 h-4" /> Metal Purity Balance Ledger
+            </button>
 
-            <Card className="shadow-sm border-l-4 border-l-emerald-500 bg-card">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-                  <span>Total Inward Purchased</span>
-                  <ArrowDownRight className="w-4 h-4 text-emerald-600" />
-                </div>
-                <div className="text-2xl font-bold font-mono text-emerald-600 mt-1">
-                  {filteredStockLedger.filter((l: any) => l.qtyChange > 0).reduce((acc: number, l: any) => acc + l.qtyChange, 0)} Pcs
-                </div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">Stock inward entries</div>
-              </CardContent>
-            </Card>
+            <button
+              onClick={() => setInventoryLedgerView("movement")}
+              className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                inventoryLedgerView === "movement"
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
+              }`}
+            >
+              <History className="w-4 h-4" /> Movement Audit Register
+            </button>
 
-            <Card className="shadow-sm border-l-4 border-l-amber-500 bg-card">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-                  <span>Export Stock Ledger</span>
-                  <FileSpreadsheet className="w-4 h-4 text-amber-600" />
-                </div>
-                <Button size="sm" variant="outline" className="w-full mt-2 h-8 text-xs gap-1 text-amber-800 border-amber-300 hover:bg-amber-50" onClick={exportStockLedgerToExcel}>
-                  <Download className="w-3.5 h-3.5" /> Download Excel
-                </Button>
-              </CardContent>
-            </Card>
+            <button
+              onClick={() => setInventoryLedgerView("tag_audit")}
+              className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                inventoryLedgerView === "tag_audit"
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
+              }`}
+            >
+              <ScanBarcode className="w-4 h-4" /> Tag & Barcode Audit
+            </button>
+
+            <button
+              onClick={() => setInventoryLedgerView("low_stock")}
+              className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                inventoryLedgerView === "low_stock"
+                  ? "bg-amber-600 text-white shadow-md"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
+              }`}
+            >
+              <AlertTriangle className="w-4 h-4" /> Low Stock Warning Ledger
+            </button>
           </div>
 
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3 border-b bg-muted/20">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-                <CardTitle className="text-base font-display flex items-center gap-2">
-                  <History className="w-5 h-5 text-purple-600" /> Complete Stock Audit Ledger & Sales Deduction History
-                </CardTitle>
-
-                {/* Filter and Search Bar */}
-                <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
-                  <div className="relative flex-1 md:w-64">
-                    <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-muted-foreground" />
-                    <Input
-                      placeholder="Search Item, Tag #, Buyer, Mobile, Invoice..."
-                      className="pl-8 h-9 text-xs"
-                      value={ledgerSearchTerm}
-                      onChange={(e) => setLedgerSearchTerm(e.target.value)}
-                    />
-                  </div>
-
-                  <Select value={ledgerTypeFilter} onValueChange={setLedgerTypeFilter}>
-                    <SelectTrigger className="h-9 text-xs w-36">
-                      <SelectValue placeholder="Txn Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">All Movements</SelectItem>
-                      <SelectItem value="SALE">Sales Outward</SelectItem>
-                      <SelectItem value="PURCHASE">Purchase Inward</SelectItem>
-                      <SelectItem value="ADJUSTMENT">Adjustments</SelectItem>
-                      <SelectItem value="OPENING">Opening Stock</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Button size="sm" variant="outline" className="h-9 text-xs gap-1" onClick={exportStockLedgerToExcel}>
-                    <Download className="w-3.5 h-3.5" /> Export
+          {/* LEDGER 1: MASTER STOCK REGISTER */}
+          {inventoryLedgerView === "master_stock" && (
+            <Card className="shadow-sm">
+              <CardHeader className="pb-3 border-b bg-muted/20 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base font-display flex items-center gap-2">
+                    <Boxes className="w-5 h-5 text-amber-600" /> Master Stock Book Register (Stock Book)
+                  </CardTitle>
+                  <CardDescription className="text-xs">Comprehensive item-by-item stock register with gross weight, net weight, fine weight & valuation</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1 text-emerald-800 border-emerald-300 hover:bg-emerald-50" onClick={exportMasterStockRegisterExcel}>
+                    <Download className="w-3.5 h-3.5" /> Export Excel
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => window.print()}>
+                    <Printer className="w-3.5 h-3.5" /> Print Register
                   </Button>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              {filteredStockLedger.length === 0 ? (
-                <div className="py-12 text-center text-muted-foreground text-sm">
-                  No matching stock ledger records found. Movements are logged automatically on Sales Invoices, Purchases, and Adjustments.
-                </div>
-              ) : (
-                <>
-                  {/* Mobile View */}
-                  <div className="block md:hidden divide-y">
-                    {filteredStockLedger.map((led: any) => (
-                      <div key={led.id} className="p-3 space-y-2 hover:bg-muted/10 transition-colors">
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono text-xs text-muted-foreground">{led.date}</span>
-                          <Badge
-                            variant="outline"
-                            className={`font-semibold text-xs ${
-                              led.qtyChange < 0
-                                ? "bg-rose-50 text-rose-700 border-rose-200"
-                                : led.txnCategory === "PURCHASE"
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : "bg-amber-50 text-amber-700 border-amber-200"
-                            }`}
-                          >
-                            {led.transactionType}
-                          </Badge>
-                        </div>
-                        <div className="font-bold text-sm text-foreground">{led.itemName}</div>
-                        {led.sku && <div className="text-xs font-mono text-purple-700">SKU / Tag: {led.sku}</div>}
-                        <div className="text-xs bg-muted/30 p-1.5 rounded space-y-1">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Ref #:</span>
-                            <span className="font-mono font-bold text-primary">{led.referenceNo}</span>
-                          </div>
-                          {led.partyName && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">{led.partyType || "Party"}:</span>
-                              <span className="font-medium">{led.partyName} {led.partyMobile ? `(${led.partyMobile})` : ""}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between text-xs font-mono pt-1">
-                          <span>Qty: <strong className={led.qtyChange >= 0 ? "text-emerald-600" : "text-rose-600"}>{led.qtyChange >= 0 ? `+${led.qtyChange}` : led.qtyChange} Pcs</strong></span>
-                          <span>Stock Bal: <strong>{led.balanceQty} Pcs</strong></span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse min-w-[1000px]">
+                    <thead className="bg-muted/50 text-muted-foreground uppercase font-bold text-[11px] border-b">
+                      <tr>
+                        <th className="py-2.5 px-3">Tag / Barcode</th>
+                        <th className="py-2.5">Item Name</th>
+                        <th className="py-2.5">Category</th>
+                        <th className="py-2.5">Purity</th>
+                        <th className="py-2.5 text-center">Stock Qty</th>
+                        <th className="py-2.5 text-right">Gross Wt (g)</th>
+                        <th className="py-2.5 text-right text-emerald-700">Net Wt (g)</th>
+                        <th className="py-2.5 text-right text-amber-700">Fine Gold (g)</th>
+                        <th className="py-2.5 text-right text-slate-700">Fine Sil (g)</th>
+                        <th className="py-2.5 text-right px-3">Valuation (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y font-mono">
+                      {allItems.map((item) => {
+                        const pcs = typeof item.stock === "number" ? Math.max(0, item.stock) : 1;
+                        const gw = (item.grossWeight || 0) * pcs;
+                        const nw = (item.netWeight || 0) * pcs;
+                        const pur = (item.purity || "").toUpperCase();
+                        const isSil = (item.category || "").toUpperCase().includes("SILVER") || pur.includes("925");
+                        const fineGold = isSil ? 0 : parseFloat((nw * (pur.includes("24K") ? 0.999 : pur.includes("22K") ? 0.916 : pur.includes("20K") ? 0.833 : pur.includes("18K") ? 0.750 : 0.916)).toFixed(3));
+                        const fineSilver = isSil ? parseFloat((nw * (pur.includes("999") ? 0.999 : 0.925)).toFixed(3)) : 0;
+                        const val = (item.costPrice || item.sellingPrice || 0) * pcs;
 
-                  {/* Desktop View */}
-                  <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-sm text-left border-collapse min-w-[950px]">
-                      <thead className="bg-muted/40 text-muted-foreground text-xs uppercase border-b">
-                        <tr>
-                          <th className="py-3 px-4">Date</th>
-                          <th>Item & SKU</th>
-                          <th>Txn Type</th>
-                          <th>Reference #</th>
-                          <th>Buyer / Customer / Supplier</th>
-                          <th>Qty Change</th>
-                          <th>Stock Balance</th>
-                          <th>Rate & Value</th>
-                          <th>Remarks</th>
+                        return (
+                          <tr key={item._id || item.id} className="hover:bg-muted/20 transition-colors">
+                            <td className="py-2.5 px-3 font-bold text-primary">{item.barcode || item.itemCode || item.sku || "N/A"}</td>
+                            <td className="font-sans font-semibold text-foreground">{item.name}</td>
+                            <td>{item.category || "Jewellery"}</td>
+                            <td>
+                              <Badge variant="outline" className="text-[10px]">{item.purity || "22K"}</Badge>
+                            </td>
+                            <td className="text-center font-bold">{pcs} Pcs</td>
+                            <td className="text-right">{gw.toFixed(3)}g</td>
+                            <td className="text-right font-bold text-emerald-700">{nw.toFixed(3)}g</td>
+                            <td className="text-right font-bold text-amber-700">{fineGold > 0 ? `${fineGold.toFixed(3)}g` : "—"}</td>
+                            <td className="text-right font-bold text-slate-700">{fineSilver > 0 ? `${fineSilver.toFixed(3)}g` : "—"}</td>
+                            <td className="text-right px-3 font-bold text-emerald-700">{inr(val)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-muted/40 font-bold border-t-2 border-slate-900 text-xs">
+                      <tr>
+                        <td colSpan={4} className="py-3 px-3 uppercase text-right">Total Stock Summary:</td>
+                        <td className="text-center font-mono text-blue-700">{allItems.reduce((s, i) => s + (i.stock || 0), 0)} Pcs</td>
+                        <td className="text-right font-mono">{allItems.reduce((s, i) => s + ((i.grossWeight || 0) * (i.stock || 1)), 0).toFixed(3)}g</td>
+                        <td className="text-right font-mono text-emerald-800">{allItems.reduce((s, i) => s + ((i.netWeight || 0) * (i.stock || 1)), 0).toFixed(3)}g</td>
+                        <td colSpan={2} className="text-right font-mono text-amber-800">
+                          Gold: {allItems.filter(i => !(i.category || "").toUpperCase().includes("SILVER")).reduce((s, i) => s + ((i.netWeight || 0) * 0.916 * (i.stock || 1)), 0).toFixed(3)}g
+                        </td>
+                        <td className="text-right px-3 font-mono text-emerald-900">{inr(allItems.reduce((s, i) => s + ((i.costPrice || i.sellingPrice || 0) * (i.stock || 1)), 0))}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* LEDGER 2: METAL PURITY BALANCE LEDGER */}
+          {inventoryLedgerView === "purity_weight" && (
+            <Card className="shadow-sm">
+              <CardHeader className="pb-3 border-b bg-muted/20 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base font-display flex items-center gap-2">
+                    <Scale className="w-5 h-5 text-amber-600" /> Metal Purity & Fine Weight Balance Ledger (Sona-Chandi Weight Khata)
+                  </CardTitle>
+                  <CardDescription className="text-xs">Purity-wise physical gross weight, net weight, fine gold & silver equivalent audit</CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse min-w-[800px]">
+                    <thead className="bg-muted/50 text-muted-foreground uppercase font-bold text-[11px] border-b">
+                      <tr>
+                        <th className="py-3 px-4">Purity Stamp / Metal Category</th>
+                        <th className="py-3 text-center">Item Count</th>
+                        <th className="py-3 text-right">Gross Wt (g)</th>
+                        <th className="py-3 text-right text-emerald-700">Net Wt (g)</th>
+                        <th className="py-3 text-right text-amber-700">Fine Gold Eq. (g)</th>
+                        <th className="py-3 text-right text-slate-700">Fine Silver Eq. (g)</th>
+                        <th className="py-3 px-4 text-right">Total Valuation (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y font-mono">
+                      {mmiPurityLedgerData.map((row) => (
+                        <tr key={row.purity} className="hover:bg-muted/20 transition-colors">
+                          <td className="py-3 px-4 font-sans font-bold text-foreground">{row.purity}</td>
+                          <td className="text-center font-bold">{row.count} Pcs</td>
+                          <td className="text-right">{row.grossWt.toFixed(3)}g</td>
+                          <td className="text-right font-bold text-emerald-700">{row.netWt.toFixed(3)}g</td>
+                          <td className="text-right font-bold text-amber-700">{row.fineGold > 0 ? `${row.fineGold.toFixed(3)}g` : "—"}</td>
+                          <td className="text-right font-bold text-slate-700">{row.fineSilver > 0 ? `${row.fineSilver.toFixed(3)}g` : "—"}</td>
+                          <td className="text-right px-4 font-bold text-emerald-700">{inr(row.totalValuation)}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {filteredStockLedger.map((led: any) => (
-                          <tr key={led.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                            <td className="py-3 px-4 font-mono text-xs font-medium">{led.date}</td>
-                            <td>
-                              <div className="font-semibold text-foreground">{led.itemName}</div>
-                              {led.sku && <div className="text-[11px] font-mono text-purple-700">SKU: {led.sku}</div>}
-                            </td>
-                            <td>
-                              <Badge
-                                variant="outline"
-                                className={`font-semibold text-xs ${
-                                  led.qtyChange < 0
-                                    ? "bg-rose-50 text-rose-700 border-rose-200"
-                                    : led.txnCategory === "PURCHASE"
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    : "bg-amber-50 text-amber-700 border-amber-200"
-                                }`}
-                              >
-                                {led.transactionType}
-                              </Badge>
-                            </td>
-                            <td className="font-mono font-bold text-xs text-primary">{led.referenceNo || "-"}</td>
-                            <td>
-                              <div className="font-medium text-xs">{led.partyName || "-"}</div>
-                              {led.partyMobile && (
-                                <div className="text-[11px] text-muted-foreground font-mono">{led.partyMobile}</div>
-                              )}
-                            </td>
-                            <td className={`font-bold font-mono ${led.qtyChange >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                              {led.qtyChange >= 0 ? `+${led.qtyChange}` : led.qtyChange} Pcs
-                            </td>
-                            <td className="font-bold font-mono text-foreground">{led.balanceQty} Pcs</td>
-                            <td className="text-xs font-mono">
-                              {led.unitPrice ? inr(led.unitPrice) : "-"}
-                              {led.totalAmount ? <div className="text-[10px] text-muted-foreground">Total: {inr(led.totalAmount)}</div> : null}
-                            </td>
-                            <td className="text-xs text-muted-foreground max-w-[200px] truncate" title={led.remarks}>
-                              {led.remarks || "-"}
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* LEDGER 3: MOVEMENT AUDIT REGISTER */}
+          {inventoryLedgerView === "movement" && (
+            <Card className="shadow-sm">
+              <CardHeader className="pb-3 border-b bg-muted/20">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                  <CardTitle className="text-base font-display flex items-center gap-2">
+                    <History className="w-5 h-5 text-purple-600" /> Stock Inward vs Outward Movement Audit Log
+                  </CardTitle>
+
+                  <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+                    <div className="relative flex-1 md:w-64">
+                      <Search className="w-4 h-4 absolute left-2.5 top-2.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Search Item, Tag #, Buyer, Mobile, Invoice..."
+                        className="pl-8 h-9 text-xs"
+                        value={ledgerSearchTerm}
+                        onChange={(e) => setLedgerSearchTerm(e.target.value)}
+                      />
+                    </div>
+
+                    <Select value={ledgerTypeFilter} onValueChange={setLedgerTypeFilter}>
+                      <SelectTrigger className="h-9 text-xs w-36">
+                        <SelectValue placeholder="Txn Type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All Movements</SelectItem>
+                        <SelectItem value="SALE">Sales Outward</SelectItem>
+                        <SelectItem value="PURCHASE">Purchase Inward</SelectItem>
+                        <SelectItem value="ADJUSTMENT">Adjustments</SelectItem>
+                        <SelectItem value="OPENING">Opening Stock</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <Button size="sm" variant="outline" className="h-9 text-xs gap-1" onClick={exportStockLedgerToExcel}>
+                      <Download className="w-3.5 h-3.5" /> Export
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left border-collapse min-w-[950px]">
+                    <thead className="bg-muted/40 text-muted-foreground text-xs uppercase border-b">
+                      <tr>
+                        <th className="py-3 px-4">Date</th>
+                        <th>Item & SKU</th>
+                        <th>Txn Type</th>
+                        <th>Reference #</th>
+                        <th>Buyer / Customer / Supplier</th>
+                        <th>Qty Change</th>
+                        <th>Stock Balance</th>
+                        <th>Rate & Value</th>
+                        <th>Remarks</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {filteredStockLedger.map((led: any) => (
+                        <tr key={led.id} className="hover:bg-muted/20 transition-colors">
+                          <td className="py-3 px-4 font-mono text-xs font-medium">{led.date}</td>
+                          <td>
+                            <div className="font-semibold text-foreground">{led.itemName}</div>
+                            {led.sku && <div className="text-[11px] font-mono text-purple-700">SKU: {led.sku}</div>}
+                          </td>
+                          <td>
+                            <Badge
+                              variant="outline"
+                              className={`font-semibold text-xs ${
+                                led.qtyChange < 0
+                                  ? "bg-rose-50 text-rose-700 border-rose-200"
+                                  : led.txnCategory === "PURCHASE"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-amber-50 text-amber-700 border-amber-200"
+                              }`}
+                            >
+                              {led.transactionType}
+                            </Badge>
+                          </td>
+                          <td className="font-mono font-bold text-xs text-primary">{led.referenceNo || "-"}</td>
+                          <td>
+                            <div className="font-medium text-xs">{led.partyName || "-"}</div>
+                            {led.partyMobile && (
+                              <div className="text-[11px] text-muted-foreground font-mono">{led.partyMobile}</div>
+                            )}
+                          </td>
+                          <td className={`font-bold font-mono ${led.qtyChange >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                            {led.qtyChange >= 0 ? `+${led.qtyChange}` : led.qtyChange} Pcs
+                          </td>
+                          <td className="font-bold font-mono text-foreground">{led.balanceQty} Pcs</td>
+                          <td className="text-xs font-mono">
+                            {led.unitPrice ? inr(led.unitPrice) : "-"}
+                            {led.totalAmount ? <div className="text-[10px] text-muted-foreground">Total: {inr(led.totalAmount)}</div> : null}
+                          </td>
+                          <td className="text-xs text-muted-foreground max-w-[200px] truncate" title={led.remarks}>
+                            {led.remarks || "-"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* LEDGER 4: TAG & BARCODE AUDIT REGISTER */}
+          {inventoryLedgerView === "tag_audit" && (
+            <Card className="shadow-sm">
+              <CardHeader className="pb-3 border-b bg-muted/20">
+                <CardTitle className="text-base font-display flex items-center gap-2">
+                  <ScanBarcode className="w-5 h-5 text-rose-600" /> Barcode Tag Audit Register
+                </CardTitle>
+                <CardDescription className="text-xs">Unique SKU barcode tag tracking with HUID numbers, making charges & vault storage status</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse min-w-[900px]">
+                    <thead className="bg-muted/50 text-muted-foreground uppercase font-bold text-[11px] border-b">
+                      <tr>
+                        <th className="py-3 px-4">Barcode / Tag #</th>
+                        <th>Item Name</th>
+                        <th>HUID Number</th>
+                        <th>Purity</th>
+                        <th className="text-right">Net Wt (g)</th>
+                        <th>Making Charge</th>
+                        <th className="text-right">Selling Price</th>
+                        <th>Tray / Locker</th>
+                        <th className="text-right px-4">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y font-mono">
+                      {allItems.map((item) => (
+                        <tr key={item._id || item.id} className="hover:bg-muted/20 transition-colors">
+                          <td className="py-3 px-4 font-bold text-rose-700">{item.barcode || item.itemCode || item.sku || "N/A"}</td>
+                          <td className="font-sans font-semibold text-foreground">{item.name}</td>
+                          <td><span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold">{item.huid || "NOT-HALLMARKED"}</span></td>
+                          <td>{item.purity || "22K"}</td>
+                          <td className="text-right font-bold text-emerald-700">{item.netWeight || 0}g</td>
+                          <td className="font-sans text-xs">{item.makingCharge ? `${inr(item.makingCharge)} (${item.makingChargeType || "fixed"})` : "—"}</td>
+                          <td className="text-right font-bold text-emerald-700">{inr(item.sellingPrice || 0)}</td>
+                          <td className="font-sans text-xs">{item.tray || item.godown || "Vault T-1"}</td>
+                          <td className="text-right px-4">
+                            <Badge className={(item.stock || 0) > 0 ? "bg-emerald-100 text-emerald-800 border-emerald-300" : "bg-rose-100 text-rose-800 border-rose-300"}>
+                              {(item.stock || 0) > 0 ? `IN VAULT (${item.stock} Pcs)` : "SOLD / OUT"}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* LEDGER 5: LOW STOCK WARNING LEDGER */}
+          {inventoryLedgerView === "low_stock" && (
+            <Card className="shadow-sm">
+              <CardHeader className="pb-3 border-b bg-muted/20">
+                <CardTitle className="text-base font-display flex items-center gap-2 text-rose-700">
+                  <AlertTriangle className="w-5 h-5 text-rose-600" /> Low Stock & Reorder Threshold Ledger
+                </CardTitle>
+                <CardDescription className="text-xs">Items at or below minimum stock threshold requiring reorder from manufacturers / karigars</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse min-w-[800px]">
+                    <thead className="bg-muted/50 text-muted-foreground uppercase font-bold text-[11px] border-b">
+                      <tr>
+                        <th className="py-3 px-4">Item Name</th>
+                        <th>Category</th>
+                        <th>Purity</th>
+                        <th className="text-center">Current Stock</th>
+                        <th className="text-center">Reorder Level</th>
+                        <th className="text-right">Unit Cost Price</th>
+                        <th className="text-right px-4">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {allItems
+                        .filter((i) => (i.stock || 0) <= (i.reorderLevel || i.minStock || 1))
+                        .map((item) => (
+                          <tr key={item._id || item.id} className="hover:bg-muted/20 transition-colors">
+                            <td className="py-3 px-4 font-bold text-foreground">{item.name}</td>
+                            <td>{item.category} ({item.subcategory || "General"})</td>
+                            <td><Badge variant="outline">{item.purity}</Badge></td>
+                            <td className="text-center font-bold font-mono text-rose-600">{item.stock || 0} Pcs</td>
+                            <td className="text-center font-mono font-bold text-amber-700">{item.reorderLevel || item.minStock || 1} Pcs</td>
+                            <td className="text-right font-mono font-bold">{inr(item.costPrice || 0)}</td>
+                            <td className="text-right px-4">
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setSelectedItemForAction(item); setAdjModalOpen(true); }}>
+                                Adjust Stock
+                              </Button>
                             </td>
                           </tr>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-
-            </CardContent>
-          </Card>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* ======================================================== */}
@@ -1980,7 +2192,10 @@ export default function InventoryPage() {
       {/* ======================================================== */}
       {/* ALL-IN-ONE ITEM MASTER CREATE / EDIT DIALOG MODAL        */}
       {/* ======================================================== */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+      <Dialog open={modalOpen} onOpenChange={(open) => {
+        setModalOpen(open);
+        if (!open) setEditingId(null);
+      }}>
         <DialogContent className="fixed inset-0 z-[100] w-screen h-screen max-w-none max-h-none translate-x-0 translate-y-0 top-0 left-0 rounded-none border-0 p-3 sm:p-5 bg-slate-100 dark:bg-slate-950 flex flex-col overflow-y-auto shadow-none">
           {/* Header */}
           <DialogHeader className="p-3.5 md:p-4 pb-2.5 border-b border-amber-300 dark:border-slate-800 bg-amber-100/80 dark:bg-slate-900">
@@ -2383,7 +2598,7 @@ export default function InventoryPage() {
                         onClick={handleSaveOpenStock}
                         className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs uppercase px-5 shadow-sm"
                       >
-                        Save OPEN.STOCK
+                        {editingId ? "Update Inventory Item" : "Save OPEN.STOCK"}
                       </Button>
                       <Button
                         type="button"
@@ -3267,45 +3482,7 @@ export default function InventoryPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ======================================================== */}
-      {/* BARCODE TAG PRINT MODAL */}
-      {/* ======================================================== */}
-      <Dialog open={tagModalOpen} onOpenChange={setTagModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="font-display">Jewellery Tag Preview</DialogTitle>
-            <DialogDescription className="text-xs">
-              Print thermal tag label for item {selectedTagItem?.name}
-            </DialogDescription>
-          </DialogHeader>
 
-          {selectedTagItem && (
-            <div id="printableTag" className="p-4 border-2 border-dashed border-border rounded-lg bg-white text-black space-y-2 text-center max-w-sm mx-auto overflow-hidden shadow-sm">
-              <div className="font-bold text-sm tracking-tight uppercase">{tenantSession?.shop?.shopName || "JewelShop ERP"}</div>
-              <div className="text-xs font-semibold">{selectedTagItem.name}</div>
-              <div className="text-[11px] font-mono">
-                {selectedTagItem.category} | {selectedTagItem.purity} | G: {selectedTagItem.grossWeight}g | N: {selectedTagItem.netWeight}g
-              </div>
-
-              <div className="flex justify-center py-2 overflow-hidden">
-                <svg ref={barcodeCanvasRef} className="max-w-full h-auto mx-auto block"></svg>
-              </div>
-
-              {selectedTagItem.huid && (
-                <div className="text-[10px] font-mono font-bold">HUID: {selectedTagItem.huid}</div>
-              )}
-              <div className="text-sm font-bold text-emerald-800">{inr(selectedTagItem.sellingPrice || 0)}</div>
-            </div>
-          )}
-
-          <DialogFooter className="flex justify-between">
-            <Button variant="outline" onClick={() => setTagModalOpen(false)}>Close</Button>
-            <Button onClick={handlePrintJewelleryTag} className="bg-primary text-white">
-              <Printer className="w-4 h-4 mr-1.5" /> Print Tag Label
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* ======================================================== */}
       {/* STOCK ADJUSTMENT MODAL */}

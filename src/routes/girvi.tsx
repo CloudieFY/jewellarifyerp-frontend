@@ -19,7 +19,7 @@ import { useTenantAPI } from "@/lib/api";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useFormKeyboardNav } from "@/lib/useFormKeyboardNav";
-import { Plus, Trash2, Printer, Pencil, Search, Image as ImageIcon, Wallet, Scale, Landmark, TrendingUp, FileSpreadsheet } from "lucide-react";
+import { Plus, Trash2, Printer, Pencil, Search, Image as ImageIcon, Wallet, Scale, Landmark, TrendingUp, FileSpreadsheet, UserCheck, UserPlus } from "lucide-react";
 import { calculateCompoundInterest, calculateGirviInterest, formatDate, formatCompactIfLarge, triggerPrint } from "@/lib/utils";
 import { toast } from "sonner";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
@@ -146,6 +146,39 @@ export default function GirviPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchCust, setSearchCust] = useState("");
   const [newCust, setNewCust] = useState({ name: "", phone: "", phone2: "", address: "" });
+  const [showAddCustModal, setShowAddCustModal] = useState(false);
+  const [newQuickCust, setNewQuickCust] = useState({ name: "", phone: "", phone2: "", address: "" });
+
+  const handleSaveQuickCustomer = async () => {
+    if (!newQuickCust.name.trim()) {
+      toast.error("Customer Name is required");
+      return;
+    }
+    try {
+      const payload = {
+        name: newQuickCust.name.trim(),
+        mobile: newQuickCust.phone.trim() || "0000000000",
+        phone: newQuickCust.phone.trim() || "0000000000",
+        phone2: newQuickCust.phone2.trim() || "",
+        address: newQuickCust.address.trim() || "Local",
+        group: "CUSTOMER",
+      };
+      const created = await createCustomerMutation.mutateAsync(payload);
+      setSearchCust(created.name);
+      setForm(f => ({
+        ...f,
+        customerName: created.name,
+        customerMobile: created.mobile || created.phone || "",
+        customerMobile2: created.phone2 || "",
+        customerAddress: created.address || "Local",
+      }));
+      setShowAddCustModal(false);
+      setNewQuickCust({ name: "", phone: "", phone2: "", address: "" });
+      toast.success(`Customer "${created.name}" created and selected!`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create customer");
+    }
+  };
   const [form, setForm] = useState<Omit<Girvi, "id"> & { interestType?: "Simple" | "Compound", forwardedInterestType?: "Simple" | "Compound" }>({
     date: new Date().toISOString().slice(0, 10),
     loanNo: `GL-${Date.now().toString().slice(-6)}`,
@@ -296,23 +329,26 @@ export default function GirviPage() {
     let custMobile2 = form.customerMobile2;
     let custAddress = form.customerAddress;
 
-    if (form.customerMobile === "NEW") {
-      if (!newCust.name) {
+    if (form.customerMobile === "NEW" || !form.customerMobile) {
+      const activeName = (form.customerName || newCust.name || searchCust || "").trim();
+      if (!activeName) {
         toast.error(t("girvi.toast.customerNameRequired"));
         return;
       }
-      if (!newCust.address) {
-        toast.error(t("girvi.toast.customerAddressRequired"));
-        return;
-      }
       try {
-        const created = await createCustomerMutation.mutateAsync(newCust);
+        const payload = {
+          name: activeName,
+          phone: newCust.phone || (form.customerMobile !== "NEW" ? form.customerMobile : "") || "",
+          address: newCust.address || form.customerAddress || "Local"
+        };
+        const created = await createCustomerMutation.mutateAsync(payload);
         custName = created.name;
         custMobile = created.phone || created.mobile || "";
-        custAddress = created.address || "";
+        custAddress = created.address || "Local";
       } catch (e) {
-        toast.error(t("girvi.toast.failedCreateCustomer"));
-        return;
+        custName = activeName;
+        custMobile = newCust.phone || "";
+        custAddress = newCust.address || "Local";
       }
     }
 
@@ -631,48 +667,135 @@ export default function GirviPage() {
                     placeholder={t("girvi.searchCustomerPlaceholder")}
                     value={searchCust}
                     onChange={(e) => {
-                      setSearchCust(e.target.value);
-                      const match = customers.find(c => c.mobile === e.target.value || c.phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase() || (c.address || "").toLowerCase().includes(e.target.value.toLowerCase()));
-                      if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || match.phone || "", customerMobile2: match.phone2 || "", customerAddress: match.address || ""});
+                      const val = e.target.value;
+                      setSearchCust(val);
+                      const q = val.trim().toLowerCase();
+                      if (!q) {
+                        setForm(prev => ({
+                          ...prev,
+                          customerName: "",
+                          customerMobile: "",
+                          customerMobile2: "",
+                          customerAddress: ""
+                        }));
+                        setNewCust({ name: "", phone: "", phone2: "", address: "" });
+                        return;
+                      }
+                      const match = customers.find(c =>
+                        (c.name || "").toLowerCase().trim() === q ||
+                        (c.mobile || c.phone || "").includes(val.trim()) ||
+                        (c.address || "").toLowerCase().includes(q)
+                      );
+                      if (match) {
+                        setForm(prev => ({
+                          ...prev,
+                          customerName: match.name,
+                          customerMobile: match.mobile || match.phone || "",
+                          customerMobile2: match.phone2 || "",
+                          customerAddress: match.address || ""
+                        }));
+                      } else {
+                        setForm(prev => ({
+                          ...prev,
+                          customerMobile: "NEW",
+                          customerName: val,
+                        }));
+                        setNewCust(prev => ({ ...prev, name: val }));
+                      }
                     }}
                   />
                 </div>
                 <div>
                   <Label className="text-xs">{t("girvi.customer")}</Label>
-              <Select value={form.customerMobile || form.customerName || ""} onValueChange={(val) => {
-                    if (val === "NEW") {
-                      setForm({...form, customerMobile: "NEW", customerName: "", customerMobile2: "", customerAddress: ""});
-                    } else {
-                  const match = customers.find(c => (c.mobile || c.phone || c.name) === val);
-                      if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || match.phone || "", customerMobile2: match.phone2 || "", customerAddress: match.address || ""});
-                    }
-                  }}>
-                    <SelectTrigger><SelectValue placeholder={t("girvi.selectCustomer")} /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NEW" className="font-semibold text-primary">{t("girvi.createNewCustomer")}</SelectItem>
-                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || c.phone || "").includes(searchCust) || (c.address || "").toLowerCase().includes(searchCust.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
-                    <SelectItem key={c._id || c.id} value={c.mobile || c.phone || c.name}>{c.name} {c.mobile || c.phone ? `· ${c.mobile || c.phone}` : ""}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-1.5">
+                    <Select value={form.customerMobile || form.customerName || ""} onValueChange={(val) => {
+                      if (val === "NEW") {
+                        const activeName = searchCust || form.customerName || "";
+                        setNewQuickCust({ name: activeName, phone: "", phone2: "", address: "" });
+                        setShowAddCustModal(true);
+                      } else {
+                        const match = customers.find(c => (c.mobile || c.phone || c.name) === val);
+                        if (match) {
+                          setSearchCust(match.name);
+                          setForm({...form, customerName: match.name, customerMobile: match.mobile || match.phone || "", customerMobile2: match.phone2 || "", customerAddress: match.address || ""});
+                        }
+                      }
+                    }}>
+                      <SelectTrigger><SelectValue placeholder={t("girvi.selectCustomer")} /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NEW" className="font-semibold text-primary">➕ {t("girvi.createNewCustomer")}</SelectItem>
+                        {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || c.phone || "").includes(searchCust) || (c.address || "").toLowerCase().includes(searchCust.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
+                      <SelectItem key={c._id || c.id} value={c.mobile || c.phone || c.name}>{c.name} {c.mobile || c.phone ? `· ${c.mobile || c.phone}` : ""}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 px-2.5 text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300 flex items-center gap-1 shrink-0 cursor-pointer"
+                      onClick={() => {
+                        const activeName = searchCust || form.customerName || "";
+                        setNewQuickCust({ name: activeName, phone: "", phone2: "", address: "" });
+                        setShowAddCustModal(true);
+                      }}
+                    >
+                      <UserPlus className="w-3.5 h-3.5" /> + New
+                    </Button>
+                  </div>
                 </div>
               </div>
               {form.customerMobile === "NEW" && (
                 <div className="p-3 rounded-md bg-primary/5 border border-primary/20 text-sm space-y-3 mt-2 col-span-2">
-                  <div className="space-y-1.5"><Label className="text-xs">{t("girvi.fullName")}</Label><Input value={newCust.name} onChange={e => setNewCust({...newCust, name: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">{t("girvi.fullName")}</Label><Input value={newCust.name} onChange={e => { setNewCust({...newCust, name: e.target.value}); setForm(f => ({ ...f, customerName: e.target.value })); }} className="h-8 bg-background" /></div>
                   <div className="space-y-1.5"><Label className="text-xs">{t("girvi.mobileNoOptional")}</Label><Input value={newCust.phone} onChange={e => setNewCust({...newCust, phone: e.target.value})} className="h-8 bg-background" /></div>
                   <div className="space-y-1.5"><Label className="text-xs">{t("girvi.mobileNo2Optional")}</Label><Input value={newCust.phone2} onChange={e => setNewCust({...newCust, phone2: e.target.value})} className="h-8 bg-background" /></div>
-                  <div className="space-y-1.5"><Label className="text-xs">{t("girvi.addressRequired")}</Label><Input value={newCust.address} onChange={e => setNewCust({...newCust, address: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">{t("girvi.addressRequired")}</Label><Input value={newCust.address} onChange={e => { setNewCust({...newCust, address: e.target.value}); setForm(f => ({ ...f, customerAddress: e.target.value })); }} className="h-8 bg-background" /></div>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label>{t("girvi.customerName")}</Label>
-                  <Input value={form.customerName} readOnly className="bg-muted" />
+                  <Input
+                    value={form.customerName}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setForm(f => ({ ...f, customerName: val }));
+                      const match = customers.find(c => c.name.toLowerCase().trim() === val.toLowerCase().trim());
+                      if (match) {
+                        setForm(f => ({
+                          ...f,
+                          customerName: match.name,
+                          customerMobile: match.mobile || match.phone || "",
+                          customerMobile2: match.phone2 || "",
+                          customerAddress: match.address || ""
+                        }));
+                      }
+                    }}
+                    placeholder="Enter customer name..."
+                    className="bg-background font-bold text-slate-900 dark:text-white"
+                  />
                 </div>
                 <div>
                   <Label>{t("girvi.mobile")}</Label>
-                  <Input value={form.customerMobile} readOnly className="bg-muted" />
+                  <Input
+                    value={form.customerMobile === "NEW" ? newCust.phone : form.customerMobile}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setForm(f => ({ ...f, customerMobile: val }));
+                      const match = customers.find(c => (c.mobile || c.phone) === val.trim());
+                      if (match) {
+                        setForm(f => ({
+                          ...f,
+                          customerName: match.name,
+                          customerMobile: match.mobile || match.phone || "",
+                          customerAddress: match.address || ""
+                        }));
+                      }
+                    }}
+                    placeholder="Mobile number..."
+                    className="bg-background font-mono font-bold"
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -1147,6 +1270,68 @@ export default function GirviPage() {
         </Card>
       </div>
       {viewing && <GirviModal girvi={viewing} authUser={authUser} onClose={() => setViewing(null)} />}
+
+      {/* QUICK CREATE CUSTOMER MODAL */}
+      <Dialog open={showAddCustModal} onOpenChange={setShowAddCustModal}>
+        <DialogContent className="z-[200] pointer-events-auto max-w-md bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-5 rounded-xl border border-slate-300 dark:border-slate-800 shadow-2xl" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-amber-600">
+              <UserCheck className="w-5 h-5" /> Quick Create New Customer
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3.5 pt-2 text-xs">
+            <div>
+              <Label className="text-xs font-bold">Customer Full Name *</Label>
+              <Input
+                placeholder="e.g. Ramesh Sharma"
+                value={newQuickCust.name}
+                onChange={(e) => setNewQuickCust(prev => ({ ...prev, name: e.target.value }))}
+                className="h-9 mt-1 text-xs font-bold bg-slate-50 dark:bg-slate-950"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Mobile Phone Number</Label>
+              <Input
+                placeholder="e.g. 9876543210"
+                value={newQuickCust.phone}
+                onChange={(e) => setNewQuickCust(prev => ({ ...prev, phone: e.target.value }))}
+                className="h-9 mt-1 text-xs font-mono bg-slate-50 dark:bg-slate-950"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">Alternate Phone (Optional)</Label>
+              <Input
+                placeholder="e.g. 9123456789"
+                value={newQuickCust.phone2}
+                onChange={(e) => setNewQuickCust(prev => ({ ...prev, phone2: e.target.value }))}
+                className="h-9 mt-1 text-xs font-mono bg-slate-50 dark:bg-slate-950"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-bold">City / Address</Label>
+              <Input
+                placeholder="e.g. Indore MP"
+                value={newQuickCust.address}
+                onChange={(e) => setNewQuickCust(prev => ({ ...prev, address: e.target.value }))}
+                className="h-9 mt-1 text-xs bg-slate-50 dark:bg-slate-950"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-3 border-t">
+              <Button variant="outline" size="sm" onClick={() => setShowAddCustModal(false)} className="h-8 text-xs">
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveQuickCustomer}
+                disabled={createCustomerMutation.isPending || !newQuickCust.name.trim()}
+                className="h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                {createCustomerMutation.isPending ? "Saving..." : "Save & Select Customer"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
