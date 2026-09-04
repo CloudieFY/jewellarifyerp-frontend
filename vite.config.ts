@@ -14,7 +14,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:3006',
+        // PG core-first test backend (serverPg.ts). Was :3006 (Mongo index.ts).
+        target: 'http://localhost:3019',
         changeOrigin: true,
         secure: false,
       },
