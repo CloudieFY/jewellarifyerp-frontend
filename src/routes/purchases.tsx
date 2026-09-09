@@ -451,50 +451,56 @@ export default function PurchasesPage() {
 
   useEffect(() => {
     if (!open) return;
+    // Page-owned shortcuts. Capture-phase + stopImmediatePropagation so the global
+    // navigation table does not also fire (no more "save AND navigate away").
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 1. Shortcut to Save: Ctrl+S, Ctrl+Enter, F12, Alt+S
+      const claim = () => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      };
+
+      // 1. Save: Ctrl+S, Ctrl+Enter, F12, Alt+S
       if (
         (e.ctrlKey && e.key.toLowerCase() === "s") ||
         (e.ctrlKey && e.key === "Enter") ||
         (e.altKey && e.key.toLowerCase() === "s") ||
         e.key === "F12"
       ) {
-        e.preventDefault();
+        claim();
         save();
         return;
       }
 
-      // 2. Shortcut to Print: Ctrl+P, Alt+P, F8
+      // 2. Print: Ctrl+P, Alt+P, F8
       if (
         (e.ctrlKey && e.key.toLowerCase() === "p") ||
         (e.altKey && e.key.toLowerCase() === "p") ||
         e.key === "F8"
       ) {
-        e.preventDefault();
+        claim();
         window.print();
         return;
       }
 
-      // 3. Shortcut to Add Product Item: Insert, F3, Alt+N, Alt+A
+      // 3. Add Product Item: Insert, F3, Alt+N, Alt+A
       if (
         e.key === "Insert" ||
         e.key === "F3" ||
         (e.altKey && (e.key.toLowerCase() === "n" || e.key.toLowerCase() === "a"))
       ) {
-        e.preventDefault();
+        claim();
         addItemRow();
         toast.info("➕ Product Item row added");
         return;
       }
 
-      // 4. Shortcut to jump cursor directly to Item Table on Purchase form: Alt+I or F4
+      // 4. Jump cursor to the Item Table: Alt+I or F4
       if (
         e.key === "F4" ||
         (e.altKey && e.key.toLowerCase() === "i")
       ) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
+        claim();
         if (firstItemInputRef.current) {
           firstItemInputRef.current.focus();
           firstItemInputRef.current.select?.();
@@ -506,9 +512,9 @@ export default function PurchasesPage() {
         return;
       }
 
-      // 5. Shortcut for New Purchase Form: F2
+      // 5. New Purchase Form: F2
       if (e.key === "F2") {
-        e.preventDefault();
+        claim();
         setForm({ ...empty, type: isOperator ? "NON-GST" : "GST" });
         toast.info("➕ New Purchase form initialized");
         return;

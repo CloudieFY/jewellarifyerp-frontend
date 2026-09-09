@@ -251,6 +251,30 @@ export function KeyboardShortcutsDialog({ open, onClose }: Props) {
           </div>
         )}
 
+        <div className="mt-5 pt-3 border-t border-border">
+          <div className="text-[11px] uppercase tracking-widest text-primary font-bold pb-2">
+            Arrow-Key Navigation <span className="text-muted-foreground normal-case tracking-normal font-normal">(always on — nothing to bind)</span>
+          </div>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+            <li className="flex items-center gap-2">
+              <span className="flex items-center gap-1"><Kbd>↑</Kbd><Kbd>↓</Kbd></span>
+              <span className="text-muted-foreground">Previous / next field or table row</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="flex items-center gap-1"><Kbd>←</Kbd><Kbd>→</Kbd></span>
+              <span className="text-muted-foreground">Previous / next field, from the caret edge of a text box</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <Kbd>Enter</Kbd>
+              <span className="text-muted-foreground">Move to the next field; on the last field, save</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="flex items-center gap-1"><Kbd>Alt</Kbd>+<Kbd>↑</Kbd> / <Kbd>Alt</Kbd>+<Kbd>↓</Kbd></span>
+              <span className="text-muted-foreground">Move fields even inside a number / dropdown field</span>
+            </li>
+          </ul>
+        </div>
+
         <div className="mt-4 pt-3 border-t border-border flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-[10px]">Easy Update</Badge>

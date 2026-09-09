@@ -402,7 +402,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   // Single-Click Quick Launch Bar definitions — clean standard routes
   const quickBarActions: { id: string; label: string; icon: any; route: string }[] = [
-    { id: "new_bill", label: "New Bill", icon: ShoppingCart, route: "/billing" },
+    { id: "nav_billing", label: "New Bill", icon: ShoppingCart, route: "/billing" },
     { id: "daily_ledger", label: "Daily Ledger", icon: BookOpen, route: "/ledger" },
     { id: "purchases", label: "Purchases", icon: ShoppingBag, route: "/purchases" },
     { id: "sales", label: "Sales", icon: Receipt, route: "/sales" },

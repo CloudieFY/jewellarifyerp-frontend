@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { moveFocus } from "@/lib/keyboardNav";
 
 export type ShortcutScope = "global";
 
@@ -12,7 +13,14 @@ export interface Shortcut {
   description: string;
   group: string;
   actionRoute?: string;
-  actionType?: "route" | "help" | "commandPalette" | "newRecord" | "focusSearch";
+  actionType?:
+    | "route"
+    | "help"
+    | "commandPalette"
+    | "newRecord"
+    | "focusSearch"
+    | "save"
+    | "noop";
 }
 
 /**
@@ -23,7 +31,7 @@ export interface Shortcut {
 export const DEFAULT_SHORTCUTS: Shortcut[] = [
   // ── Single Function Key Actions (F1-F12: 1-Click Access) ──
   { id: "help", key: "F1", description: "Show / hide keyboard shortcuts help", group: "Function Keys (F1-F12)", actionType: "help" },
-  { id: "new_bill", key: "F2", description: "Go to Billing / POS Page", group: "Function Keys (F1-F12)", actionRoute: "/billing", actionType: "route" },
+  { id: "new_record", key: "F2", description: "New record / open the form on the current page", group: "Function Keys (F1-F12)", actionType: "newRecord" },
   { id: "daily_ledger", key: "F3", description: "Go to Daily Ledger Page", group: "Function Keys (F1-F12)", actionRoute: "/ledger", actionType: "route" },
   { id: "purchases", key: "F4", description: "Go to Purchases Page", group: "Function Keys (F1-F12)", actionRoute: "/purchases", actionType: "route" },
   { id: "sales", key: "F5", description: "Go to Sales Invoices Register", group: "Function Keys (F1-F12)", actionRoute: "/sales", actionType: "route" },
@@ -38,7 +46,6 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
   // ── Command Search & Fast Controls ──
   { id: "cmd_palette", key: "k", ctrl: true, description: "Open Command Search", group: "Quick Launch", actionType: "commandPalette" },
   { id: "focus_search", key: "f", alt: true, description: "Focus search / filter input on page", group: "Quick Launch", actionType: "focusSearch" },
-  { id: "new_record", key: "F2", description: "Open Add / New Form / New Bill on current page (F2 / Enter)", group: "Quick Launch", actionType: "newRecord" },
 
   // ── Alt + Letter Fast Navigation ──
   { id: "nav_billing", key: "b", alt: true, description: "Go to Billing / POS Page", group: "Alt + Letter Access", actionRoute: "/billing", actionType: "route" },
@@ -64,23 +71,35 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
   { id: "nav_balance", key: "a", alt: true, description: "Go to Financial Balance Sheet", group: "Registers & Reports", actionRoute: "/balance-sheet", actionType: "route" },
 
   // ── Form Navigation & Controls ──
-  { id: "form_save", key: "Enter", ctrl: true, description: "Save current form", group: "Form Navigation" },
-  { id: "form_cancel", key: "Escape", description: "Close dialog / cancel form", group: "Form Navigation" },
+  { id: "form_save", key: "Enter", ctrl: true, description: "Save the current form / dialog", group: "Form Navigation", actionType: "save" },
+  { id: "form_cancel", key: "Escape", description: "Close dialog / cancel form", group: "Form Navigation", actionType: "noop" },
 ];
 
 export const GLOBAL_SHORTCUTS = DEFAULT_SHORTCUTS;
 
-const STORAGE_KEY = "ajms_custom_shortcuts_v8";
+const STORAGE_KEY = "ajms_custom_shortcuts_v9";
+
+/** Cache so the keydown handler doesn't re-read + JSON.parse localStorage on every keystroke. */
+let _cache: Shortcut[] | null = null;
+
+function invalidateShortcutCache() {
+  _cache = null;
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("ajms:shortcuts-updated", invalidateShortcutCache);
+}
 
 /**
- * Get active shortcuts including user customizations from localStorage
+ * Get active shortcuts including user customizations from localStorage (cached).
  */
 export function getCustomShortcuts(): Shortcut[] {
+  if (_cache) return _cache;
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return DEFAULT_SHORTCUTS;
+    if (!saved) return (_cache = DEFAULT_SHORTCUTS);
     const parsed: Record<string, Partial<Shortcut>> = JSON.parse(saved);
-    return DEFAULT_SHORTCUTS.map((item) => {
+    _cache = DEFAULT_SHORTCUTS.map((item) => {
       if (parsed[item.id]) {
         return {
           ...item,
@@ -92,8 +111,9 @@ export function getCustomShortcuts(): Shortcut[] {
       }
       return item;
     });
+    return _cache;
   } catch {
-    return DEFAULT_SHORTCUTS;
+    return (_cache = DEFAULT_SHORTCUTS);
   }
 }
 
@@ -111,6 +131,7 @@ export function saveShortcutKey(id: string, binding: { key: string; ctrl?: boole
       shift: !!binding.shift,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+    invalidateShortcutCache();
     window.dispatchEvent(new CustomEvent("ajms:shortcuts-updated"));
   } catch (e) {
     console.error("Failed to update shortcut key:", e);
@@ -123,6 +144,7 @@ export function saveShortcutKey(id: string, binding: { key: string; ctrl?: boole
 export function resetCustomShortcuts() {
   try {
     localStorage.removeItem(STORAGE_KEY);
+    invalidateShortcutCache();
     window.dispatchEvent(new CustomEvent("ajms:shortcuts-updated"));
   } catch (e) {
     console.error("Failed to reset custom shortcuts:", e);
@@ -147,140 +169,12 @@ export function useActiveShortcuts(): Shortcut[] {
 }
 
 /**
- * Utility function to handle 4-way Arrow Navigation (ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Enter)
- * across any form or table grid input fields.
+ * 4-way Arrow + Enter navigation across form / table-grid fields.
+ * Thin wrapper over the shared `moveFocus` core (lib/keyboardNav.ts).
+ * Kept as a named export because billing.tsx and orders.tsx attach it directly.
  */
 export function handleGridArrowNav(e: React.KeyboardEvent<HTMLElement> | KeyboardEvent) {
-  const target = e.target as HTMLElement;
-  if (!target || (target.tagName !== "INPUT" && target.tagName !== "SELECT" && target.tagName !== "TEXTAREA")) {
-    return;
-  }
-
-  const isSelect = target.tagName === "SELECT";
-  const isInput = target.tagName === "INPUT";
-  const inputEl = target as HTMLInputElement;
-
-  // Helper to query all focusable inputs in container
-  const getInputs = () => {
-    const container = target.closest("table, form, [role='dialog']") || document.body;
-    return Array.from(container.querySelectorAll<HTMLElement>("input, select, textarea")).filter(
-      el => !el.hasAttribute("disabled") && el.tabIndex !== -1 && (el.offsetWidth > 0 || el.offsetHeight > 0)
-    );
-  };
-
-  // ==========================================
-  // 1. SELECT DROPDOWN SPECIFIC KEYBOARD RULES
-  // ==========================================
-  if (isSelect) {
-    // ArrowUp / ArrowDown: Allow native dropdown option selection (e.g. Wt -> % -> Rs)
-    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.altKey && !e.ctrlKey) {
-      return; // allow native select option cycling!
-    }
-
-    // ArrowRight or Enter or Tab: Move focus forward to next field!
-    if (e.key === "ArrowRight" || (e.key === "Enter" && !e.shiftKey)) {
-      e.preventDefault();
-      const inputs = getInputs();
-      const index = inputs.indexOf(target);
-      if (index >= 0 && index < inputs.length - 1) {
-        inputs[index + 1].focus();
-        if (inputs[index + 1].tagName === "INPUT") (inputs[index + 1] as HTMLInputElement).select?.();
-      }
-      return;
-    }
-
-    // ArrowLeft or Shift+Tab: Move focus backward to previous field!
-    if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      const inputs = getInputs();
-      const index = inputs.indexOf(target);
-      if (index > 0) {
-        inputs[index - 1].focus();
-        if (inputs[index - 1].tagName === "INPUT") (inputs[index - 1] as HTMLInputElement).select?.();
-      }
-      return;
-    }
-  }
-
-  // ==========================================
-  // 2. INPUT TEXT / NUMBER KEYBOARD RULES
-  // ==========================================
-
-  // ArrowUp: move to input in row above
-  if (e.key === "ArrowUp") {
-    e.preventDefault();
-    const tr = target.closest("tr");
-    if (tr && tr.previousElementSibling) {
-      const colIndex = Array.from(tr.children).indexOf(target.closest("td, th") as HTMLTableCellElement);
-      const prevTr = tr.previousElementSibling;
-      const prevTd = prevTr.children[colIndex];
-      const prevInput = prevTd?.querySelector<HTMLElement>("input, select, textarea");
-      if (prevInput) {
-        prevInput.focus();
-        if (prevInput.tagName === "INPUT") (prevInput as HTMLInputElement).select?.();
-        return;
-      }
-    }
-
-    const inputs = getInputs();
-    const index = inputs.indexOf(target);
-    if (index > 0) {
-      inputs[index - 1].focus();
-      if (inputs[index - 1].tagName === "INPUT") (inputs[index - 1] as HTMLInputElement).select?.();
-    }
-  }
-
-  // ArrowDown or Enter: move to input in row below or next field
-  else if (e.key === "ArrowDown" || (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.altKey)) {
-    e.preventDefault();
-    const tr = target.closest("tr");
-    if (tr && tr.nextElementSibling) {
-      const colIndex = Array.from(tr.children).indexOf(target.closest("td, th") as HTMLTableCellElement);
-      const nextTr = tr.nextElementSibling;
-      const nextTd = nextTr.children[colIndex];
-      const nextInput = nextTd?.querySelector<HTMLElement>("input, select, textarea");
-      if (nextInput) {
-        nextInput.focus();
-        if (nextInput.tagName === "INPUT") (nextInput as HTMLInputElement).select?.();
-        return;
-      }
-    }
-
-    const inputs = getInputs();
-    const index = inputs.indexOf(target);
-    if (index >= 0 && index < inputs.length - 1) {
-      inputs[index + 1].focus();
-      if (inputs[index + 1].tagName === "INPUT") (inputs[index + 1] as HTMLInputElement).select?.();
-    }
-  }
-
-  // ArrowRight: move to next field if cursor is at end of text
-  else if (e.key === "ArrowRight") {
-    if (isInput && (inputEl.type === "text" || inputEl.type === "search" || !inputEl.type) && inputEl.selectionStart !== inputEl.value.length) {
-      return; // allow normal text cursor navigation inside text box
-    }
-    const inputs = getInputs();
-    const index = inputs.indexOf(target);
-    if (index >= 0 && index < inputs.length - 1) {
-      e.preventDefault();
-      inputs[index + 1].focus();
-      if (inputs[index + 1].tagName === "INPUT") (inputs[index + 1] as HTMLInputElement).select?.();
-    }
-  }
-
-  // ArrowLeft: move to previous field if cursor is at position 0
-  else if (e.key === "ArrowLeft") {
-    if (isInput && (inputEl.type === "text" || inputEl.type === "search" || !inputEl.type) && inputEl.selectionStart !== 0) {
-      return; // allow normal text cursor navigation inside text box
-    }
-    const inputs = getInputs();
-    const index = inputs.indexOf(target);
-    if (index > 0) {
-      e.preventDefault();
-      inputs[index - 1].focus();
-      if (inputs[index - 1].tagName === "INPUT") (inputs[index - 1] as HTMLInputElement).select?.();
-    }
-  }
+  moveFocus(e, { requireScope: true });
 }
 
 export function useGlobalKeyboard(options: {
@@ -288,9 +182,10 @@ export function useGlobalKeyboard(options: {
   onToggleCommandPalette?: () => void;
   onNewRecord?: () => void;
   onFocusSearch?: () => void;
+  onSave?: () => void;
 }) {
   const navigate = useNavigate();
-  const { onToggleHelp, onToggleCommandPalette, onNewRecord, onFocusSearch } = options;
+  const { onToggleHelp, onToggleCommandPalette, onNewRecord, onFocusSearch, onSave } = options;
 
   useEffect(() => {
     function isInputActive() {
@@ -308,12 +203,24 @@ export function useGlobalKeyboard(options: {
     }
 
     function handler(e: KeyboardEvent) {
+      // A page-level (capture-phase) listener already handled this key
+      // (e.g. Save / Print / Add-row on the Billing & Purchases screens).
+      if (e.defaultPrevented) return;
+
       const activeShortcuts = getCustomShortcuts();
       const keyLower = e.key.toLowerCase();
       const isFunctionKey = /^F(1[0-2]|[1-9])$/i.test(e.key);
 
-      // Handle Arrow key navigation inside form input fields
-      if (isInputActive() && (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Enter")) {
+      // Handle Arrow key navigation inside form input fields. A modified Enter
+      // (Ctrl/Alt/Shift/Meta) is a save chord — let it fall through to the table.
+      if (
+        isInputActive() &&
+        (e.key === "ArrowUp" ||
+          e.key === "ArrowDown" ||
+          e.key === "ArrowLeft" ||
+          e.key === "ArrowRight" ||
+          (e.key === "Enter" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey))
+      ) {
         handleGridArrowNav(e);
         return;
       }
@@ -354,12 +261,36 @@ export function useGlobalKeyboard(options: {
 
         if (keyMatch && ctrlMatch && altMatch && shiftMatch) {
           // If typing inside a text input field, ignore plain shortcuts without Alt/Ctrl
-          if (isInputActive() && !isFunctionKey && !(s.ctrl && targetKeyLower === "k") && !s.alt) {
+          // (function keys, Ctrl+K, Alt+combos and the save chord still work).
+          if (
+            isInputActive() &&
+            !isFunctionKey &&
+            !(s.ctrl && targetKeyLower === "k") &&
+            !s.alt &&
+            s.actionType !== "save"
+          ) {
             continue;
+          }
+
+          // Display-only entries (e.g. Escape -> handled by the Radix dialog itself).
+          if (s.actionType === "noop") {
+            return;
           }
 
           e.preventDefault();
 
+          if (s.actionType === "save") {
+            if (onSave) {
+              onSave();
+            } else {
+              document
+                .querySelector<HTMLButtonElement>(
+                  '[data-save-button]:not([disabled]), [role="dialog"] button[type="submit"]:not([disabled]), form button[type="submit"]:not([disabled])',
+                )
+                ?.click();
+            }
+            return;
+          }
           if (s.actionType === "commandPalette") {
             onToggleCommandPalette?.();
             return;
@@ -418,5 +349,5 @@ export function useGlobalKeyboard(options: {
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [navigate, onToggleHelp, onToggleCommandPalette, onNewRecord, onFocusSearch]);
+  }, [navigate, onToggleHelp, onToggleCommandPalette, onNewRecord, onFocusSearch, onSave]);
 }
