@@ -43,7 +43,35 @@ import PrivacyPolicyPage from "./routes/PrivacyPolicyPage";
 import TermsAndConditionsPage from "./routes/TermsAndConditionsPage";
 import ProductViewerPage from "./routes/ProductViewerPage";
 import InvoiceViewerPage from "./routes/InvoiceViewerPage";
+import { NotFoundPage } from "./routes/NotFoundPage";
 import { SuperAdminLayout } from "./components/SuperAdminLayout";
+
+import { isRouteAllowed } from "@/lib/subscriptionModules";
+import { AccessDenied } from "@/components/AccessDenied";
+
+/**
+ * A guard wrapper component to enforce page-level subscription permissions.
+ */
+function SubscriptionRouteGuard({
+  route,
+  element,
+  pageName,
+}: {
+  route: string;
+  element: React.ReactElement;
+  pageName?: string;
+}) {
+  const { tenantSession } = useAuth();
+  const plan = tenantSession?.shop?.plan;
+  const allowedPages = tenantSession?.shop?.allowedPages;
+  const allowedModules = tenantSession?.shop?.allowedModules;
+
+  if (!isRouteAllowed(route, plan, allowedPages, allowedModules)) {
+    return <AccessDenied pageName={pageName || "This Feature"} />;
+  }
+
+  return element;
+}
 
 /**
  * The main application component that handles routing.
@@ -69,8 +97,12 @@ function App() {
           <Route path="/v-bill/:invoiceId" element={<InvoiceViewerPage />} />
           <Route path="/view-invoice/:dbName/:invoiceId" element={<InvoiceViewerPage />} />
 
-          {/* Super Admin Routes */}
+          {/* Super Admin Aliases & Routes */}
           <Route path="/superadmin/login" element={<SuperAdminLoginPage />} />
+          <Route path="/super-admin-login" element={<Navigate to="/superadmin/login" replace />} />
+          <Route path="/superadmin-login" element={<Navigate to="/superadmin/login" replace />} />
+          <Route path="/super-admin" element={<Navigate to="/superadmin/login" replace />} />
+          <Route path="/admin-login" element={<Navigate to="/superadmin/login" replace />} />
           <Route
             path="/superadmin/*"
             element={
@@ -79,6 +111,7 @@ function App() {
                   <Route element={<SuperAdminLayout />}>
                     <Route path="/" element={<SuperAdminDashboardPage />} />
                     <Route path="/demo-requests" element={<SuperAdminDemoRequestsPage />} />
+                    <Route path="*" element={<NotFoundPage />} />
                   </Route>
                 </Routes>
               </SuperAdminProtectedRoute>
@@ -92,32 +125,33 @@ function App() {
               <TenantProtectedRoute>
                 <Routes>
                   <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/billing" element={<BillingPage />} />
-                  <Route path="/estimate" element={<BillingPage />} />
-                  <Route path="/sales" element={<SalesPage />} />
-                  <Route path="/dues" element={<DuesPage />} />
-                  <Route path="/inventory" element={<InventoryPage />} />
-                  <Route path="/catalog" element={<CatalogPage />} />
-                  <Route path="/customers" element={<CustomersPage />} />
-                  <Route path="/suppliers" element={<SuppliersPage />} />
-                  <Route path="/karigars" element={<KarigarsPage />} />
-                  <Route path="/karigar-tasks" element={<KarigarTasksPage />} />
-                  <Route path="/girvi" element={<GirviPage />} />
-                  <Route path="/forwarded-shops" element={<ForwardedShopsPage />} />
-                  <Route path="/expenses" element={<ExpensesPage />} />
-                  <Route path="/purchases" element={<PurchasesPage />} />
-                  <Route path="/orders" element={<OrdersPage />} />
-                  <Route path="/repairs" element={<RepairsPage />} />
-                  <Route path="/gold-rates" element={<GoldRatesPage />} />
-                  <Route path="/calculator" element={<CalculatorPage />} />
-                  <Route path="/reports" element={<ReportsPage />} />
-                  <Route path="/gst-report" element={<GstReportPage />} />
-                  <Route path="/employees" element={<EmployeesPage />} />
+                  <Route path="/billing" element={<SubscriptionRouteGuard route="/billing" pageName="Billing POS" element={<BillingPage />} />} />
+                  <Route path="/estimate" element={<SubscriptionRouteGuard route="/billing" pageName="Billing POS" element={<BillingPage />} />} />
+                  <Route path="/sales" element={<SubscriptionRouteGuard route="/sales" pageName="Sales Invoices" element={<SalesPage />} />} />
+                  <Route path="/dues" element={<SubscriptionRouteGuard route="/dues" pageName="Customer Dues" element={<DuesPage />} />} />
+                  <Route path="/inventory" element={<SubscriptionRouteGuard route="/inventory" pageName="Stock & Tag Management" element={<InventoryPage />} />} />
+                  <Route path="/catalog" element={<SubscriptionRouteGuard route="/catalog" pageName="Product Catalog" element={<CatalogPage />} />} />
+                  <Route path="/customers" element={<SubscriptionRouteGuard route="/customers" pageName="Customer Directory" element={<CustomersPage />} />} />
+                  <Route path="/suppliers" element={<SubscriptionRouteGuard route="/suppliers" pageName="Suppliers & Wholesale" element={<SuppliersPage />} />} />
+                  <Route path="/karigars" element={<SubscriptionRouteGuard route="/karigars" pageName="Karigars & Artisans" element={<KarigarsPage />} />} />
+                  <Route path="/karigar-tasks" element={<SubscriptionRouteGuard route="/karigar-tasks" pageName="Karigar Tasks & Work Slips" element={<KarigarTasksPage />} />} />
+                  <Route path="/girvi" element={<SubscriptionRouteGuard route="/girvi" pageName="Girvi Pawn Loans" element={<GirviPage />} />} />
+                  <Route path="/forwarded-shops" element={<SubscriptionRouteGuard route="/forwarded-shops" pageName="Forwarded Shops / B2B" element={<ForwardedShopsPage />} />} />
+                  <Route path="/expenses" element={<SubscriptionRouteGuard route="/expenses" pageName="Showroom Expenses" element={<ExpensesPage />} />} />
+                  <Route path="/purchases" element={<SubscriptionRouteGuard route="/purchases" pageName="Purchases & Stock In" element={<PurchasesPage />} />} />
+                  <Route path="/orders" element={<SubscriptionRouteGuard route="/orders" pageName="Custom Customer Orders" element={<OrdersPage />} />} />
+                  <Route path="/repairs" element={<SubscriptionRouteGuard route="/repairs" pageName="Repairs & Servicing" element={<RepairsPage />} />} />
+                  <Route path="/gold-rates" element={<SubscriptionRouteGuard route="/gold-rates" pageName="Live Gold & Silver Rates" element={<GoldRatesPage />} />} />
+                  <Route path="/calculator" element={<SubscriptionRouteGuard route="/calculator" pageName="Rate Calculator" element={<CalculatorPage />} />} />
+                  <Route path="/reports" element={<SubscriptionRouteGuard route="/reports" pageName="Analytics & Reports" element={<ReportsPage />} />} />
+                  <Route path="/gst-report" element={<SubscriptionRouteGuard route="/gst-report" pageName="GST Tax Reports" element={<GstReportPage />} />} />
+                  <Route path="/employees" element={<SubscriptionRouteGuard route="/employees" pageName="Staff & Employees" element={<EmployeesPage />} />} />
                   <Route path="/notifications" element={<NotificationsPage />} />
                   <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/invoice-designer" element={<InvoiceDesignerPage />} />
-                  <Route path="/ledger" element={<LedgerPage />} />
-                  <Route path="/balance-sheet" element={<BalanceSheetPage />} />
+                  <Route path="/invoice-designer" element={<SubscriptionRouteGuard route="/invoice-designer" pageName="Invoice Designer" element={<InvoiceDesignerPage />} />} />
+                  <Route path="/ledger" element={<SubscriptionRouteGuard route="/ledger" pageName="Daily Cash Ledger" element={<LedgerPage />} />} />
+                  <Route path="/balance-sheet" element={<SubscriptionRouteGuard route="/balance-sheet" pageName="Balance Sheet" element={<BalanceSheetPage />} />} />
+                  <Route path="*" element={<NotFoundPage insideTenant={true} />} />
                 </Routes>
               </TenantProtectedRoute>
             }

@@ -159,6 +159,78 @@ const emptyProduct: ExtendedProduct = {
   imageUrls: [],
 } as any;
 
+// Dropdown Normalization Helpers
+const normalizeCategoryVal = (cat?: string) => {
+  if (!cat) return "Gold";
+  const c = cat.toString().trim();
+  if (["Gold", "Gold Ornaments", "Silver", "Silver Articles", "Diamond", "Diamond Jewellery", "Platinum", "Platinum Items", "Coins"].includes(c)) return c;
+  if (c.toLowerCase().includes("gold")) return "Gold";
+  if (c.toLowerCase().includes("silver")) return "Silver";
+  if (c.toLowerCase().includes("diamond")) return "Diamond";
+  if (c.toLowerCase().includes("platinum")) return "Platinum";
+  if (c.toLowerCase().includes("coin") || c.toLowerCase().includes("bar")) return "Coins";
+  return "Gold";
+};
+
+const normalizeMetalTypeVal = (metal?: string) => {
+  if (!metal) return "Gold";
+  const m = metal.toString().trim();
+  if (["Gold", "Silver", "Diamond", "Platinum", "Gemstone"].includes(m)) return m;
+  const l = m.toLowerCase();
+  if (l.includes("gold")) return "Gold";
+  if (l.includes("silver")) return "Silver";
+  if (l.includes("diamond")) return "Diamond";
+  if (l.includes("platinum")) return "Platinum";
+  if (l.includes("gem")) return "Gemstone";
+  return "Gold";
+};
+
+const normalizePurityVal = (pur?: string) => {
+  if (!pur) return "22K";
+  const p = pur.toString().trim().toUpperCase();
+  if (["24K", "22K", "20K", "18K", "14K", "925", "999"].includes(p)) return p;
+  if (p.includes("24K") || p.includes("99.9") || p.includes("999 GOLD")) return "24K";
+  if (p.includes("22K") || p.includes("91.6") || p.includes("916")) return "22K";
+  if (p.includes("20K") || p.includes("83.3") || p.includes("833")) return "20K";
+  if (p.includes("18K") || p.includes("75.0") || p.includes("750")) return "18K";
+  if (p.includes("14K") || p.includes("58.5") || p.includes("585")) return "14K";
+  if (p.includes("925")) return "925";
+  if (p.includes("999")) return "999";
+  return "22K";
+};
+
+const normalizeMetalColorVal = (color?: string) => {
+  if (!color) return "Yellow";
+  const c = color.toString().trim();
+  if (["Yellow", "White", "Rose", "Dual Tone"].includes(c)) return c;
+  const l = c.toLowerCase();
+  if (l.includes("yellow")) return "Yellow";
+  if (l.includes("white")) return "White";
+  if (l.includes("rose")) return "Rose";
+  if (l.includes("dual")) return "Dual Tone";
+  return "Yellow";
+};
+
+const normalizeGenderVal = (g?: string) => {
+  if (!g) return "Unisex";
+  const gen = g.toString().trim();
+  if (["Women", "Men", "Kids", "Unisex"].includes(gen)) return gen;
+  const l = gen.toLowerCase();
+  if (l.includes("women") || l.includes("female")) return "Women";
+  if (l.includes("men") || l.includes("male")) return "Men";
+  if (l.includes("kid")) return "Kids";
+  if (l.includes("unisex")) return "Unisex";
+  return "Unisex";
+};
+
+const normalizeMakingChargeTypeVal = (mType?: string) => {
+  if (!mType) return "fixed";
+  const t = mType.toString().trim().toLowerCase();
+  if (t.includes("gram") || t === "per_gram") return "per_gram";
+  if (t.includes("percent") || t === "percentage" || t === "%") return "percentage";
+  return "fixed";
+};
+
 export default function InventoryPage() {
   const api = useTenantAPI();
   const queryClient = useQueryClient();
@@ -198,6 +270,26 @@ export default function InventoryPage() {
     queryKey: ["inventorySummaryReport"],
     queryFn: api.inventoryReports.getSummary
   });
+
+  const { data: goldRatesList = [] } = useQuery<any[]>({
+    queryKey: ["goldRates"],
+    queryFn: api.goldRates.getAll
+  });
+  const todayRates = goldRatesList[0] || {};
+
+  const getTodayRateForProduct = (purity?: string, category?: string) => {
+    const pur = (purity || "").toUpperCase();
+    const cat = (category || "").toUpperCase();
+    if (cat.includes("SILVER") || pur.includes("925") || pur.includes("999")) {
+      return Number(todayRates.silver) || 0;
+    }
+    if (pur.includes("24K")) return Number(todayRates.gold24) || 0;
+    if (pur.includes("22K") || pur.includes("916")) return Number(todayRates.gold22) || 0;
+    if (pur.includes("20K") || pur.includes("833")) return Number(todayRates.gold20) || 0;
+    if (pur.includes("18K") || pur.includes("750")) return Number(todayRates.gold18) || 0;
+    if (pur.includes("14K") || pur.includes("585")) return Number(todayRates.gold14 || (todayRates.gold24 ? Math.round(todayRates.gold24 * 0.585) : 0)) || 0;
+    return Number(todayRates.gold22) || 0;
+  };
 
   // State for Item Ledger Modal & Stock Audit Filter
   const [ledgerSelectedItem, setLedgerSelectedItem] = useState<ExtendedProduct | null>(null);
@@ -370,8 +462,8 @@ export default function InventoryPage() {
       let savedCount = 0;
       let updatedCount = 0;
       for (const row of validRows) {
-        const rowId = (row as any)._id || (validRows.length === 1 ? editingId : null);
-        const barcode = (row as any).barcode || `STK-${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
+        const rowId = (row as any)._id || (validRows.length === 1 && editingId ? String(editingId) : null);
+        const barcode = (row as any).barcode || draft.barcode || `STK-${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
         
         const lbrRaw = Number(row.labour) || 0;
         const netWtVal = Number(row.netWeight) || 0;
@@ -384,36 +476,36 @@ export default function InventoryPage() {
         }
         
         const payload: any = {
-          ...(editingId && draft ? draft : {}),
+          ...draft,
           name: row.name.toUpperCase(),
-          category: (row.stamp.toLowerCase().includes("sil") || row.unit.toLowerCase().includes("sil")) ? "Silver" : "Gold",
-          subcategory: (editingId && draft.subcategory) ? draft.subcategory : "Ornaments",
-          purity: row.stamp || "22K",
-          unit: row.unit || "Gm",
-          stock: Number(row.pcs) || 1,
-          initialStock: Number(row.pcs) || 1,
+          category: draft.category || ((row.stamp.toLowerCase().includes("sil") || row.unit.toLowerCase().includes("sil")) ? "Silver" : "Gold"),
+          subcategory: draft.subcategory || "Ornaments",
+          purity: row.stamp || draft.purity || "22K",
+          unit: row.unit || (draft as any).unit || "Gm",
+          stock: Number(row.pcs) || draft.stock || 1,
+          initialStock: Number(row.pcs) || draft.stock || 1,
           grossWeight: Number(row.grossWeight) || 0,
           stoneWeight: Number(row.lessWeight) || 0,
           netWeight: netWtVal,
           tunch: Number(row.tunch) || 91.6,
           wastage: Number(row.wastage) || 0,
-          costPrice: rateVal,
-          sellingPrice: Number(row.total) || Math.round((netWtVal * rateVal) + calcLabour + Number(row.other || 0)),
+          costPrice: rateVal || draft.costPrice || 0,
+          sellingPrice: Number(row.total) || draft.sellingPrice || Math.round((netWtVal * rateVal) + calcLabour + Number(row.other || 0)),
           makingChargeType: row.on === "Wt" ? "per_gram" : row.on === "%" ? "percentage" : "fixed",
-          makingChargePct: row.on === "%" ? lbrRaw : 0,
-          makingCharge: lbrRaw,
+          makingChargePct: row.on === "%" ? lbrRaw : (draft.makingChargePct || 0),
+          makingCharge: lbrRaw || draft.makingCharge || 0,
           labourCharges: Math.round(calcLabour),
-          otherCharges: Number(row.other) || 0,
+          otherCharges: Number(row.other) || draft.otherCharges || 0,
           barcode,
           status: "Active",
-          location: "Main Counter Display",
+          location: draft.godown || "Main Counter Display",
           narration: openStockHeader.narration,
           billNo: openStockHeader.billNo,
           entryDate: openStockHeader.date,
         };
 
         if (rowId) {
-          await updateItemMutation.mutateAsync({ id: rowId, body: payload });
+          await updateItemMutation.mutateAsync({ id: String(rowId), body: payload });
           updatedCount++;
         } else {
           await createItemMutation.mutateAsync(payload);
@@ -432,7 +524,7 @@ export default function InventoryPage() {
       setEditingId(null);
     } catch (err: any) {
       console.error("Failed to save OPEN.STOCK entry:", err);
-      toast.error("Error saving OPEN.STOCK entry.");
+      toast.error(`Error saving OPEN.STOCK entry: ${err.message || err}`);
     }
   };
 
@@ -467,7 +559,7 @@ export default function InventoryPage() {
   const [adjForm, setAdjForm] = useState({ type: "INCREASE" as "INCREASE" | "DECREASE", qty: 1, grossWeight: 0, netWeight: 0, reason: "Physical Audit Correction", remarks: "" });
   const [opnForm, setOpnForm] = useState({ qty: 1, grossWeight: 0, netWeight: 0, rate: 0, totalValue: 0, remarks: "" });
 
-  // Auto-Calculate Net Weight & Stone/Diamond Costs only
+  // Auto-Calculate Net Weight, Stone/Diamond Costs & Selling Price (Metal Cost + Making Charges + Stones + Diamonds + Other Charges)
   useEffect(() => {
     if (!modalOpen) return;
     const gross = Number(draft.grossWeight) || 0;
@@ -476,16 +568,46 @@ export default function InventoryPage() {
     const other = Number(draft.otherWeight) || 0;
     const calcNet = Math.max(0, gross - stone - diamond - other);
 
-    const stoneVal = (draft.stones || []).reduce((sum, s) => sum + (Number(s.amount) || Number(s.weight * s.rate) || 0), 0);
-    const diamondVal = (draft.diamonds || []).reduce((sum, d) => sum + (Number(d.amount) || Number(d.weight * d.rate) || 0), 0);
+    const stoneVal = (draft.stones || []).reduce((sum, s) => sum + (Number(s.amount) || Number((s.weight || 0) * (s.rate || 0)) || 0), 0);
+    const diamondVal = (draft.diamonds || []).reduce((sum, d) => sum + (Number(d.amount) || Number((d.weight || 0) * (d.rate || 0)) || 0), 0);
+
+    const rate = Number(draft.metalRate) || 0;
+    const metalCost = calcNet * rate;
+
+    const makingType = draft.makingChargeType || "fixed";
+    const makingValue = Number(draft.makingCharge) || 0;
+    let makingCost = 0;
+    if (makingType === "per_gram") {
+      makingCost = calcNet * makingValue;
+    } else if (makingType === "percentage") {
+      makingCost = metalCost * (makingValue / 100);
+    } else {
+      makingCost = makingValue;
+    }
+
+    const otherCost = Number(draft.otherCharges) || 0;
+    const computedSellingPrice = Math.round(metalCost + makingCost + stoneVal + diamondVal + otherCost);
 
     setDraft(prev => ({
       ...prev,
       netWeight: parseFloat(calcNet.toFixed(3)),
       stoneCost: stoneVal,
       diamondCost: diamondVal,
+      sellingPrice: computedSellingPrice,
     }));
-  }, [draft.grossWeight, draft.stoneWeight, draft.diamondWeight, draft.otherWeight, draft.stones, draft.diamonds, modalOpen]);
+  }, [
+    draft.grossWeight,
+    draft.stoneWeight,
+    draft.diamondWeight,
+    draft.otherWeight,
+    draft.stones,
+    draft.diamonds,
+    draft.metalRate,
+    draft.makingChargeType,
+    draft.makingCharge,
+    draft.otherCharges,
+    modalOpen
+  ]);
 
   // Filtered Inventory Data
   const filteredItems = useMemo(() => {
@@ -874,8 +996,14 @@ export default function InventoryPage() {
 
   // Open Create Modal
   const handleOpenCreate = () => {
+    const defaultPurity = "22K";
+    const defaultCat = "Gold";
+    const todayRate = getTodayRateForProduct(defaultPurity, defaultCat);
     setDraft({
       ...emptyProduct,
+      purity: defaultPurity,
+      category: defaultCat,
+      metalRate: todayRate,
     });
     setEditingId(null);
     setActiveFormTab("basic");
@@ -884,11 +1012,15 @@ export default function InventoryPage() {
 
   // Open Edit Modal
   const handleOpenEdit = (item: ExtendedProduct) => {
-    setDraft({ ...item });
-    const targetId = item._id || item.id || null;
+    const todayRate = getTodayRateForProduct(item.purity, item.category);
+    setDraft({
+      ...item,
+      metalRate: item.metalRate || (item.costPrice && item.netWeight ? Math.round(item.costPrice / item.netWeight) : todayRate),
+    });
+    const targetId = item._id ? String(item._id) : (item.id ? String(item.id) : null);
     setEditingId(targetId);
     setActiveFormTab("basic");
-    setFormViewMode("openstock");
+    setFormViewMode("all"); // Open in All-in-One Form view so all fields (Category, Subcategory, Barcode, etc.) are immediately editable & visible!
 
     const tunchVal = (item as any).tunch ?? (item.purity === "24K" || item.purity === "999" ? 99.9 : item.purity === "22K" ? 91.6 : item.purity === "20K" ? 83.3 : item.purity === "18K" ? 75.0 : item.purity === "14K" ? 58.5 : item.purity === "925" ? 92.5 : 91.6);
     const lessWt = Number(item.stoneWeight || 0) + Number(item.diamondWeight || 0) + Number(item.otherWeight || 0);
@@ -933,10 +1065,28 @@ export default function InventoryPage() {
       return toast.error("Selling Price cannot be lower than Minimum Selling Price!");
     }
 
-    if (editingId) {
-      updateItemMutation.mutate({ id: editingId, body: draft });
+    const firstRow = openStockRows[0];
+    const targetId = editingId ? String(editingId) : null;
+    const barcode = draft.barcode || (firstRow ? (firstRow as any).barcode : "") || `STK-${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
+
+    const payload: ExtendedProduct = {
+      ...draft,
+      name: draft.name.trim().toUpperCase(),
+      category: draft.category || "Gold",
+      purity: draft.purity || "22K",
+      grossWeight: Number(draft.grossWeight) || (firstRow ? Number(firstRow.grossWeight) : 0),
+      stoneWeight: Number(draft.stoneWeight) || (firstRow ? Number(firstRow.lessWeight) : 0),
+      netWeight: Number(draft.netWeight) || (firstRow ? Number(firstRow.netWeight) : 0),
+      stock: draft.stock !== undefined && draft.stock !== null ? Number(draft.stock) : (firstRow ? Number(firstRow.pcs) : 1),
+      costPrice: Number(draft.costPrice) || (firstRow ? Number(firstRow.rate) : 0),
+      sellingPrice: Number(draft.sellingPrice) || (firstRow ? Number(firstRow.total) : 0),
+      barcode,
+    };
+
+    if (targetId) {
+      updateItemMutation.mutate({ id: targetId, body: payload });
     } else {
-      createItemMutation.mutate(draft);
+      createItemMutation.mutate(payload);
     }
   };
 
@@ -2718,13 +2868,17 @@ export default function InventoryPage() {
 
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Category *</Label>
-                        <Select value={draft.category || ""} onValueChange={v => setDraft({ ...draft, category: v })}>
+                        <Select value={normalizeCategoryVal(draft.category)} onValueChange={v => setDraft({ ...draft, category: v })}>
                           <SelectTrigger><SelectValue placeholder="Select Category" /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Gold">Gold Ornaments</SelectItem>
-                            <SelectItem value="Silver">Silver Articles</SelectItem>
-                            <SelectItem value="Diamond">Diamond Jewellery</SelectItem>
-                            <SelectItem value="Platinum">Platinum Items</SelectItem>
+                            <SelectItem value="Gold">Gold</SelectItem>
+                            <SelectItem value="Gold Ornaments">Gold Ornaments</SelectItem>
+                            <SelectItem value="Silver">Silver</SelectItem>
+                            <SelectItem value="Silver Articles">Silver Articles</SelectItem>
+                            <SelectItem value="Diamond">Diamond</SelectItem>
+                            <SelectItem value="Diamond Jewellery">Diamond Jewellery</SelectItem>
+                            <SelectItem value="Platinum">Platinum</SelectItem>
+                            <SelectItem value="Platinum Items">Platinum Items</SelectItem>
                             <SelectItem value="Coins">Coins & Bars</SelectItem>
                           </SelectContent>
                         </Select>
@@ -2768,7 +2922,7 @@ export default function InventoryPage() {
                     <div className="p-4 grid grid-cols-1 sm:grid-cols-4 gap-4">
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Metal Type *</Label>
-                        <Select value={draft.metalType || ""} onValueChange={v => setDraft({ ...draft, metalType: v })}>
+                        <Select value={normalizeMetalTypeVal(draft.metalType)} onValueChange={v => setDraft({ ...draft, metalType: v })}>
                           <SelectTrigger><SelectValue placeholder="Select Metal" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Gold">Gold</SelectItem>
@@ -2782,7 +2936,7 @@ export default function InventoryPage() {
 
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Purity *</Label>
-                        <Select value={draft.purity || ""} onValueChange={v => setDraft({ ...draft, purity: v })}>
+                        <Select value={normalizePurityVal(draft.purity)} onValueChange={v => setDraft({ ...draft, purity: v })}>
                           <SelectTrigger><SelectValue placeholder="Select Purity" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="24K">24K (99.9%)</SelectItem>
@@ -2804,7 +2958,7 @@ export default function InventoryPage() {
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Metal Color & Gender</Label>
                         <div className="grid grid-cols-2 gap-2">
-                          <Select value={draft.metalColor || ""} onValueChange={v => setDraft({ ...draft, metalColor: v })}>
+                          <Select value={normalizeMetalColorVal(draft.metalColor)} onValueChange={v => setDraft({ ...draft, metalColor: v })}>
                             <SelectTrigger><SelectValue placeholder="Color" /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="Yellow">Yellow</SelectItem>
@@ -2813,7 +2967,7 @@ export default function InventoryPage() {
                               <SelectItem value="Dual Tone">Dual</SelectItem>
                             </SelectContent>
                           </Select>
-                          <Select value={draft.gender || ""} onValueChange={v => setDraft({ ...draft, gender: v })}>
+                          <Select value={normalizeGenderVal(draft.gender)} onValueChange={v => setDraft({ ...draft, gender: v })}>
                             <SelectTrigger><SelectValue placeholder="Gender" /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="Women">Women</SelectItem>
@@ -2986,13 +3140,24 @@ export default function InventoryPage() {
                     </div>
                     <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold">Metal Rate (₹/g)</Label>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs font-semibold">Metal Rate (₹/g)</Label>
+                          {getTodayRateForProduct(draft.purity, draft.category) > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setDraft({ ...draft, metalRate: getTodayRateForProduct(draft.purity, draft.category) })}
+                              className="text-[10px] text-amber-700 dark:text-amber-400 hover:underline font-bold"
+                            >
+                              Use Today ({inr(getTodayRateForProduct(draft.purity, draft.category))}/g)
+                            </button>
+                          )}
+                        </div>
                         <Input type="number" value={draft.metalRate || ""} onChange={e => setDraft({ ...draft, metalRate: parseFloat(e.target.value) || 0 })} placeholder="0.00" />
                       </div>
 
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Making Charge Type</Label>
-                        <Select value={draft.makingChargeType || "fixed"} onValueChange={(v: any) => setDraft({ ...draft, makingChargeType: v })}>
+                        <Select value={normalizeMakingChargeTypeVal(draft.makingChargeType)} onValueChange={(v: any) => setDraft({ ...draft, makingChargeType: v })}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="fixed">Fixed Amount (₹)</SelectItem>
@@ -3013,8 +3178,20 @@ export default function InventoryPage() {
                       </div>
 
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold">Selling Price (₹) *</Label>
-                        <Input type="number" value={draft.sellingPrice || ""} onChange={e => setDraft({ ...draft, sellingPrice: parseFloat(e.target.value) || 0 })} placeholder="0.00" className="font-bold text-emerald-700" required />
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs font-semibold">Selling Price (₹) *</Label>
+                          <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">Auto-Calculated</span>
+                        </div>
+                        <Input type="number" value={draft.sellingPrice || ""} onChange={e => setDraft({ ...draft, sellingPrice: parseFloat(e.target.value) || 0 })} placeholder="0.00" className="font-bold text-emerald-700 border-emerald-300 dark:text-emerald-400" required />
+                        {Number(draft.metalRate || 0) > 0 && (
+                          <div className="text-[10px] text-muted-foreground font-mono bg-emerald-50/60 dark:bg-emerald-950/20 p-1.5 rounded border border-emerald-200/60">
+                            Formula: ({draft.netWeight || 0}g × ₹{draft.metalRate}) + ₹{
+                              draft.makingChargeType === "per_gram" ? ((draft.netWeight || 0) * (draft.makingCharge || 0)).toFixed(0) :
+                              draft.makingChargeType === "percentage" ? (((draft.netWeight || 0) * (draft.metalRate || 0)) * ((draft.makingCharge || 0) / 100)).toFixed(0) :
+                              (draft.makingCharge || 0)
+                            } making = <strong>₹{inr(draft.sellingPrice || 0)}</strong>
+                          </div>
+                        )}
                       </div>
 
                       <div className="space-y-1.5">
@@ -3099,13 +3276,17 @@ export default function InventoryPage() {
 
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Category *</Label>
-                        <Select value={draft.category || ""} onValueChange={v => setDraft({ ...draft, category: v })}>
+                        <Select value={normalizeCategoryVal(draft.category)} onValueChange={v => setDraft({ ...draft, category: v })}>
                           <SelectTrigger><SelectValue placeholder="Select Category" /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Gold">Gold Ornaments</SelectItem>
-                            <SelectItem value="Silver">Silver Articles</SelectItem>
-                            <SelectItem value="Diamond">Diamond Jewellery</SelectItem>
-                            <SelectItem value="Platinum">Platinum Items</SelectItem>
+                            <SelectItem value="Gold">Gold</SelectItem>
+                            <SelectItem value="Gold Ornaments">Gold Ornaments</SelectItem>
+                            <SelectItem value="Silver">Silver</SelectItem>
+                            <SelectItem value="Silver Articles">Silver Articles</SelectItem>
+                            <SelectItem value="Diamond">Diamond</SelectItem>
+                            <SelectItem value="Diamond Jewellery">Diamond Jewellery</SelectItem>
+                            <SelectItem value="Platinum">Platinum</SelectItem>
+                            <SelectItem value="Platinum Items">Platinum Items</SelectItem>
                             <SelectItem value="Coins">Coins & Bars</SelectItem>
                           </SelectContent>
                         </Select>
@@ -3143,7 +3324,7 @@ export default function InventoryPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Metal Type *</Label>
-                        <Select value={draft.metalType || ""} onValueChange={v => setDraft({ ...draft, metalType: v })}>
+                        <Select value={normalizeMetalTypeVal(draft.metalType)} onValueChange={v => setDraft({ ...draft, metalType: v })}>
                           <SelectTrigger><SelectValue placeholder="Select Metal Type" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Gold">Gold</SelectItem>
@@ -3157,7 +3338,7 @@ export default function InventoryPage() {
 
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Purity *</Label>
-                        <Select value={draft.purity || ""} onValueChange={v => setDraft({ ...draft, purity: v })}>
+                        <Select value={normalizePurityVal(draft.purity)} onValueChange={v => setDraft({ ...draft, purity: v })}>
                           <SelectTrigger><SelectValue placeholder="Select Purity" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="24K">24K (99.9%)</SelectItem>
@@ -3178,7 +3359,7 @@ export default function InventoryPage() {
 
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Metal Color</Label>
-                        <Select value={draft.metalColor || ""} onValueChange={v => setDraft({ ...draft, metalColor: v })}>
+                        <Select value={normalizeMetalColorVal(draft.metalColor)} onValueChange={v => setDraft({ ...draft, metalColor: v })}>
                           <SelectTrigger><SelectValue placeholder="Select Metal Color" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Yellow">Yellow Gold</SelectItem>
@@ -3191,7 +3372,7 @@ export default function InventoryPage() {
 
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Gender</Label>
-                        <Select value={draft.gender || ""} onValueChange={v => setDraft({ ...draft, gender: v })}>
+                        <Select value={normalizeGenderVal(draft.gender)} onValueChange={v => setDraft({ ...draft, gender: v })}>
                           <SelectTrigger><SelectValue placeholder="Select Gender" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Women">Women</SelectItem>

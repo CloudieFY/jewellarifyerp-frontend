@@ -31,6 +31,8 @@ export type TenantShopInfo = {
   shopName: string;
   plan: string;
   subscriptionEndDate: string;
+  allowedModules?: string[];
+  allowedPages?: string[];
   // Optional fields from the shop profile
   ownerName?: string;
   /** Display owner name/label on invoices (legacy field used by some screens). */
