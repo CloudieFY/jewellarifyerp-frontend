@@ -30,8 +30,6 @@ interface MoveOpts {
   onSave?: () => void;
   /** Restrict navigation to this subtree (the form hook passes its container). */
   scope?: HTMLElement | null;
-  /** When true and no form/table/dialog ancestor exists, do nothing. */
-  requireScope?: boolean;
 }
 
 function isVisible(el: HTMLElement): boolean {
@@ -109,18 +107,20 @@ export function moveFocus(e: AnyKeyEvent, opts: MoveOpts = {}): boolean {
 
   const input = target as HTMLInputElement;
   const inputType = tag === "INPUT" ? (input.type || "text").toLowerCase() : "";
-  const isNumber = inputType === "number";
   const isSelect = tag === "SELECT";
   const isTextarea = tag === "TEXTAREA";
   const isEditableInput = tag === "INPUT" && !["checkbox", "radio", "button", "submit", "reset", "file", "range", "color"].includes(inputType);
+  const isVertical = key === "ArrowUp" || key === "ArrowDown";
 
   // Textarea: Enter inserts a newline.
   if (isTextarea && key === "Enter") return false;
 
-  // Keep native Up/Down for <select> option cycling and number stepping, unless Alt is held.
-  if ((key === "ArrowUp" || key === "ArrowDown") && !e.altKey && (isSelect || isNumber)) return false;
+  // Up/Down moves between fields/rows for text and number inputs. A <select>
+  // keeps native option cycling (use Alt+Up/Down to leave it).
+  if (isVertical && !e.altKey && isSelect) return false;
 
-  // Horizontal keys: only jump fields from the caret edge of an editable input.
+  // Left/Right jump fields only from the caret edge of an editable text field.
+  // (number / select, whose caret can't be read, always jump.)
   if (key === "ArrowRight" && isEditableInput) {
     const c = caret(input);
     if (c && c.start !== c.len) return false;
@@ -130,12 +130,14 @@ export function moveFocus(e: AnyKeyEvent, opts: MoveOpts = {}): boolean {
     if (c && c.start !== 0) return false;
   }
 
-  const scopeEl = opts.scope ?? target.closest("table, form, [role='dialog'], [data-kbd-scope]");
-  if (!opts.scope && opts.requireScope && !scopeEl) return false;
-  const scope: ParentNode = scopeEl ?? document.body;
+  const scope: ParentNode =
+    opts.scope ??
+    target.closest("table, form, [role='dialog'], [data-kbd-scope]") ??
+    target.closest("main") ??
+    document.body;
 
   // Row-wise movement first when inside a data grid.
-  if (key === "ArrowUp" || key === "ArrowDown") {
+  if (isVertical) {
     const neighbour = cellNeighbour(target, key === "ArrowDown" ? 1 : -1);
     if (neighbour) {
       e.preventDefault();

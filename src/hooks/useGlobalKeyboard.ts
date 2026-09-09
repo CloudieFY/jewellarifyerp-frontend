@@ -174,7 +174,7 @@ export function useActiveShortcuts(): Shortcut[] {
  * Kept as a named export because billing.tsx and orders.tsx attach it directly.
  */
 export function handleGridArrowNav(e: React.KeyboardEvent<HTMLElement> | KeyboardEvent) {
-  moveFocus(e, { requireScope: true });
+  moveFocus(e);
 }
 
 export function useGlobalKeyboard(options: {
