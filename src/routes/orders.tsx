@@ -499,7 +499,23 @@ export default function OrdersPage() {
                             type="number"
                             step="0.001"
                             value={String(form.expectedGrossWeight || "")}
-                            onChange={e => setForm({ ...form, expectedGrossWeight: +e.target.value })}
+                            onChange={e => {
+                              const gw = +e.target.value;
+                              setForm(prev => {
+                                const nw = (!prev.expectedNetWeight || prev.expectedNetWeight === prev.expectedGrossWeight) ? gw : prev.expectedNetWeight;
+                                const rate = prev.lockedGoldRate || 7200;
+                                const autoTotal = (prev.estimatedTotalAmount && prev.estimatedTotalAmount !== Math.round((prev.expectedNetWeight || 0) * rate))
+                                  ? prev.estimatedTotalAmount
+                                  : Math.round(nw * rate);
+                                return {
+                                  ...prev,
+                                  expectedGrossWeight: gw,
+                                  expectedNetWeight: nw,
+                                  estimatedTotalAmount: autoTotal,
+                                  fixedPrice: autoTotal,
+                                };
+                              });
+                            }}
                             className="w-full h-9 px-1.5 text-right font-mono text-xs sm:text-sm font-black bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
                           />
                         </td>
@@ -508,7 +524,21 @@ export default function OrdersPage() {
                             type="number"
                             step="0.001"
                             value={String(form.expectedNetWeight || "")}
-                            onChange={e => setForm({ ...form, expectedNetWeight: +e.target.value })}
+                            onChange={e => {
+                              const nw = +e.target.value;
+                              setForm(prev => {
+                                const rate = prev.lockedGoldRate || 7200;
+                                const autoTotal = (prev.estimatedTotalAmount && prev.estimatedTotalAmount !== Math.round((prev.expectedNetWeight || 0) * rate))
+                                  ? prev.estimatedTotalAmount
+                                  : Math.round(nw * rate);
+                                return {
+                                  ...prev,
+                                  expectedNetWeight: nw,
+                                  estimatedTotalAmount: autoTotal,
+                                  fixedPrice: autoTotal,
+                                };
+                              });
+                            }}
                             className="w-full h-9 px-1.5 text-right font-mono text-xs sm:text-sm font-black bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
                           />
                         </td>
@@ -516,7 +546,18 @@ export default function OrdersPage() {
                           <input
                             type="number"
                             value={String(form.lockedGoldRate || 7200)}
-                            onChange={e => setForm({ ...form, lockedGoldRate: +e.target.value })}
+                            onChange={e => {
+                              const r = +e.target.value;
+                              setForm(prev => {
+                                const autoTotal = Math.round((prev.expectedNetWeight || 0) * r);
+                                return {
+                                  ...prev,
+                                  lockedGoldRate: r,
+                                  estimatedTotalAmount: autoTotal > 0 ? autoTotal : prev.estimatedTotalAmount,
+                                  fixedPrice: autoTotal > 0 ? autoTotal : prev.fixedPrice,
+                                };
+                              });
+                            }}
                             className="w-full h-9 px-1.5 text-right font-mono text-xs sm:text-sm font-bold bg-transparent border-0 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-sky-100 dark:focus:bg-blue-950/80"
                           />
                         </td>

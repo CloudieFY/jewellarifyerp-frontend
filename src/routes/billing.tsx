@@ -393,6 +393,41 @@ export default function BillingPage() {
   // Global Hardware USB POS Barcode Scanner Listener
   const barcodeBuffer = useRef<string>("");
   const lastKeyTime = useRef<number>(0);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+      const now = Date.now();
+      const timeDiff = now - lastKeyTime.current;
+      lastKeyTime.current = now;
+
+      if (e.key === "Enter") {
+        if (barcodeBuffer.current && barcodeBuffer.current.trim().length >= 2) {
+          const scannedCode = barcodeBuffer.current.trim();
+          barcodeBuffer.current = "";
+          const success = handleScanBarcode(scannedCode);
+          if (success) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }
+        return;
+      }
+
+      if (e.key.length === 1) {
+        // High speed keypresses (< 60ms) typical for USB/Bluetooth hardware barcode scanners
+        if (timeDiff > 60) {
+          barcodeBuffer.current = e.key;
+        } else {
+          barcodeBuffer.current += e.key;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown, true);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
+  }, [products, latestRates]);
   const firstItemInputRef = useRef<HTMLInputElement | null>(null);
   const [discount, setDiscount] = useState<number | "">("");
   const [billMetal, setBillMetal] = useState<"Gold" | "Silver">("Gold");
@@ -746,7 +781,7 @@ export default function BillingPage() {
       return;
     }
 
-    let currentRate = p.ratePerGram;
+    let currentRate = p.costPrice || p.ratePerGram || 0;
     if (latestRates && p.category !== "Diamond" && p.category !== "Other") {
       const purityUpper = (p.purity || "").toUpperCase();
       if (purityUpper.includes("24K") && latestRates.gold24) currentRate = latestRates.gold24;
@@ -756,30 +791,45 @@ export default function BillingPage() {
       else if ((p.category === "Silver" || purityUpper.includes("SILVER") || purityUpper.includes("925")) && latestRates.silver) currentRate = latestRates.silver;
     }
 
+    const purityUpper = (p.purity || "").toUpperCase();
+    let tunchPct = 91.6;
+    if (purityUpper.includes("24K")) tunchPct = 99.9;
+    else if (purityUpper.includes("22K")) tunchPct = 91.6;
+    else if (purityUpper.includes("20K")) tunchPct = 83.3;
+    else if (purityUpper.includes("18K")) tunchPct = 75.0;
+    else if (purityUpper.includes("14K")) tunchPct = 58.5;
+    else if (purityUpper.includes("SILVER") || purityUpper.includes("925") || p.category === "Silver") tunchPct = 92.5;
+
+    const grWt = p.grossWeight !== undefined ? p.grossWeight : (p.netWeight || 0);
+    const stoneWt = p.stoneWeight || 0;
+    const netWt = p.netWeight !== undefined ? p.netWeight : Math.max(0, grWt - stoneWt);
+    const tagVal = p.barcode || p.sku || p.huid || (p._id || p.id || "").slice(-6);
+
     let itemName = p.name;
-    if (p.huid) {
-      itemName += ` (HUID: ${p.huid})`;
-    } else if (p.barcode && !p.barcode.startsWith("AJ-") && !p.barcode.startsWith("CAT-")) {
-      itemName += ` (BC: ${p.barcode})`;
-    }
 
     const newItem = {
-      productId: p.id || p._id,
+      productId: p._id || p.id,
+      tagNo: tagVal,
       name: itemName,
-      purity: p.purity || "",
-      netWeight: p.netWeight,
-      grossWeight: p.grossWeight !== undefined ? p.grossWeight : p.netWeight,
-      stoneWeight: p.stoneWeight || 0,
-      ratePerGram: currentRate,
-      makingCharge: 0,
-      makingChargePct: 0,
-      makingChargeType: "PERCENTAGE",
-      makingChargeValue: 0,
-      stoneCharge: 0,
-      gstPct: p.gstPct,
+      purity: p.purity || "22K",
+      unit: p.unit || "Gm",
       qty: 1,
+      grossWeight: grWt,
+      stoneWeight: stoneWt,
+      netWeight: netWt,
+      tunch: p.tunch || tunchPct,
+      ratePerGram: currentRate,
+      makingCharge: p.labourCharges || p.makingCharge || 0,
+      makingChargeType: p.makingChargeType === "percentage" ? "PERCENTAGE" : p.makingChargeType === "fixed" ? "FIXED" : "PER_GRAM",
+      makingChargePct: p.makingChargePct || 0,
+      makingChargeValue: p.labourCharges || p.makingCharge || 0,
+      otherCharges: p.otherCharges || 0,
+      stoneCharge: p.stoneCharge || 0,
+      gstPct: p.gstPct || (type === "GST" ? 3 : 0),
       huid: p.huid || "",
-      hmc: 0,
+      hmc: p.hmc || 0,
+      remarks: p.remarks || "",
+      itemType: "S",
     } as any;
 
     setItems((prev) => {
@@ -903,8 +953,25 @@ export default function BillingPage() {
         }
       }
 
+      // Auto-compute netWeight or grossWeight if one of them is updated in patch
+      let patchGross = patch.grossWeight !== undefined ? (patch as any).grossWeight : (item as any).grossWeight;
+      let patchStone = patch.stoneWeight !== undefined ? (patch as any).stoneWeight : (item as any).stoneWeight || 0;
+      let patchNet = patch.netWeight !== undefined ? patch.netWeight : item.netWeight;
+
+      if (patch.grossWeight !== undefined || patch.stoneWeight !== undefined) {
+        if (patch.netWeight === undefined) {
+          const gwVal = Number(patchGross) || 0;
+          const swVal = Number(patchStone) || 0;
+          patchNet = Math.max(0, Number((gwVal - swVal).toFixed(3)));
+        }
+      } else if (patch.netWeight !== undefined && patch.grossWeight === undefined) {
+        const nwVal = Number(patchNet) || 0;
+        const swVal = Number(patchStone) || 0;
+        patchGross = Number((nwVal + swVal).toFixed(3));
+      }
+
       // Default patch
-      updated[idx] = { ...item, ...patch };
+      updated[idx] = { ...item, ...patch, grossWeight: patchGross, stoneWeight: patchStone, netWeight: patchNet };
       return updated;
     });
   };
@@ -1430,7 +1497,9 @@ export default function BillingPage() {
         scrapRate: oldSilverForm.scrapRate || 0,
         amount: Number(oldSilverAmount) || 0,
       } : undefined,
-      oldMetalType: oldMetalType,
+      oldMetalType: (oldMetalType && ["Gold", "Silver", "Mixed"].includes(oldMetalType as string))
+        ? oldMetalType
+        : (Number(oldGoldAmount) > 0 && Number(oldSilverAmount) > 0 ? "Mixed" : Number(oldGoldAmount) > 0 ? "Gold" : Number(oldSilverAmount) > 0 ? "Silver" : undefined),
       billMetal: billMetal,
       paymentMode: finalPaymentMode,
       subtotal: totals.subtotal,
@@ -1993,6 +2062,48 @@ export default function BillingPage() {
                       <input type="checkbox" checked={finalVoucher} onChange={(e) => setFinalVoucher(e.target.checked)} className="w-4 h-4 rounded text-amber-600" />
                       Final Voucher
                     </label>
+                  </div>
+                </div>
+
+                {/* POS Barcode / Tag Quick Hardware Scanner Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-gradient-to-r from-amber-100 via-amber-50 to-orange-100 dark:from-amber-950/60 dark:via-slate-900 dark:to-orange-950/60 p-2 my-2 rounded-lg border border-amber-300 dark:border-amber-800 shadow-sm">
+                  <div className="flex items-center gap-2 flex-1 min-w-[280px]">
+                    <ScanBarcode className="w-5 h-5 text-amber-700 dark:text-amber-400 shrink-0 animate-pulse" />
+                    <span className="font-bold text-xs sm:text-sm text-amber-900 dark:text-amber-200 shrink-0 whitespace-nowrap">
+                      POS Hardware Scanner / Tag Lookup:
+                    </span>
+                    <div className="relative flex-1 max-w-md">
+                      <Input
+                        ref={posScanRef}
+                        type="text"
+                        value={posBarcodeInput}
+                        onChange={(e) => setPosBarcodeInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && posBarcodeInput.trim()) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleScanBarcode(posBarcodeInput.trim());
+                          }
+                        }}
+                        placeholder="Scan item barcode with POS machine or type Tag/SKU/HUID..."
+                        className="h-8 text-xs sm:text-sm font-mono font-bold pl-8 pr-16 bg-white dark:bg-slate-900 border-amber-400 dark:border-amber-700 focus-visible:ring-amber-500 shadow-inner"
+                      />
+                      <ScanBarcode className="w-4 h-4 text-slate-400 absolute left-2.5 top-2" />
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleScanBarcode(posBarcodeInput.trim())}
+                        className="absolute right-1 top-1 h-6 text-[11px] bg-amber-600 hover:bg-amber-700 text-white font-bold px-2 py-0"
+                      >
+                        Add Item
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="hidden sm:flex items-center gap-2 text-[11px] font-semibold text-amber-900 dark:text-amber-300">
+                    <span className="bg-amber-200/80 dark:bg-amber-900/80 px-2.5 py-1 rounded-md border border-amber-300 dark:border-amber-700 flex items-center gap-1.5 shadow-xs">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
+                      <span>USB/Bluetooth POS Scanner Active</span>
+                    </span>
                   </div>
                 </div>
 

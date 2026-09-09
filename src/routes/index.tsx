@@ -25,17 +25,19 @@ import {
   Layers,
   CircleDollarSign,
   Boxes,
+  Calculator,
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useTenantAPI } from "@/lib/api";
 import { useLanguage } from "@/context/LanguageContext";
 import { translateEnum, invoiceTypeMap, paymentMethodMap } from "@/translations/mappings";
+import { isRouteAllowed } from "@/lib/subscriptionModules";
 
 const LOYAL_THRESHOLD = 3;
 const defaultRates: any = { updatedAt: new Date().toISOString(), gold24: 7850, gold22: 7200, gold20: 6540, gold18: 5890, silver: 98 };
@@ -61,6 +63,15 @@ export default function Dashboard() {
   const { data: girviItems = [] } = useQuery({ queryKey: ["girvi"], queryFn: api.girvi.getAll });
 
   const isOperator = authUser?.role === "operator";
+  const plan = tenantSession?.shop?.plan;
+  const allowedPages = tenantSession?.shop?.allowedPages;
+  const allowedModules = tenantSession?.shop?.allowedModules;
+
+  const canAccess = useCallback(
+    (route: string) => isRouteAllowed(route, plan, allowedPages, allowedModules),
+    [plan, allowedPages, allowedModules]
+  );
+
   const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type !== "GST" : i.type === "GST"), [allInvoices, isOperator]);
   const rolePurchases = useMemo(() => purchases.filter(p => isOperator ? !(p.type === "GST" || p.gstPct > 0) : (p.type === "GST" || p.gstPct > 0)), [purchases, isOperator]);
 
@@ -194,8 +205,8 @@ export default function Dashboard() {
   const dueRepairs = repairs.filter(r => r.deliveryDate && r.deliveryDate <= todayIso && r.status !== "Delivered").length;
   const unpaidInvoices = invoices.filter(i => (i.balanceDue || 0) > 0).length;
 
-  // Comprehensive 20+ Module Stat Cards List
-  const allModuleStats = [
+  // Comprehensive Module Stat Cards List (Filtered by Plan Permissions)
+  const allModuleStats = useMemo(() => [
     { label: t("dashboard.stat.totalSell"), value: inr(totalSell), icon: TrendingUp, sub: `${invoices.length} total sales invoices`, to: "/sales", color: "emerald" },
     { label: t("dashboard.stat.totalMoneyToday"), value: inr(todaySales), icon: Wallet, sub: `${todayInvoices.length} invoices today`, to: "/sales", color: "emerald" },
     { label: t("dashboard.stat.monthlyRevenue"), value: inr(monthRevenue), icon: CalendarRange, sub: `${monthInvoices.length} invoices this month`, to: "/sales", color: "emerald" },
@@ -207,7 +218,6 @@ export default function Dashboard() {
     { label: t("dashboard.stat.stockValue"), value: inr(stockValue), icon: Boxes, sub: `${products.length} catalog items`, to: "/inventory", color: "amber" },
     { label: t("dashboard.stat.inventoryItems"), value: activeProducts.length, icon: Package, sub: `${lowStock} low stock items`, to: "/inventory", color: "amber" },
 
-
     { label: "Girvi Loan Receivables", value: inr(girviPrincipalTotal), icon: Landmark, sub: `${girviItems.length} pledged items`, to: "/girvi", color: "blue" },
     { label: "Customer Dues Receivable", value: inr(customerDuesTotal), icon: AlertTriangle, sub: `${unpaidInvoices} unpaid invoices`, to: "/dues", color: "rose" },
     { label: t("dashboard.stat.totalDue"), value: inr(supplierDuesTotal), icon: AlertTriangle, sub: `${suppliers.length} suppliers payable`, to: "/suppliers", color: "rose" },
@@ -218,7 +228,17 @@ export default function Dashboard() {
     { label: t("dashboard.stat.normalCustomers"), value: normalCustomers, icon: Users, sub: "Standard retail buyers", to: "/customers", color: "purple" },
     { label: t("dashboard.stat.activeOrders"), value: pendingOrders, icon: ShoppingBag, sub: `${readyOrders} ready for delivery`, to: "/orders", color: "blue" },
     { label: t("dashboard.stat.pendingRepairs"), value: pendingRepairs, icon: Wrench, sub: `${readyRepairs} ready for delivery`, to: "/repairs", color: "blue" },
-  ];
+  ], [
+    t, totalSell, invoices.length, todaySales, todayInvoices.length, monthRevenue, monthInvoices.length,
+    todayExpense, monthExpense, goldGrams, silverGrams, stockValue, products.length, activeProducts.length,
+    lowStock, girviPrincipalTotal, girviItems.length, customerDuesTotal, unpaidInvoices, supplierDuesTotal,
+    suppliers.length, purchaseAmount, rolePurchases.length, todayCustomers, customers.length, loyalCustomers,
+    normalCustomers, pendingOrders, readyOrders, pendingRepairs, readyRepairs
+  ]);
+
+  const visibleModuleStats = useMemo(() => {
+    return allModuleStats.filter((s) => canAccess(s.to));
+  }, [allModuleStats, canAccess]);
 
   const recent = [...invoices].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6);
   const [dateString, setDateString] = useState("");
@@ -239,7 +259,7 @@ export default function Dashboard() {
           <div>
             <div className="flex items-center gap-2">
               <Badge className="bg-amber-500/30 text-amber-200 border-amber-400/40 text-xs uppercase font-mono tracking-widest px-2.5 py-0.5">
-                Jewellery ERP Enterprise
+                {tenantSession?.shop?.plan ? `${tenantSession.shop.plan.toUpperCase()} TIER PLAN` : 'JEWELLERY ERP ENTERPRISE'}
               </Badge>
               <span className="text-xs text-amber-200/80 font-mono">Date: {dateString}</span>
             </div>
@@ -252,21 +272,34 @@ export default function Dashboard() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-            <Link to="/billing">
-              <Button size="lg" className="bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold shadow-lg">
-                <ShoppingCart className="w-4 h-4 mr-2" /> New POS Billing
-              </Button>
-            </Link>
-            <Link to="/inventory">
-              <Button size="lg" variant="outline" className="bg-amber-900/50 hover:bg-amber-800/80 text-amber-100 border-amber-500/50 font-semibold">
-                <Package className="w-4 h-4 mr-2" /> Add Item
-              </Button>
-            </Link>
-            <Link to="/girvi">
-              <Button size="lg" variant="outline" className="bg-amber-900/50 hover:bg-amber-800/80 text-amber-100 border-amber-500/50 font-semibold">
-                <Landmark className="w-4 h-4 mr-2" /> New Girvi Loan
-              </Button>
-            </Link>
+            {canAccess("/billing") && (
+              <Link to="/billing">
+                <Button size="lg" className="bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold shadow-lg">
+                  <ShoppingCart className="w-4 h-4 mr-2" /> New POS Billing
+                </Button>
+              </Link>
+            )}
+            {canAccess("/inventory") && (
+              <Link to="/inventory">
+                <Button size="lg" variant="outline" className="bg-amber-900/50 hover:bg-amber-800/80 text-amber-100 border-amber-500/50 font-semibold">
+                  <Package className="w-4 h-4 mr-2" /> Add Item
+                </Button>
+              </Link>
+            )}
+            {canAccess("/girvi") && (
+              <Link to="/girvi">
+                <Button size="lg" variant="outline" className="bg-amber-900/50 hover:bg-amber-800/80 text-amber-100 border-amber-500/50 font-semibold">
+                  <Landmark className="w-4 h-4 mr-2" /> New Girvi Loan
+                </Button>
+              </Link>
+            )}
+            {!canAccess("/girvi") && canAccess("/calculator") && (
+              <Link to="/calculator">
+                <Button size="lg" variant="outline" className="bg-amber-900/50 hover:bg-amber-800/80 text-amber-100 border-amber-500/50 font-semibold">
+                  <Calculator className="w-4 h-4 mr-2" /> Rate Calculator
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
 
@@ -312,11 +345,11 @@ export default function Dashboard() {
           <h2 className="text-lg font-bold font-display flex items-center gap-2">
             <Layers className="w-5 h-5 text-amber-600" /> Showroom Key Performance Indicator Divs
           </h2>
-          <span className="text-xs text-muted-foreground font-mono">18 Modules Connected</span>
+          <span className="text-xs text-muted-foreground font-mono">{visibleModuleStats.length} Modules Connected</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {allModuleStats.map((s) => {
+          {visibleModuleStats.map((s) => {
             const Icon = s.icon;
             return (
               <Link key={s.label} to={s.to} className="block">
@@ -474,13 +507,13 @@ export default function Dashboard() {
             </Link>
           </CardHeader>
           <CardContent className="p-4 space-y-2.5">
-            {readyOrders > 0 && <AlertRow icon={CheckCircle} label={t("dashboard.ordersReadyForDelivery")} value={readyOrders} to="/orders" className="text-green-700 bg-green-50 border-green-200 font-medium" />}
-            {readyRepairs > 0 && <AlertRow icon={CheckCircle} label={t("dashboard.repairsReadyForDelivery")} value={readyRepairs} to="/repairs" className="text-green-700 bg-green-50 border-green-200 font-medium" />}
-            {dueOrders > 0 && <AlertRow icon={Clock} label={t("dashboard.dueTodayOverdueOrders")} value={dueOrders} to="/orders" className="text-rose-700 bg-rose-50 border-rose-200 font-medium" />}
-            {dueRepairs > 0 && <AlertRow icon={Clock} label={t("dashboard.dueTodayOverdueRepairs")} value={dueRepairs} to="/repairs" className="text-rose-700 bg-rose-50 border-rose-200 font-medium" />}
-            {unpaidInvoices > 0 && <AlertRow icon={Wallet} label={t("dashboard.unpaidCustomerDues")} value={unpaidInvoices} to="/dues" className="text-amber-700 bg-amber-50 border-amber-200 font-medium" />}
-            <AlertRow icon={Package} label={t("dashboard.lowStockItems")} value={lowStock} to="/inventory" />
-            <AlertRow icon={ShoppingBag} label={t("dashboard.activeOrders")} value={pendingOrders} to="/orders" />
+            {readyOrders > 0 && canAccess("/orders") && <AlertRow icon={CheckCircle} label={t("dashboard.ordersReadyForDelivery")} value={readyOrders} to="/orders" className="text-green-700 bg-green-50 border-green-200 font-medium" />}
+            {readyRepairs > 0 && canAccess("/repairs") && <AlertRow icon={CheckCircle} label={t("dashboard.repairsReadyForDelivery")} value={readyRepairs} to="/repairs" className="text-green-700 bg-green-50 border-green-200 font-medium" />}
+            {dueOrders > 0 && canAccess("/orders") && <AlertRow icon={Clock} label={t("dashboard.dueTodayOverdueOrders")} value={dueOrders} to="/orders" className="text-rose-700 bg-rose-50 border-rose-200 font-medium" />}
+            {dueRepairs > 0 && canAccess("/repairs") && <AlertRow icon={Clock} label={t("dashboard.dueTodayOverdueRepairs")} value={dueRepairs} to="/repairs" className="text-rose-700 bg-rose-50 border-rose-200 font-medium" />}
+            {unpaidInvoices > 0 && canAccess("/dues") && <AlertRow icon={Wallet} label={t("dashboard.unpaidCustomerDues")} value={unpaidInvoices} to="/dues" className="text-amber-700 bg-amber-50 border-amber-200 font-medium" />}
+            {canAccess("/inventory") && <AlertRow icon={Package} label={t("dashboard.lowStockItems")} value={lowStock} to="/inventory" />}
+            {canAccess("/orders") && <AlertRow icon={ShoppingBag} label={t("dashboard.activeOrders")} value={pendingOrders} to="/orders" />}
           </CardContent>
         </Card>
       </div>

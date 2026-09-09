@@ -51,11 +51,25 @@ import {
   CheckCircle2,
   Clock,
   Mail,
-  ShieldCheck
+  ShieldCheck,
+  Zap,
+  Crown,
+  Layers,
+  X,
+  Share2,
+  Send,
+  ChevronRight,
+  ChevronLeft
 } from "lucide-react";
 import { toast } from "sonner";
 import { superAdminAPI } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import {
+  getDefaultPagesForPlan,
+  getDefaultModulesForPlan,
+  PLAN_METADATA
+} from "@/lib/subscriptionModules";
+import { ModuleSelectorTree } from "@/components/ModuleSelectorTree";
 
 type Shop = {
   id: string;
@@ -77,6 +91,8 @@ type Shop = {
   logoUrl?: string;
   address?: string;
   gstNumber?: string;
+  allowedModules?: string[];
+  allowedPages?: string[];
 };
 
 const emptyForm = {
@@ -88,8 +104,10 @@ const emptyForm = {
   logoUrl: "",
   address: "",
   gstNumber: "",
-  plan: "trial",
+  plan: "spark",
   subscriptionEndDate: "",
+  allowedModules: getDefaultModulesForPlan("spark"),
+  allowedPages: getDefaultPagesForPlan("spark"),
   gstAdminUsername: "owner",
   gstAdminPassword: "",
   nonGstAdminUsername: "operator",
@@ -106,7 +124,7 @@ export default function SuperAdminDashboardPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "table">("table");
 
   const [credentialsResult, setCredentialsResult] = useState<{
     loginId: string;
@@ -128,6 +146,23 @@ export default function SuperAdminDashboardPage() {
     newPassword: '',
     generatedPassword: '',
   });
+
+  const [shareCredentialsShop, setShareCredentialsShop] = useState<Shop | null>(null);
+  const [fetchingShareCredentials, setFetchingShareCredentials] = useState(false);
+  const [shareCredentialsData, setShareCredentialsData] = useState<{
+    shopName: string;
+    slug: string;
+    loginUrl: string;
+    ownerUsername: string;
+    ownerPassword?: string;
+    operatorUsername: string;
+    operatorPassword?: string;
+  } | null>(null);
+  const [showPasswordOwner, setShowPasswordOwner] = useState(true);
+  const [showPasswordOperator, setShowPasswordOperator] = useState(true);
+
+  const [createActiveTab, setCreateActiveTab] = useState<'profile' | 'permissions'>('profile');
+  const [editActiveTab, setEditActiveTab] = useState<'profile' | 'permissions'>('profile');
 
   useEffect(() => {
     if (!superAdminSession) {
@@ -197,6 +232,27 @@ export default function SuperAdminDashboardPage() {
     }
   }
 
+  const handlePlanSelection = (newPlan: string) => {
+    const pages = getDefaultPagesForPlan(newPlan);
+    const modules = getDefaultModulesForPlan(newPlan);
+    const isTrial = newPlan.toLowerCase() === "trial";
+    const trialEndDate = isTrial
+      ? (() => {
+          const d = new Date();
+          d.setDate(d.getDate() + 30);
+          return d.toISOString().slice(0, 10);
+        })()
+      : undefined;
+
+    setForm((prev) => ({
+      ...prev,
+      plan: newPlan,
+      allowedPages: pages,
+      allowedModules: modules,
+      ...(isTrial ? { subscriptionEndDate: trialEndDate } : {}),
+    }));
+  };
+
   async function handleUpdateShop(e: React.FormEvent) {
     e.preventDefault();
     const shopId = editingShop?._id || editingShop?.id;
@@ -217,6 +273,8 @@ export default function SuperAdminDashboardPage() {
         gstNumber: form.gstNumber,
         plan: form.plan,
         subscriptionEndDate: form.subscriptionEndDate,
+        allowedModules: form.allowedModules,
+        allowedPages: form.allowedPages,
       });
 
       if (slugChanged) {
@@ -323,6 +381,82 @@ export default function SuperAdminDashboardPage() {
   function copyToClipboard(text: string, label: string) {
     navigator.clipboard.writeText(text);
     toast.success(`Copied ${label} to clipboard!`);
+  }
+
+  async function handleOpenShareCredentials(shop: Shop) {
+    setShareCredentialsShop(shop);
+    setFetchingShareCredentials(true);
+    setShareCredentialsData(null);
+    setShowPasswordOwner(true);
+    setShowPasswordOperator(true);
+
+    const shopId = shop.id || shop._id;
+    const loginUrl = `${window.location.origin}/login`;
+
+    let ownerPassword: string | undefined;
+    let operatorPassword: string | undefined;
+
+    try {
+      const results = await Promise.allSettled([
+        superAdminAPI.shops.getUserPassword(shopId, 'owner'),
+        superAdminAPI.shops.getUserPassword(shopId, 'operator'),
+      ]);
+
+      if (results[0].status === 'fulfilled') {
+        ownerPassword = results[0].value.password;
+      }
+      if (results[1].status === 'fulfilled') {
+        operatorPassword = results[1].value.password;
+      }
+
+      setShareCredentialsData({
+        shopName: shop.shopName,
+        slug: shop.slug,
+        loginUrl,
+        ownerUsername: shop.initialAdminUsername || 'owner',
+        ownerPassword,
+        operatorUsername: shop.initialOperatorUsername || 'operator',
+        operatorPassword,
+      });
+    } catch (err) {
+      toast.error("Failed to retrieve showroom login passwords.");
+    } finally {
+      setFetchingShareCredentials(false);
+    }
+  }
+
+  function generateWhatsAppShareText(data: {
+    shopName: string;
+    slug: string;
+    loginUrl: string;
+    ownerUsername: string;
+    ownerPassword?: string;
+    operatorUsername: string;
+    operatorPassword?: string;
+  }) {
+    return `💎 *Jewellery ERP - Login Credentials*
+🏪 *Showroom:* ${data.shopName}
+🆔 *Shop Login ID:* ${data.slug}
+🌐 *Login Link:* ${data.loginUrl}
+
+👤 *GST Owner Account:*
+• Username: ${data.ownerUsername}
+• Password: ${data.ownerPassword || '••••••••'}
+
+👤 *Non-GST Operator Account:*
+• Username: ${data.operatorUsername}
+• Password: ${data.operatorPassword || '••••••••'}`;
+  }
+
+  function handleShareWhatsApp(data: NonNullable<typeof shareCredentialsData>) {
+    const text = generateWhatsAppShareText(data);
+    const encodedText = encodeURIComponent(text);
+    window.open(`https://wa.me/?text=${encodedText}`, '_blank');
+  }
+
+  function handleCopyAllShareDetails(data: NonNullable<typeof shareCredentialsData>) {
+    const text = generateWhatsAppShareText(data);
+    copyToClipboard(text, "All Credentials & Login Link");
   }
 
   function statusBadge(shop: Shop) {
@@ -496,10 +630,11 @@ export default function SuperAdminDashboardPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All Plans</SelectItem>
+                    <SelectItem value="spark">Spark Plan</SelectItem>
+                    <SelectItem value="hero">Hero Plan</SelectItem>
+                    <SelectItem value="prime">Prime Plan</SelectItem>
+                    <SelectItem value="custom">Custom Plan</SelectItem>
                     <SelectItem value="trial">Trial</SelectItem>
-                    <SelectItem value="basic">Basic</SelectItem>
-                    <SelectItem value="pro">Pro</SelectItem>
-                    <SelectItem value="enterprise">Enterprise</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -597,19 +732,30 @@ export default function SuperAdminDashboardPage() {
                 {/* Body Details */}
                 <div className="p-6 space-y-4">
                   {/* Subscription Counter Bar */}
-                  <div className="rounded-xl bg-amber-50/80 p-3 border border-amber-200/80 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                  <div className="rounded-xl bg-amber-50/80 p-3 border border-amber-200/80 flex items-center justify-between text-xs gap-2">
+                    <div className="flex items-center gap-1.5 font-bold text-slate-800 shrink-0">
                       <CalendarDays className="h-4 w-4 text-[#FA8112]" />
                       <span>
                         {(() => {
                           const days = Math.round((new Date(shop.subscriptionEndDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-                          return days > 0 ? `${days} Days Remaining` : 'Subscription Expired';
+                          return days > 0 ? `${days} Days Left` : 'Expired';
                         })()}
                       </span>
                     </div>
-                    <span className="text-[11px] font-extrabold uppercase bg-amber-200/60 text-amber-900 px-2 py-0.5 rounded">
-                      {shop.plan || "trial"}
-                    </span>
+                    {(() => {
+                      const pKey = (shop.plan || "spark").toLowerCase();
+                      const meta = PLAN_METADATA[pKey] || PLAN_METADATA.spark;
+                      return (
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full border ${meta.color}`}>
+                          {pKey === "spark" && <Zap className="w-3 h-3 text-amber-600 fill-amber-500/30" />}
+                          {pKey === "hero" && <Sparkles className="w-3 h-3 text-indigo-600" />}
+                          {pKey === "prime" && <Crown className="w-3 h-3 text-emerald-600" />}
+                          {pKey === "custom" && <Layers className="w-3 h-3 text-purple-600" />}
+                          {pKey === "trial" && <Clock className="w-3 h-3 text-blue-600" />}
+                          <span>{meta.badge}</span>
+                        </span>
+                      );
+                    })()}
                   </div>
 
                   {/* Owner & Contacts Box */}
@@ -644,27 +790,51 @@ export default function SuperAdminDashboardPage() {
 
               {/* Action Buttons */}
               <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    const shopId = shop._id || shop.id;
-                    if (!shopId) {
-                      toast.error("Invalid shop id from server.");
-                      return;
-                    }
-                    setEditingShop(shop);
-                    setRevealedPasswords({});
-                    setForm({
-                      ...emptyForm,
-                      ...shop,
-                      subscriptionEndDate: shop.subscriptionEndDate?.slice(0, 10) || "",
-                    } as any);
-                    setEditOpen(true);
-                  }}
-                  className="bg-[#FA8112] hover:bg-[#FA8112]/90 text-white font-bold h-9 px-4 text-xs rounded-xl shadow-xs"
-                >
-                  <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit Details
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const shopId = shop._id || shop.id;
+                      if (!shopId) {
+                        toast.error("Invalid shop id from server.");
+                        return;
+                      }
+                      setEditingShop(shop);
+                      const shopPlan = (shop.plan || "spark").toLowerCase();
+                      const currentPages = (shopPlan === "prime" || shopPlan === "premium")
+                        ? getDefaultPagesForPlan("prime")
+                        : (shop.allowedPages && shop.allowedPages.length > 0
+                          ? shop.allowedPages
+                          : getDefaultPagesForPlan(shopPlan));
+                      const currentModules = (shopPlan === "prime" || shopPlan === "premium")
+                        ? getDefaultModulesForPlan("prime")
+                        : (shop.allowedModules && shop.allowedModules.length > 0
+                          ? shop.allowedModules
+                          : getDefaultModulesForPlan(shopPlan));
+                      setForm({
+                        ...emptyForm,
+                        ...shop,
+                        plan: shop.plan || "spark",
+                        allowedPages: currentPages,
+                        allowedModules: currentModules,
+                        subscriptionEndDate: shop.subscriptionEndDate?.slice(0, 10) || "",
+                      } as any);
+                      setEditOpen(true);
+                    }}
+                    className="bg-[#FA8112] hover:bg-[#FA8112]/90 text-white font-bold h-9 px-3 text-xs rounded-xl shadow-xs"
+                  >
+                    <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    onClick={() => handleOpenShareCredentials(shop)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 px-3 text-xs rounded-xl shadow-xs"
+                    title="View & Share Login Credentials"
+                  >
+                    <Share2 className="w-3.5 h-3.5 mr-1" /> Share
+                  </Button>
+                </div>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -672,7 +842,13 @@ export default function SuperAdminDashboardPage() {
                       Actions <MoreVertical className="w-3.5 h-3.5 ml-1" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48 bg-white border-slate-200 shadow-xl">
+                  <DropdownMenuContent align="end" className="w-52 bg-white border-slate-200 shadow-xl">
+                    <DropdownMenuItem onClick={() => handleOpenShareCredentials(shop)} className="text-emerald-700 font-bold">
+                      <Share2 className="w-4 h-4 mr-2 text-emerald-600" /> Share Credentials
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSeparator />
+
                     {shop.status === "suspended" ? (
                       <DropdownMenuItem onClick={() => handleActivate(shop)} className="text-emerald-700 font-bold">
                         <Play className="w-4 h-4 mr-2 text-emerald-600" /> Activate Showroom
@@ -724,91 +900,227 @@ export default function SuperAdminDashboardPage() {
         </div>
       ) : (
 
-        /* HIGH-CONTRAST TABLE VIEW */
-        <Card className="bg-white border-slate-200 shadow-xs rounded-2xl overflow-hidden">
+        /* HIGH-CONTRAST DATA MANAGEMENT TABLE VIEW */
+        <Card className="bg-white border-slate-200 shadow-md rounded-2xl overflow-hidden">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-left text-slate-700 border-b border-slate-200 bg-slate-50 font-bold">
+              <table className="w-full text-sm border-collapse">
+                <thead className="text-left text-slate-800 border-b border-slate-200 bg-slate-100/80 font-black tracking-wider uppercase text-xs">
                   <tr>
-                    <th className="p-4 font-extrabold">Showroom & Slug</th>
-                    <th className="font-extrabold">Owner Contact</th>
-                    <th className="font-extrabold">Plan</th>
-                    <th className="font-extrabold text-center">Staff Users</th>
-                    <th className="font-extrabold">Subscription Expiry</th>
-                    <th className="text-center font-extrabold">Status</th>
-                    <th className="text-center font-extrabold">Actions</th>
+                    <th className="p-4 w-12 text-center text-slate-500">#</th>
+                    <th className="p-4">Showroom & Slug ID</th>
+                    <th className="p-4">Owner & Contact</th>
+                    <th className="p-4">Subscription Plan</th>
+                    <th className="p-4">Default Usernames</th>
+                    <th className="p-4">Expiry Date</th>
+                    <th className="p-4 text-center">Status</th>
+                    <th className="p-4 text-center">Data Actions</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {paginatedShops.map((shop) => (
-                    <tr key={shop._id || shop.id} className="border-b last:border-0 hover:bg-slate-50 transition-colors">
-                      <td className="p-4">
-                        <div className="font-bold text-slate-900 text-base">{shop.shopName}</div>
-                        <code className="text-xs font-mono font-bold bg-slate-100 text-amber-900 border border-slate-200 px-1.5 py-0.5 rounded mt-1 inline-block">
-                          {shop.slug}
-                        </code>
-                      </td>
-                      <td className="p-4">
-                        <div className="font-bold text-slate-900">{shop.ownerName || "—"}</div>
-                        <div className="text-xs text-[#FA8112] font-bold mt-0.5">{shop.phone || "—"}</div>
-                      </td>
-                      <td className="p-4">
-                        <span className="text-xs font-extrabold uppercase bg-amber-50 text-amber-900 px-2.5 py-1 rounded-md border border-amber-200">
-                          {shop.plan || "trial"}
-                        </span>
-                      </td>
-                      <td className="p-4 text-center font-bold text-slate-900">
-                        {shop.userCount ?? 2}
-                      </td>
-                      <td className="p-4 whitespace-nowrap text-slate-800 font-bold">
-                        {new Date(shop.subscriptionEndDate).toLocaleDateString()}
-                      </td>
-                      <td className="p-4 text-center">
-                        {statusBadge(shop)}
-                      </td>
-                      <td className="p-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              setEditingShop(shop);
-                              setForm({ ...emptyForm, ...shop, subscriptionEndDate: shop.subscriptionEndDate?.slice(0, 10) || "" } as any);
-                              setEditOpen(true);
-                            }}
-                            className="h-8 px-3 text-xs bg-[#FA8112] text-white font-bold hover:bg-[#FA8112]/90"
-                          >
-                            <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
-                          </Button>
+                <tbody className="divide-y divide-slate-100">
+                  {paginatedShops.map((shop, index) => {
+                    const daysLeft = Math.round((new Date(shop.subscriptionEndDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                    const pKey = (shop.plan || "spark").toLowerCase();
+                    const meta = PLAN_METADATA[pKey] || PLAN_METADATA.spark;
 
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-slate-300">
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              {shop.status === "suspended" ? (
-                                <DropdownMenuItem onClick={() => handleActivate(shop)}>
-                                  <Play className="w-4 h-4 mr-2" /> Activate
-                                </DropdownMenuItem>
+                    return (
+                      <tr key={shop._id || shop.id} className="hover:bg-amber-50/40 transition-colors">
+                        <td className="p-4 text-center text-xs font-mono font-bold text-slate-400">
+                          {(shopsCurrentPage - 1) * 9 + index + 1}
+                        </td>
+                        
+                        {/* Showroom & Slug */}
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden shadow-2xs">
+                              {shop.logoUrl ? (
+                                <img src={shop.logoUrl} alt={shop.shopName} className="w-full h-full object-contain p-0.5" />
                               ) : (
-                                <DropdownMenuItem onClick={() => handleSuspend(shop)}>
-                                  <Pause className="w-4 h-4 mr-2" /> Suspend
-                                </DropdownMenuItem>
+                                <Gem className="w-5 h-5 text-[#FA8112]" />
                               )}
-                              <DropdownMenuItem onClick={() => { setRenewTarget(shop); setRenewDate(shop.subscriptionEndDate?.slice(0, 10) || ""); }}>
-                                <RefreshCw className="w-4 h-4 mr-2" /> Renew
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDelete(shop)} className="text-red-600 font-bold">
-                                <Trash2 className="w-4 h-4 mr-2" /> Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            </div>
+                            <div>
+                              <div className="font-bold text-slate-900 text-base leading-snug">{shop.shopName}</div>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <code className="text-[11px] font-mono font-bold bg-slate-100 text-amber-900 border border-slate-200 px-1.5 py-0.5 rounded">
+                                  {shop.slug}
+                                </code>
+                                <button
+                                  onClick={() => copyToClipboard(shop.slug, "Shop ID")}
+                                  className="text-slate-400 hover:text-[#FA8112] transition"
+                                  title="Copy Login Slug ID"
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Owner & Contact */}
+                        <td className="p-4">
+                          <div className="font-bold text-slate-900">{shop.ownerName || "—"}</div>
+                          <div className="text-xs text-[#FA8112] font-bold mt-0.5 flex items-center gap-1">
+                            <Phone className="w-3 h-3 text-slate-400" />
+                            <a href={`tel:${shop.phone}`} className="hover:underline">{shop.phone || "—"}</a>
+                          </div>
+                          {shop.email && <div className="text-[11px] text-slate-500 truncate max-w-[180px]">{shop.email}</div>}
+                        </td>
+
+                        {/* Plan & Features */}
+                        <td className="p-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center gap-1 text-xs font-extrabold px-2.5 py-1 rounded-lg border ${meta.color}`}>
+                            {pKey === "spark" && <Zap className="w-3 h-3 text-amber-600 fill-amber-500/30" />}
+                            {pKey === "hero" && <Sparkles className="w-3 h-3 text-indigo-600" />}
+                            {pKey === "prime" && <Crown className="w-3 h-3 text-emerald-600" />}
+                            {pKey === "custom" && <Layers className="w-3 h-3 text-purple-600" />}
+                            {pKey === "trial" && <Clock className="w-3 h-3 text-blue-600" />}
+                            <span>{meta.badge}</span>
+                          </span>
+                          <div className="text-[11px] text-slate-500 mt-1 font-medium">
+                            {shop.allowedModules?.length || 0} Modules Active
+                          </div>
+                        </td>
+
+                        {/* User Accounts */}
+                        <td className="p-4 whitespace-nowrap">
+                          <div className="text-xs space-y-0.5">
+                            <div><span className="text-slate-400 font-medium">Owner:</span> <code className="font-mono font-bold text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">{shop.initialAdminUsername || "owner"}</code></div>
+                            <div><span className="text-slate-400 font-medium">Operator:</span> <code className="font-mono font-bold text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">{shop.initialOperatorUsername || "operator"}</code></div>
+                          </div>
+                        </td>
+
+                        {/* Expiry Date */}
+                        <td className="p-4 whitespace-nowrap">
+                          <div className="font-bold text-slate-900 text-xs">
+                            {new Date(shop.subscriptionEndDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                          </div>
+                          <div className="mt-1">
+                            {daysLeft > 0 ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                                <CalendarDays className="w-3 h-3 text-[#FA8112]" /> {daysLeft} Days Left
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-md">
+                                <Clock className="w-3 h-3 text-red-600" /> Expired
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Status */}
+                        <td className="p-4 text-center whitespace-nowrap">
+                          {statusBadge(shop)}
+                        </td>
+
+                        {/* Actions */}
+                        <td className="p-4 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setEditingShop(shop);
+                                setRevealedPasswords({});
+                                const shopPlan = (shop.plan || "spark").toLowerCase();
+                                const currentPages = (shopPlan === "prime" || shopPlan === "premium")
+                                  ? getDefaultPagesForPlan("prime")
+                                  : (shop.allowedPages && shop.allowedPages.length > 0
+                                    ? shop.allowedPages
+                                    : getDefaultPagesForPlan(shopPlan));
+                                const currentModules = (shopPlan === "prime" || shopPlan === "premium")
+                                  ? getDefaultModulesForPlan("prime")
+                                  : (shop.allowedModules && shop.allowedModules.length > 0
+                                    ? shop.allowedModules
+                                    : getDefaultModulesForPlan(shopPlan));
+                                setForm({
+                                  ...emptyForm,
+                                  ...shop,
+                                  plan: shop.plan || "spark",
+                                  allowedPages: currentPages,
+                                  allowedModules: currentModules,
+                                  subscriptionEndDate: shop.subscriptionEndDate?.slice(0, 10) || "",
+                                } as any);
+                                setEditOpen(true);
+                              }}
+                              className="h-8 px-3 text-xs bg-[#FA8112] text-white font-bold hover:bg-[#FA8112]/90 rounded-xl shadow-2xs"
+                              title="Edit Showroom Data"
+                            >
+                              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              onClick={() => handleOpenShareCredentials(shop)}
+                              className="h-8 px-2.5 text-xs bg-emerald-600 text-white font-bold hover:bg-emerald-700 rounded-xl shadow-2xs"
+                              title="View & Share Login Credentials"
+                            >
+                              <Share2 className="h-3.5 w-3.5 mr-1" /> Share
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setRenewTarget(shop);
+                                setRenewDate(shop.subscriptionEndDate?.slice(0, 10) || "");
+                              }}
+                              className="h-8 px-2.5 text-xs border-slate-300 font-bold text-blue-700 hover:bg-blue-50 rounded-xl"
+                              title="Renew Subscription"
+                            >
+                              <RefreshCw className="h-3.5 w-3.5 text-blue-600" />
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setResetUserTarget({ shop, userRole: "owner" });
+                                setResetUserPasswordForm({
+                                  username: shop.initialAdminUsername || "owner",
+                                  role: "owner",
+                                  newPassword: "",
+                                  generatedPassword: "",
+                                });
+                              }}
+                              className="h-8 px-2.5 text-xs border-slate-300 font-bold text-purple-700 hover:bg-purple-50 rounded-xl"
+                              title="Reset Password"
+                            >
+                              <KeyRound className="h-3.5 w-3.5 text-purple-600" />
+                            </Button>
+
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-slate-300 rounded-xl">
+                                  <MoreVertical className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-52 bg-white border-slate-200 shadow-xl">
+                                <DropdownMenuItem onClick={() => handleOpenShareCredentials(shop)} className="text-emerald-700 font-bold">
+                                  <Share2 className="w-4 h-4 mr-2 text-emerald-600" /> Share Credentials
+                                </DropdownMenuItem>
+
+                                <DropdownMenuSeparator />
+
+                                {shop.status === "suspended" ? (
+                                  <DropdownMenuItem onClick={() => handleActivate(shop)} className="text-emerald-700 font-bold">
+                                    <Play className="w-4 h-4 mr-2 text-emerald-600" /> Activate Showroom
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem onClick={() => handleSuspend(shop)} className="text-amber-700 font-bold">
+                                    <Pause className="w-4 h-4 mr-2 text-amber-600" /> Suspend Showroom
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => handleDelete(shop)} className="text-red-600 font-bold focus:bg-red-50">
+                                  <Trash2 className="w-4 h-4 mr-2 text-red-500" /> Delete Showroom
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -823,311 +1135,690 @@ export default function SuperAdminDashboardPage() {
             Showing {(shopsCurrentPage - 1) * 9 + 1} to {Math.min(shopsCurrentPage * 9, filteredShops.length)} of {filteredShops.length} showrooms
           </div>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => setShopsPage((p) => Math.max(1, p - 1))} disabled={shopsCurrentPage === 1} className="font-bold border-slate-300">
+            <Button size="sm" variant="outline" onClick={() => setShopsPage((p) => Math.max(1, p - 1))} disabled={shopsCurrentPage === 1} className="font-bold border-slate-300 rounded-xl">
               Prev
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setShopsPage((p) => Math.min(shopsTotalPages, p + 1))} disabled={shopsCurrentPage === shopsTotalPages} className="font-bold border-slate-300">
+            <Button size="sm" variant="outline" onClick={() => setShopsPage((p) => Math.min(shopsTotalPages, p + 1))} disabled={shopsCurrentPage === shopsTotalPages} className="font-bold border-slate-300 rounded-xl">
               Next
             </Button>
           </div>
         </div>
-      )}
-
-      {/* CREATE NEW SHOP MODAL */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto bg-white border-slate-200">
-          <DialogHeader>
-            <DialogTitle className="font-serif text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Store className="h-5 w-5 text-[#FA8112]" /> Provision New Jewellery Showroom
-            </DialogTitle>
-            <DialogDescription className="text-slate-500 text-xs">
-              Provisions an isolated multi-tenant database & sets up default staff login credentials automatically.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleCreateShop} className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5 col-span-2">
-                <Label className="text-xs font-bold uppercase text-slate-700">Showroom Name *</Label>
-                <Input
-                  required
-                  value={form.shopName}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setForm(prev => ({
-                      ...prev,
-                      shopName: val,
-                      slug: prev.slug || val.toLowerCase().trim().replace(/[^a-z0-9]/g, "-")
-                    }));
-                  }}
-                  placeholder="e.g. Soni Jewellers"
-                />
+      )}      {/* CREATE NEW SHOP MODAL - 1-PAGE TABBED FORM */}
+      <Dialog open={createOpen} onOpenChange={(open) => {
+        setCreateOpen(open);
+        if (open) setCreateActiveTab('profile');
+      }}>
+        <DialogContent className="fixed inset-0 top-0 left-0 translate-x-0 translate-y-0 z-50 w-screen h-screen max-w-none max-h-none rounded-none border-none p-0 m-0 bg-slate-100 flex flex-col overflow-hidden [&>button[class*='absolute']]:hidden">
+          
+          {/* HEADER NAVBAR WITH TABS */}
+          <div className="bg-slate-900 text-white px-6 py-3 flex flex-wrap items-center justify-between shrink-0 shadow-md gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-[#FA8112] text-white flex items-center justify-center font-bold shadow-sm shrink-0">
+                <Store className="h-5 w-5" />
               </div>
-
-              <div className="space-y-1.5 col-span-2">
-                <Label className="text-xs font-bold uppercase text-slate-700">Shop ID (Slug Login) *</Label>
-                <Input
-                  required
-                  value={form.slug}
-                  onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/\s+/g, "-") })}
-                  placeholder="soni-jewellers"
-                />
-                <p className="text-[11px] text-slate-500">Used by showroom staff on login page. Lowercase, hyphenated.</p>
-              </div>
-
-              <div className="space-y-1.5 col-span-2">
-                <Label className="text-xs font-bold uppercase text-slate-700">Showroom Logo</Label>
-                <div className="flex items-center gap-4">
-                  <div className="w-20 h-20 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex items-center justify-center overflow-hidden shrink-0">
-                    {form.logoUrl ? (
-                      <img src={form.logoUrl} alt="Logo Preview" className="max-h-full max-w-full object-contain p-1" />
-                    ) : (
-                      <span className="text-xs text-slate-400 font-medium">Logo</span>
-                    )}
-                  </div>
-                  <Input type="file" accept="image/*" className="flex-1 text-xs" onChange={(e) => handleLogoUpload(e.target.files?.[0])} />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase text-slate-700">Owner Name</Label>
-                <Input value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} placeholder="Rajesh Soni" />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase text-slate-700">Phone Number</Label>
-                <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="9000000000" />
-              </div>
-
-              <div className="space-y-1.5 col-span-2">
-                <Label className="text-xs font-bold uppercase text-slate-700">Email Address</Label>
-                <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="cloudiefyy@gmail.com" />
-              </div>
-
-              <div className="space-y-1.5 col-span-2">
-                <Label className="text-xs font-bold uppercase text-slate-700">Showroom Address</Label>
-                <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Jaipur, Rajasthan" />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase text-slate-700">GSTIN Number</Label>
-                <Input value={form.gstNumber} onChange={(e) => setForm({ ...form, gstNumber: e.target.value })} placeholder="08AAAAA0000A1Z5" />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase text-slate-700">SaaS Plan</Label>
-                <Select value={form.plan} onValueChange={(v) => setForm({ ...form, plan: v })}>
-                  <SelectTrigger className="text-xs font-semibold"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="trial">Free Trial (30 Days)</SelectItem>
-                    <SelectItem value="basic">Basic Retail</SelectItem>
-                    <SelectItem value="pro">Pro Multi-Branch</SelectItem>
-                    <SelectItem value="enterprise">Enterprise Custom</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5 col-span-2">
-                <Label className="text-xs font-bold uppercase text-slate-700">Subscription End Date</Label>
-                <Input type="date" value={form.subscriptionEndDate} onChange={(e) => setForm({ ...form, subscriptionEndDate: e.target.value })} />
-                <p className="text-[11px] text-slate-500">Leave empty to set auto 30-day trial expiry.</p>
-              </div>
-
-              {/* CREDENTIALS SECTION */}
-              <div className="col-span-2 pt-4 border-t border-slate-200">
-                <h4 className="text-xs font-bold uppercase text-[#FA8112] tracking-wider mb-2">1. GST Admin Login Account</h4>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase text-slate-700">GST Username *</Label>
-                <Input required value={form.gstAdminUsername} onChange={(e) => setForm({ ...form, gstAdminUsername: e.target.value })} placeholder="owner" />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase text-slate-700">GST Password *</Label>
-                <Input required type="text" minLength={6} value={form.gstAdminPassword} onChange={(e) => setForm({ ...form, gstAdminPassword: e.target.value })} placeholder="min 6 chars" />
-              </div>
-
-              <div className="col-span-2 pt-2">
-                <h4 className="text-xs font-bold uppercase text-slate-600 tracking-wider mb-2">2. Non-GST Operator Login Account</h4>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase text-slate-700">Operator Username *</Label>
-                <Input required value={form.nonGstAdminUsername} onChange={(e) => setForm({ ...form, nonGstAdminUsername: e.target.value })} placeholder="operator" />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase text-slate-700">Operator Password *</Label>
-                <Input required type="text" minLength={6} value={form.nonGstAdminPassword} onChange={(e) => setForm({ ...form, nonGstAdminPassword: e.target.value })} placeholder="min 6 chars" />
+              <div>
+                <h2 className="text-base font-extrabold text-white tracking-tight flex items-center gap-2">
+                  Provision New Jewellery Showroom
+                </h2>
+                <p className="text-[11px] text-slate-400 font-medium">
+                  Configure showroom profile, subscription tier, staff credentials & module permissions.
+                </p>
               </div>
             </div>
 
-            <DialogFooter className="pt-4 border-t border-slate-100">
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={isSubmitting} className="bg-[#FA8112] hover:bg-[#FA8112]/90 text-white font-bold">
-                {isSubmitting ? "Provisioning..." : "Provision Showroom"}
-              </Button>
-            </DialogFooter>
+            {/* TAB SWITCHER */}
+            <div className="flex items-center gap-1.5 bg-slate-800 p-1 rounded-xl border border-slate-700">
+              <button
+                type="button"
+                onClick={() => setCreateActiveTab('profile')}
+                className={`px-3.5 py-1.5 rounded-lg font-extrabold text-xs transition flex items-center gap-1.5 ${
+                  createActiveTab === 'profile'
+                    ? "bg-[#FA8112] text-white shadow-md"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                <Store className="w-3.5 h-3.5" /> 1. Showroom & Credentials
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreateActiveTab('permissions')}
+                className={`px-3.5 py-1.5 rounded-lg font-extrabold text-xs transition flex items-center gap-1.5 ${
+                  createActiveTab === 'permissions'
+                    ? "bg-[#FA8112] text-white shadow-md"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" /> 2. Module Permissions ({form.allowedPages?.length || 0}/26 Pages)
+              </button>
+            </div>
+
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setCreateOpen(false)}
+              className="text-slate-300 hover:text-white hover:bg-slate-800 font-bold text-xs h-8 px-3 rounded-xl border border-slate-700"
+            >
+              <X className="w-4 h-4 mr-1" /> Close (Esc)
+            </Button>
+          </div>
+
+          {/* FORM BODY */}
+          <form onSubmit={handleCreateShop} className="flex-1 flex flex-col justify-between overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-7xl mx-auto w-full">
+              
+              {createActiveTab === 'profile' ? (
+                /* TAB 1: 1-PAGE VIEW FOR PROFILE, SUBSCRIPTION & STAFF PASSWORDS */
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  
+                  {/* LEFT COLUMN: Showroom Profile Details (7 Cols) */}
+                  <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between">
+                    <div className="bg-slate-50 p-3.5 border-b border-slate-200 font-extrabold text-xs uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                      <Store className="w-4 h-4 text-[#FA8112]" /> 1. Showroom Profile & Contact Details
+                    </div>
+                    <div className="p-4 sm:p-5 space-y-3.5 text-xs">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Showroom Name <span className="text-red-500">*</span></label>
+                          <Input
+                            required
+                            value={form.shopName}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setForm((prev) => ({
+                                ...prev,
+                                shopName: val,
+                                slug: prev.slug || val.toLowerCase().trim().replace(/[^a-z0-9]/g, "-"),
+                              }));
+                            }}
+                            placeholder="e.g. Soni Jewellers"
+                            className="h-9 text-xs font-bold bg-white border-slate-300 focus:bg-white mt-1"
+                          />
+                        </div>
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Shop Login ID (Slug) <span className="text-red-500">*</span></label>
+                          <Input
+                            required
+                            value={form.slug}
+                            onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/\s+/g, "-") })}
+                            placeholder="soni-jewellers"
+                            className="h-9 text-xs font-mono font-bold text-amber-900 bg-white border-slate-300 mt-1"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Owner Name</label>
+                          <Input value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} placeholder="Rajesh Soni" className="h-9 text-xs font-semibold bg-white border-slate-300 mt-1" />
+                        </div>
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Showroom Logo</label>
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="w-8 h-8 bg-slate-50 rounded-lg border border-slate-300 flex items-center justify-center overflow-hidden shrink-0">
+                              {form.logoUrl ? <img src={form.logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" /> : <span className="text-[9px] text-slate-400 font-medium">Logo</span>}
+                            </div>
+                            <Input type="file" accept="image/*" className="flex-1 text-[11px] h-8 bg-white border-slate-300" onChange={(e) => handleLogoUpload(e.target.files?.[0])} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Phone Number</label>
+                          <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="9876543210" className="h-9 text-xs font-semibold bg-white border-slate-300 mt-1" />
+                        </div>
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Email Address</label>
+                          <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="cloudiefyy@gmail.com" className="h-9 text-xs font-semibold bg-white border-slate-300 mt-1" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Showroom Address</label>
+                          <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Jaipur, Rajasthan" className="h-9 text-xs font-semibold bg-white border-slate-300 mt-1" />
+                        </div>
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">GSTIN Number</label>
+                          <Input value={form.gstNumber} onChange={(e) => setForm({ ...form, gstNumber: e.target.value })} placeholder="08AAAAA0000A1Z5" className="h-9 text-xs font-mono font-bold bg-white border-slate-300 mt-1" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* RIGHT COLUMN: Subscription Tier & Staff Passwords (5 Cols) */}
+                  <div className="lg:col-span-5 space-y-4 flex flex-col justify-between">
+                    
+                    {/* Subscription Plan & Expiry */}
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                      <div className="bg-gradient-to-r from-amber-500 to-orange-600 p-3 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Crown className="w-4 h-4 text-amber-100" /> 2. Subscription Tier Plan & Expiry
+                        </div>
+                      </div>
+                      <div className="p-4 space-y-3 text-xs">
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Subscription Tier <span className="text-red-500">*</span></label>
+                          <Select value={form.plan} onValueChange={handlePlanSelection}>
+                            <SelectTrigger className="h-9 text-xs font-extrabold bg-white border-slate-300 mt-1"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="spark" className="font-bold text-xs">⚡ Spark Plan (Essential Retail)</SelectItem>
+                              <SelectItem value="hero" className="font-bold text-xs">✨ Hero Plan (Advanced Operations)</SelectItem>
+                              <SelectItem value="prime" className="font-bold text-xs">👑 Prime Plan (All-Inclusive Enterprise)</SelectItem>
+                              <SelectItem value="custom" className="font-bold text-xs">🛠️ Custom Plan (Tailored Selection)</SelectItem>
+                              <SelectItem value="trial" className="text-xs">Free Trial (30 Days)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Subscription Expiry Date</label>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <Input type="date" value={form.subscriptionEndDate} onChange={(e) => setForm({ ...form, subscriptionEndDate: e.target.value })} className="h-9 text-xs font-bold bg-white border-slate-300 flex-1" />
+                            <button type="button" onClick={() => { const d = new Date(); d.setDate(d.getDate() + 30); setForm(f => ({ ...f, subscriptionEndDate: d.toISOString().slice(0, 10) })); }} className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-1.5 rounded hover:bg-amber-200">
+                              +30D
+                            </button>
+                            <button type="button" onClick={() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); setForm(f => ({ ...f, subscriptionEndDate: d.toISOString().slice(0, 10) })); }} className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-1.5 rounded hover:bg-amber-200">
+                              +1Yr
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Staff Login Passwords */}
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-1 flex flex-col justify-between">
+                      <div className="bg-slate-50 p-3 border-b border-slate-200 font-extrabold text-xs uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                        <KeyRound className="w-4 h-4 text-purple-600" /> 3. Default Staff Login Passwords
+                      </div>
+                      <div className="p-4 space-y-3 text-xs">
+                        <div className="grid grid-cols-2 gap-2.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                          <div>
+                            <label className="font-bold text-slate-700 uppercase text-[10px]">GST Owner Username <span className="text-red-500">*</span></label>
+                            <Input required value={form.gstAdminUsername} onChange={(e) => setForm({ ...form, gstAdminUsername: e.target.value })} placeholder="owner" className="h-8 text-xs font-mono font-bold bg-white border-slate-300 mt-0.5" />
+                          </div>
+                          <div>
+                            <label className="font-bold text-slate-700 uppercase text-[10px]">GST Owner Password <span className="text-red-500">*</span></label>
+                            <Input required type="text" minLength={6} value={form.gstAdminPassword} onChange={(e) => setForm({ ...form, gstAdminPassword: e.target.value })} placeholder="min 6 chars" className="h-8 text-xs font-mono font-bold bg-white border-slate-300 mt-0.5" />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                          <div>
+                            <label className="font-bold text-slate-700 uppercase text-[10px]">Operator Username <span className="text-red-500">*</span></label>
+                            <Input required value={form.nonGstAdminUsername} onChange={(e) => setForm({ ...form, nonGstAdminUsername: e.target.value })} placeholder="operator" className="h-8 text-xs font-mono font-bold bg-white border-slate-300 mt-0.5" />
+                          </div>
+                          <div>
+                            <label className="font-bold text-slate-700 uppercase text-[10px]">Operator Password <span className="text-red-500">*</span></label>
+                            <Input required type="text" minLength={6} value={form.nonGstAdminPassword} onChange={(e) => setForm({ ...form, nonGstAdminPassword: e.target.value })} placeholder="min 6 chars" className="h-8 text-xs font-mono font-bold bg-white border-slate-300 mt-0.5" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              ) : (
+                /* TAB 2: MODULE & PAGE PERMISSIONS TREE */
+                <div className="space-y-4">
+                  <ModuleSelectorTree
+                    selectedPages={form.allowedPages}
+                    selectedModules={form.allowedModules}
+                    onPagesChange={(pages) => setForm((prev) => ({ ...prev, allowedPages: pages }))}
+                    onModulesChange={(modules) => setForm((prev) => ({ ...prev, allowedModules: modules }))}
+                    onPlanQuickSelect={handlePlanSelection}
+                    currentPlan={form.plan}
+                  />
+                </div>
+              )}
+
+            </div>
+
+            {/* FIXED BOTTOM ACTION BAR */}
+            <div className="bg-white border-t border-slate-200 p-4 sm:p-5 flex items-center justify-between shadow-xl shrink-0">
+              <div className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                {createActiveTab === 'profile' ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setCreateActiveTab('permissions')}
+                    className="h-9 px-4 text-xs font-bold border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 rounded-xl flex items-center gap-1.5"
+                  >
+                    Customize Module Permissions ({form.allowedPages?.length || 0}/26 Pages) <ChevronRight className="w-4 h-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setCreateActiveTab('profile')}
+                    className="h-9 px-4 text-xs font-bold border-slate-300 text-slate-700 bg-white hover:bg-slate-50 rounded-xl flex items-center gap-1.5"
+                  >
+                    <ChevronLeft className="w-4 h-4" /> Back to Showroom Profile
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} className="h-10 px-5 font-bold rounded-xl border-slate-300 text-xs">
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting} className="bg-[#FA8112] hover:bg-[#FA8112]/90 text-white font-bold h-10 px-7 rounded-xl shadow-md text-xs">
+                  {isSubmitting ? "Provisioning Database..." : "Provision Showroom"}
+                </Button>
+              </div>
+            </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* EDIT SHOP MODAL */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto bg-white border-slate-200">
+      {/* EDIT SHOP MODAL - 1-PAGE TABBED FORM */}
+      <Dialog open={editOpen} onOpenChange={(open) => {
+        setEditOpen(open);
+        if (open) setEditActiveTab('profile');
+      }}>
+        <DialogContent className="fixed inset-0 top-0 left-0 translate-x-0 translate-y-0 z-50 w-screen h-screen max-w-none max-h-none rounded-none border-none p-0 m-0 bg-slate-100 flex flex-col overflow-hidden [&>button[class*='absolute']]:hidden">
+          
+          {/* HEADER NAVBAR WITH TABS */}
+          <div className="bg-slate-900 text-white px-6 py-3 flex flex-wrap items-center justify-between shrink-0 shadow-md gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-[#FA8112] text-white flex items-center justify-center font-bold shadow-sm shrink-0">
+                <Pencil className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className="text-base font-extrabold text-white tracking-tight flex items-center gap-2">
+                  Edit Showroom: {editingShop?.shopName}
+                </h2>
+                <p className="text-[11px] text-slate-400 font-medium">
+                  Update showroom details, subscription tier, end date, staff passwords & page permissions.
+                </p>
+              </div>
+            </div>
+
+            {/* TAB SWITCHER */}
+            <div className="flex items-center gap-1.5 bg-slate-800 p-1 rounded-xl border border-slate-700">
+              <button
+                type="button"
+                onClick={() => setEditActiveTab('profile')}
+                className={`px-3.5 py-1.5 rounded-lg font-extrabold text-xs transition flex items-center gap-1.5 ${
+                  editActiveTab === 'profile'
+                    ? "bg-[#FA8112] text-white shadow-md"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                <Store className="w-3.5 h-3.5" /> 1. Showroom & Credentials
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditActiveTab('permissions')}
+                className={`px-3.5 py-1.5 rounded-lg font-extrabold text-xs transition flex items-center gap-1.5 ${
+                  editActiveTab === 'permissions'
+                    ? "bg-[#FA8112] text-white shadow-md"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" /> 2. Module Permissions ({form.allowedPages?.length || 0}/26 Pages)
+              </button>
+            </div>
+
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setEditOpen(false)}
+              className="text-slate-300 hover:text-white hover:bg-slate-800 font-bold text-xs h-8 px-3 rounded-xl border border-slate-700"
+            >
+              <X className="w-4 h-4 mr-1" /> Close (Esc)
+            </Button>
+          </div>
+
+          {/* FORM BODY */}
+          <form onSubmit={handleUpdateShop} className="flex-1 flex flex-col justify-between overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-7xl mx-auto w-full">
+              
+              {editActiveTab === 'profile' ? (
+                /* TAB 1: 1-PAGE VIEW FOR PROFILE, SUBSCRIPTION & STAFF PASSWORDS */
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  
+                  {/* LEFT COLUMN: Showroom Profile Details (7 Cols) */}
+                  <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between">
+                    <div className="bg-slate-50 p-3.5 border-b border-slate-200 font-extrabold text-xs uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                      <Store className="w-4 h-4 text-[#FA8112]" /> 1. Showroom Profile & Contact Details
+                    </div>
+                    <div className="p-4 sm:p-5 space-y-3.5 text-xs">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Showroom Name <span className="text-red-500">*</span></label>
+                          <Input required value={form.shopName} onChange={(e) => setForm({ ...form, shopName: e.target.value })} className="h-9 text-xs font-bold bg-white border-slate-300 mt-1" />
+                        </div>
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Shop Login ID (Slug)</label>
+                          <Input
+                            value={form.slug}
+                            onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
+                            className="h-9 text-xs font-mono font-bold text-amber-900 bg-white border-slate-300 mt-1"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Owner Name</label>
+                          <Input value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} className="h-9 text-xs font-semibold bg-white border-slate-300 mt-1" />
+                        </div>
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Showroom Logo</label>
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="w-8 h-8 bg-slate-50 rounded-lg border border-slate-300 flex items-center justify-center overflow-hidden shrink-0">
+                              {form.logoUrl ? <img src={form.logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" /> : <span className="text-[9px] text-slate-400 font-medium">Logo</span>}
+                            </div>
+                            <Input type="file" accept="image/*" className="flex-1 text-[11px] h-8 bg-white border-slate-300" onChange={(e) => handleLogoUpload(e.target.files?.[0])} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Phone Number</label>
+                          <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="h-9 text-xs font-semibold bg-white border-slate-300 mt-1" />
+                        </div>
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Email Address</label>
+                          <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-9 text-xs font-semibold bg-white border-slate-300 mt-1" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Address</label>
+                          <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="h-9 text-xs font-semibold bg-white border-slate-300 mt-1" />
+                        </div>
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">GSTIN Number</label>
+                          <Input value={form.gstNumber} onChange={(e) => setForm({ ...form, gstNumber: e.target.value })} className="h-9 text-xs font-mono font-bold bg-white border-slate-300 mt-1" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* RIGHT COLUMN: Subscription Tier & Staff Passwords (5 Cols) */}
+                  <div className="lg:col-span-5 space-y-4 flex flex-col justify-between">
+                    
+                    {/* Subscription Plan & Expiry */}
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                      <div className="bg-gradient-to-r from-amber-500 to-orange-600 p-3 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Crown className="w-4 h-4 text-amber-100" /> 2. Subscription Tier Plan & Expiry
+                        </div>
+                      </div>
+                      <div className="p-4 space-y-3 text-xs">
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Subscription Tier</label>
+                          <Select value={form.plan} onValueChange={handlePlanSelection}>
+                            <SelectTrigger className="h-9 text-xs font-extrabold bg-white border-slate-300 mt-1"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="spark" className="font-bold text-xs">⚡ Spark Plan (Essential Retail)</SelectItem>
+                              <SelectItem value="hero" className="font-bold text-xs">✨ Hero Plan (Advanced Operations)</SelectItem>
+                              <SelectItem value="prime" className="font-bold text-xs">👑 Prime Plan (All-Inclusive Enterprise)</SelectItem>
+                              <SelectItem value="custom" className="font-bold text-xs">🛠️ Custom Plan (Tailored Selection)</SelectItem>
+                              <SelectItem value="trial" className="text-xs">Free Trial</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <label className="font-bold text-slate-700 uppercase text-[10.5px]">Subscription Expiry Date</label>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <Input type="date" value={form.subscriptionEndDate} onChange={(e) => setForm({ ...form, subscriptionEndDate: e.target.value })} className="h-9 text-xs font-bold bg-white border-slate-300 flex-1" />
+                            <button type="button" onClick={() => { const d = new Date(); d.setDate(d.getDate() + 30); setForm(f => ({ ...f, subscriptionEndDate: d.toISOString().slice(0, 10) })); }} className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-1.5 rounded hover:bg-amber-200">
+                              +30D
+                            </button>
+                            <button type="button" onClick={() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); setForm(f => ({ ...f, subscriptionEndDate: d.toISOString().slice(0, 10) })); }} className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-1.5 rounded hover:bg-amber-200">
+                              +1Yr
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Staff Account Credentials & Password Reveal */}
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-1 flex flex-col justify-between">
+                      <div className="bg-slate-50 p-3 border-b border-slate-200 font-extrabold text-xs uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                        <KeyRound className="w-4 h-4 text-purple-600" /> 3. Staff Account Passwords
+                      </div>
+                      <div className="p-4 space-y-3 text-xs">
+                        {([
+                          { role: "owner" as const, label: "GST Owner Account", username: editingShop?.initialAdminUsername || "owner" },
+                          { role: "operator" as const, label: "Non-GST Operator", username: editingShop?.initialOperatorUsername || "operator" },
+                        ]).map(({ role, label, username }) => (
+                          <div key={role} className="bg-slate-50 rounded-xl p-2.5 border border-slate-200 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <span className="text-[10px] font-bold uppercase text-slate-500">{label}</span>
+                                <div className="font-mono font-bold text-slate-900 text-xs mt-0.5">{username}</div>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-[11px] font-bold rounded-lg bg-white border-slate-300 px-2"
+                                onClick={() => {
+                                  if (!editingShop) return;
+                                  setResetUserTarget({ shop: editingShop, userRole: role });
+                                  setResetUserPasswordForm({ username, role, newPassword: "", generatedPassword: "" });
+                                }}
+                              >
+                                Reset Pass
+                              </Button>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-1.5 border-t border-slate-200">
+                              <span className="font-mono font-bold text-slate-900 text-xs">
+                                {revealedPasswords[role] !== undefined ? revealedPasswords[role] : "••••••••"}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                {revealedPasswords[role] !== undefined && (
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7 rounded-lg"
+                                    onClick={() => copyToClipboard(revealedPasswords[role]!, `${label} Password`)}
+                                  >
+                                    <Copy className="w-3.5 h-3.5 text-slate-600" />
+                                  </Button>
+                                )}
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 rounded-lg"
+                                  disabled={!username || revealingRole === role}
+                                  onClick={() => toggleRevealPassword(role)}
+                                >
+                                  {revealedPasswords[role] !== undefined ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              ) : (
+                /* TAB 2: MODULE & PAGE PERMISSIONS TREE */
+                <div className="space-y-4">
+                  <ModuleSelectorTree
+                    selectedPages={form.allowedPages}
+                    selectedModules={form.allowedModules}
+                    onPagesChange={(pages) => setForm((prev) => ({ ...prev, allowedPages: pages }))}
+                    onModulesChange={(modules) => setForm((prev) => ({ ...prev, allowedModules: modules }))}
+                    onPlanQuickSelect={handlePlanSelection}
+                    currentPlan={form.plan}
+                  />
+                </div>
+              )}
+
+            </div>
+
+            {/* FIXED BOTTOM ACTION BAR */}
+            <div className="bg-white border-t border-slate-200 p-4 sm:p-5 flex items-center justify-between shadow-xl shrink-0">
+              <div className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                {editActiveTab === 'profile' ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setEditActiveTab('permissions')}
+                    className="h-9 px-4 text-xs font-bold border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 rounded-xl flex items-center gap-1.5"
+                  >
+                    Customize Module Permissions ({form.allowedPages?.length || 0}/26 Pages) <ChevronRight className="w-4 h-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setEditActiveTab('profile')}
+                    className="h-9 px-4 text-xs font-bold border-slate-300 text-slate-700 bg-white hover:bg-slate-50 rounded-xl flex items-center gap-1.5"
+                  >
+                    <ChevronLeft className="w-4 h-4" /> Back to Showroom Profile
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Button type="button" variant="outline" onClick={() => setEditOpen(false)} className="h-10 px-5 font-bold rounded-xl border-slate-300 text-xs">
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting} className="bg-[#FA8112] hover:bg-[#FA8112]/90 text-white font-bold h-10 px-7 rounded-xl shadow-md text-xs">
+                  {isSubmitting ? "Saving Changes..." : "Save Changes"}
+                </Button>
+              </div>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* PERSISTENT VIEW & SHARE CREDENTIALS MODAL */}
+      <Dialog open={!!shareCredentialsShop} onOpenChange={(open) => { if (!open) setShareCredentialsShop(null); }}>
+        <DialogContent className="max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl">
           <DialogHeader>
             <DialogTitle className="font-serif text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Pencil className="h-5 w-5 text-[#FA8112]" /> Edit Showroom: {editingShop?.shopName}
+              <Share2 className="h-5 w-5 text-emerald-600" /> Showroom Login Credentials
             </DialogTitle>
             <DialogDescription className="text-slate-500 text-xs">
-              Update showroom profiles, logo, subscription end date, or view staff passwords.
+              View and share login credentials for <strong className="text-slate-800">{shareCredentialsShop?.shopName}</strong> anytime.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleUpdateShop} className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5 col-span-2">
-                <Label className="text-xs font-bold uppercase text-slate-700">Shop Name *</Label>
-                <Input required value={form.shopName} onChange={(e) => setForm({ ...form, shopName: e.target.value })} />
-              </div>
-
-              <div className="space-y-1.5 col-span-2">
-                <Label className="text-xs font-bold uppercase text-slate-700">Shop ID (Slug)</Label>
-                <Input
-                  value={form.slug}
-                  onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
-                />
-              </div>
-
-              <div className="space-y-1.5 col-span-2">
-                <Label className="text-xs font-bold uppercase text-slate-700">Showroom Logo</Label>
-                <div className="flex items-center gap-4">
-                  <div className="w-20 h-20 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex items-center justify-center overflow-hidden shrink-0">
-                    {form.logoUrl ? (
-                      <img src={form.logoUrl} alt="Logo Preview" className="max-h-full max-w-full object-contain p-1" />
-                    ) : (
-                      <span className="text-xs text-slate-400 font-medium">Logo</span>
-                    )}
+          {fetchingShareCredentials ? (
+            <div className="py-12 text-center text-slate-500 text-xs font-semibold flex flex-col items-center justify-center gap-2">
+              <RefreshCw className="h-6 w-6 animate-spin text-[#FA8112]" />
+              Fetching secure credentials...
+            </div>
+          ) : shareCredentialsData ? (
+            <div className="space-y-4 py-2">
+              {/* Shop Login ID & Link */}
+              <div className="bg-amber-50 p-3.5 rounded-xl border border-amber-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Shop Login ID (Slug)</div>
+                    <div className="font-mono font-extrabold text-slate-900 text-base">{shareCredentialsData.slug}</div>
                   </div>
-                  <Input type="file" accept="image/*" className="flex-1 text-xs" onChange={(e) => handleLogoUpload(e.target.files?.[0])} />
+                  <Button size="sm" variant="outline" onClick={() => copyToClipboard(shareCredentialsData.slug, "Shop Login ID")} className="bg-white border-amber-300 text-amber-900 font-bold text-xs h-8">
+                    <Copy className="w-3.5 h-3.5 mr-1" /> Copy ID
+                  </Button>
+                </div>
+                <div className="pt-2 border-t border-amber-200/60 flex items-center justify-between text-xs">
+                  <span className="text-amber-900 font-medium truncate max-w-[220px]">Link: {shareCredentialsData.loginUrl}</span>
+                  <Button size="sm" variant="ghost" onClick={() => copyToClipboard(shareCredentialsData.loginUrl, "Login Link")} className="text-amber-800 hover:text-amber-950 font-bold text-xs h-7 px-2">
+                    <Copy className="w-3 h-3 mr-1" /> Copy Link
+                  </Button>
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase text-slate-700">Owner Name</Label>
-                <Input value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase text-slate-700">Phone</Label>
-                <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-              </div>
-
-              <div className="space-y-1.5 col-span-2">
-                <Label className="text-xs font-bold uppercase text-slate-700">Email Address</Label>
-                <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-              </div>
-
-              <div className="space-y-1.5 col-span-2">
-                <Label className="text-xs font-bold uppercase text-slate-700">Address</Label>
-                <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase text-slate-700">GSTIN</Label>
-                <Input value={form.gstNumber} onChange={(e) => setForm({ ...form, gstNumber: e.target.value })} />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase text-slate-700">Plan</Label>
-                <Select value={form.plan} onValueChange={(v) => setForm({ ...form, plan: v })}>
-                  <SelectTrigger className="text-xs font-semibold"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="trial">Trial</SelectItem>
-                    <SelectItem value="basic">Basic</SelectItem>
-                    <SelectItem value="pro">Pro</SelectItem>
-                    <SelectItem value="enterprise">Enterprise</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5 col-span-2">
-                <Label className="text-xs font-bold uppercase text-slate-700">Subscription End Date</Label>
-                <Input type="date" value={form.subscriptionEndDate} onChange={(e) => setForm({ ...form, subscriptionEndDate: e.target.value })} />
-              </div>
-            </div>
-
-            {/* PASSWORD REVEAL SECTION */}
-            <div className="space-y-3 pt-4 border-t border-slate-200">
-              <Label className="text-xs font-bold uppercase text-slate-700">Staff Account Credentials</Label>
-              {([
-                { role: "owner" as const, label: "GST Admin (Owner)", username: editingShop?.initialAdminUsername },
-                { role: "operator" as const, label: "Non-GST Operator", username: editingShop?.initialOperatorUsername },
-              ]).map(({ role, label, username }) => (
-                <div key={role} className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-2">
+              {/* Accounts Cards */}
+              <div className="space-y-3">
+                {/* GST Owner */}
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2 text-xs">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-[11px] text-slate-500 font-medium">{label} Username</div>
-                      <div className="font-mono font-bold text-slate-900 text-xs">{username || "—"}</div>
+                    <div className="font-bold text-[#FA8112] uppercase text-[11px] flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-[#FA8112]" /> GST Owner Account
                     </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs font-semibold"
-                      onClick={() => {
-                        if (!editingShop) return;
-                        setResetUserTarget({ shop: editingShop, userRole: role });
-                        setResetUserPasswordForm({ username: username || role, role, newPassword: "", generatedPassword: "" });
-                      }}
-                    >
-                      Reset Password
+                    <Button size="sm" variant="ghost" onClick={() => copyToClipboard(`Username: ${shareCredentialsData.ownerUsername}\nPassword: ${shareCredentialsData.ownerPassword || ''}`, "GST Owner Credentials")} className="h-6 text-[11px] font-bold text-slate-600 hover:text-slate-900">
+                      <Copy className="w-3 h-3 mr-1" /> Copy Pair
                     </Button>
                   </div>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-200/80">
-                    <div>
-                      <div className="text-[11px] text-slate-500 font-medium">Password</div>
-                      <div className="font-mono font-bold text-slate-900 text-xs">
-                        {revealedPasswords[role] !== undefined ? revealedPasswords[role] : "••••••••"}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {revealedPasswords[role] !== undefined && (
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          onClick={() => copyToClipboard(revealedPasswords[role]!, `${label} Password`)}
-                        >
-                          <Copy className="w-3.5 h-3.5 text-slate-600" />
-                        </Button>
-                      )}
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        disabled={!username || revealingRole === role}
-                        onClick={() => toggleRevealPassword(role)}
-                      >
-                        {revealedPasswords[role] !== undefined ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </Button>
+                  <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-slate-500 font-medium">Username:</span>
+                    <span className="font-mono font-bold text-slate-900">{shareCredentialsData.ownerUsername}</span>
+                  </div>
+                  <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-slate-500 font-medium">Password:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-slate-900">
+                        {showPasswordOwner ? (shareCredentialsData.ownerPassword || "••••••••") : "••••••••"}
+                      </span>
+                      <button type="button" onClick={() => setShowPasswordOwner(!showPasswordOwner)} className="text-slate-400 hover:text-slate-700">
+                        {showPasswordOwner ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
 
-            <DialogFooter className="pt-4 border-t border-slate-100">
-              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={isSubmitting} className="bg-[#FA8112] hover:bg-[#FA8112]/90 text-white font-bold">
-                {isSubmitting ? "Saving..." : "Save Changes"}
-              </Button>
-            </DialogFooter>
-          </form>
+                {/* Non-GST Operator */}
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="font-bold text-blue-600 uppercase text-[11px] flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-blue-600" /> Non-GST Operator Account
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => copyToClipboard(`Username: ${shareCredentialsData.operatorUsername}\nPassword: ${shareCredentialsData.operatorPassword || ''}`, "Operator Credentials")} className="h-6 text-[11px] font-bold text-slate-600 hover:text-slate-900">
+                      <Copy className="w-3 h-3 mr-1" /> Copy Pair
+                    </Button>
+                  </div>
+                  <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-slate-500 font-medium">Username:</span>
+                    <span className="font-mono font-bold text-slate-900">{shareCredentialsData.operatorUsername}</span>
+                  </div>
+                  <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-slate-500 font-medium">Password:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-slate-900">
+                        {showPasswordOperator ? (shareCredentialsData.operatorPassword || "••••••••") : "••••••••"}
+                      </span>
+                      <button type="button" onClick={() => setShowPasswordOperator(!showPasswordOperator)} className="text-slate-400 hover:text-slate-700">
+                        {showPasswordOperator ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Share Actions */}
+              <div className="pt-2 grid grid-cols-2 gap-2">
+                <Button
+                  onClick={() => handleShareWhatsApp(shareCredentialsData)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
+                >
+                  <Send className="w-4 h-4" /> Share on WhatsApp
+                </Button>
+                <Button
+                  onClick={() => handleCopyAllShareDetails(shareCredentialsData)}
+                  variant="outline"
+                  className="border-slate-300 font-bold text-slate-800 hover:bg-slate-100 h-10 text-xs rounded-xl flex items-center justify-center gap-1.5"
+                >
+                  <Copy className="w-4 h-4 text-[#FA8112]" /> Copy All Details
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="py-6 text-center text-slate-500 text-xs">Could not load credentials.</div>
+          )}
+
+          <DialogFooter className="pt-2 border-t border-slate-100">
+            <Button variant="ghost" onClick={() => setShareCredentialsShop(null)} className="w-full text-slate-600 font-bold">
+              Close
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1139,7 +1830,7 @@ export default function SuperAdminDashboardPage() {
               <CheckCircle2 className="h-5 w-5 text-emerald-600" /> Showroom Provisioned
             </DialogTitle>
             <DialogDescription className="text-slate-500 text-xs">
-              Share login credentials with {credentialsResult?.shopName}. Password is displayed only once.
+              Share login credentials with {credentialsResult?.shopName}.
             </DialogDescription>
           </DialogHeader>
 
@@ -1169,6 +1860,57 @@ export default function SuperAdminDashboardPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* Share Actions */}
+              <div className="pt-2 grid grid-cols-2 gap-2">
+                <Button
+                  onClick={() => {
+                    const loginUrl = `${window.location.origin}/login`;
+                    const ownerCred = credentialsResult.credentials.find(c => c.label.toLowerCase().includes('owner') || c.label.toLowerCase().includes('gst'));
+                    const operatorCred = credentialsResult.credentials.find(c => c.label.toLowerCase().includes('operator') || c.label.toLowerCase().includes('non-gst'));
+                    const text = `💎 *Jewellery ERP - Login Credentials*
+🏪 *Showroom:* ${credentialsResult.shopName}
+🆔 *Shop Login ID:* ${credentialsResult.loginId}
+🌐 *Login Link:* ${loginUrl}
+
+👤 *GST Owner Account:*
+• Username: ${ownerCred?.username || 'owner'}
+• Password: ${ownerCred?.password || ''}
+
+👤 *Non-GST Operator Account:*
+• Username: ${operatorCred?.username || 'operator'}
+• Password: ${operatorCred?.password || ''}`;
+                    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
+                >
+                  <Send className="w-4 h-4" /> Share on WhatsApp
+                </Button>
+                <Button
+                  onClick={() => {
+                    const loginUrl = `${window.location.origin}/login`;
+                    const ownerCred = credentialsResult.credentials.find(c => c.label.toLowerCase().includes('owner') || c.label.toLowerCase().includes('gst'));
+                    const operatorCred = credentialsResult.credentials.find(c => c.label.toLowerCase().includes('operator') || c.label.toLowerCase().includes('non-gst'));
+                    const text = `💎 *Jewellery ERP - Login Credentials*
+🏪 *Showroom:* ${credentialsResult.shopName}
+🆔 *Shop Login ID:* ${credentialsResult.loginId}
+🌐 *Login Link:* ${loginUrl}
+
+👤 *GST Owner Account:*
+• Username: ${ownerCred?.username || 'owner'}
+• Password: ${ownerCred?.password || ''}
+
+👤 *Non-GST Operator Account:*
+• Username: ${operatorCred?.username || 'operator'}
+• Password: ${operatorCred?.password || ''}`;
+                    copyToClipboard(text, "All Credentials & Login Link");
+                  }}
+                  variant="outline"
+                  className="border-slate-300 font-bold text-slate-800 hover:bg-slate-100 h-10 text-xs rounded-xl flex items-center justify-center gap-1.5"
+                >
+                  <Copy className="w-4 h-4 text-[#FA8112]" /> Copy All Details
+                </Button>
               </div>
             </div>
           )}

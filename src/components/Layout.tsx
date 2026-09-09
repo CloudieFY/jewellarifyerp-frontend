@@ -46,6 +46,7 @@ import { useGlobalKeyboard, useActiveShortcuts } from "@/hooks/useGlobalKeyboard
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { CommandPaletteDialog } from "@/components/CommandPaletteDialog";
 import { HeaderGoldRatesDialog } from "@/components/HeaderGoldRatesDialog";
+import { isRouteAllowed } from "@/lib/subscriptionModules";
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 
@@ -131,14 +132,24 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     sessionStorage.setItem("sidebar_nav_scroll_pos", String(e.currentTarget.scrollTop));
   };
 
+  const plan = tenantSession?.shop?.plan;
+  const allowedPages = tenantSession?.shop?.allowedPages;
+  const allowedModules = tenantSession?.shop?.allowedModules;
+
   const groups = isKarigar
     ? [{ title: "nav.groupMyWorkspace", items: [{ to: "/karigar-tasks", label: "nav.myTasks", icon: ClipboardList }] }]
-    : adminGroups.map((group) => {
-        if (group.title === "nav.groupFinance" && !isOperator) {
-          return { ...group, items: [...group.items, { to: "/gst-report", label: "nav.gstReport", icon: FileText as any }] };
-        }
-        return group;
-      });
+    : adminGroups
+        .map((group) => {
+          let items = group.items;
+          if (group.title === "nav.groupFinance" && !isOperator) {
+            items = [...items, { to: "/gst-report", label: "nav.gstReport", icon: FileText as any }];
+          }
+          const filteredItems = items.filter((item) =>
+            isRouteAllowed(item.to, plan, allowedPages, allowedModules)
+          );
+          return { ...group, items: filteredItems };
+        })
+        .filter((group) => group.items.length > 0);
 
   return (
     <>
@@ -500,7 +511,11 @@ export function Layout({ children }: { children: ReactNode }) {
             <span className="hidden sm:inline">Single Click Forms:</span>
           </span>
 
-          {quickBarActions.map((act) => {
+          {quickBarActions
+            .filter((act) =>
+              isRouteAllowed(act.route, tenantSession?.shop?.plan, tenantSession?.shop?.allowedPages, tenantSession?.shop?.allowedModules)
+            )
+            .map((act) => {
             const Icon = act.icon;
             const keyDisp = getShortcutKeyDisplay(act.id);
             const isActive = pathname === act.route.split("?")[0];

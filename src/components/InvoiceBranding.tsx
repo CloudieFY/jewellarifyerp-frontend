@@ -703,8 +703,6 @@ export function LuxuryJewelleryInvoice({ inv }: { inv: any }) {
 
   return (
     <div className="bg-amber-50/20 text-slate-900 p-6 sm:p-8 font-serif text-xs max-w-4xl mx-auto border-double border-4 border-amber-600 rounded shadow-lg print:shadow-none print:border-amber-600 print:p-4 print:m-0 relative">
-      <div className="text-center text-amber-600 text-xl tracking-widest mb-1">👑 ✦ 👑</div>
-
       <div className="text-center border-b-2 border-amber-600 pb-4 mb-4">
         {invSettings.showLogo && (
           shop?.logoUrl ? (
