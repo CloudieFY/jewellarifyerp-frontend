@@ -32,16 +32,21 @@ export function useTableArrowNav<T>(
     (index: number) => ({
       tabIndex: 0,
       onKeyDown: (e: React.KeyboardEvent<HTMLTableRowElement>) => {
+        // Only act when the row itself is focused, not a control inside it.
+        if (e.target !== e.currentTarget) return;
+
         const allRows = getFocusableRows();
         const current = allRows.indexOf(e.currentTarget);
         if (current === -1) return;
 
         switch (e.key) {
           case "ArrowDown":
+          case "ArrowRight":
             e.preventDefault();
             allRows[Math.min(current + 1, allRows.length - 1)]?.focus();
             break;
           case "ArrowUp":
+          case "ArrowLeft":
             e.preventDefault();
             allRows[Math.max(current - 1, 0)]?.focus();
             break;

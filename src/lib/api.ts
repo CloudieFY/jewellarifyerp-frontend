@@ -240,6 +240,71 @@ export function useTenantAPI() {
       stockLedger: {
         get: (itemId?: string) => apiCall<any[]>(`/api/inventory-extended/ledger${itemId ? '?itemId=' + itemId : ''}`, {}, 'tenant', token),
       },
+
+      /* ------------------------------------------------------------------ */
+      /*  CRM module (PostgreSQL stack — mounted at /api/crm)               */
+      /* ------------------------------------------------------------------ */
+      crm: (() => {
+        const base = '/api/crm';
+        const get = <T = any>(path: string) => apiCall<T>(`${base}${path}`, {}, 'tenant', token);
+        const send = <T = any>(path: string, method: string, body?: any) =>
+          apiCall<T>(`${base}${path}`, { method, body: body !== undefined ? JSON.stringify(body) : undefined }, 'tenant', token);
+        const qs = (q?: string) => (q ? `?${q}` : '');
+
+        return {
+          me: () => get('/me'),
+          health: () => get('/health'),
+          dashboard: () => get('/dashboard'),
+          users: () => get<any[]>('/users'),
+          branches: () => get<any[]>('/branches'),
+
+          leads: {
+            list: (q?: string) => get(`/leads${qs(q)}`),
+            get: (id: string) => get(`/leads/${id}`),
+            create: (body: any) => send('/leads', 'POST', body),
+            update: (id: string, body: any) => send(`/leads/${id}`, 'PATCH', body),
+            remove: (id: string) => send(`/leads/${id}`, 'DELETE'),
+            assign: (id: string, body: any) => send(`/leads/${id}/assign`, 'POST', body),
+            qualify: (id: string, body?: any) => send(`/leads/${id}/qualify`, 'POST', body ?? {}),
+            convert: (id: string, body?: any) => send(`/leads/${id}/convert`, 'POST', body ?? {}),
+            activities: (id: string) => get(`/leads/${id}/activities`),
+            addActivity: (id: string, body: any) => send(`/leads/${id}/activities`, 'POST', body),
+          },
+
+          opportunities: {
+            list: (q?: string) => get(`/opportunities${qs(q)}`),
+            pipeline: (q?: string) => get(`/opportunities/pipeline${qs(q)}`),
+            get: (id: string) => get(`/opportunities/${id}`),
+            create: (body: any) => send('/opportunities', 'POST', body),
+            update: (id: string, body: any) => send(`/opportunities/${id}`, 'PATCH', body),
+            stage: (id: string, body: any) => send(`/opportunities/${id}/stage`, 'POST', body),
+            assign: (id: string, body: any) => send(`/opportunities/${id}/assign`, 'POST', body),
+            win: (id: string, body?: any) => send(`/opportunities/${id}/win`, 'POST', body ?? {}),
+            lose: (id: string, body?: any) => send(`/opportunities/${id}/lose`, 'POST', body ?? {}),
+            remove: (id: string) => send(`/opportunities/${id}`, 'DELETE'),
+            activities: (id: string) => get(`/opportunities/${id}/activities`),
+            addActivity: (id: string, body: any) => send(`/opportunities/${id}/activities`, 'POST', body),
+          },
+
+          tasks: {
+            list: (q?: string) => get(`/tasks${qs(q)}`),
+            get: (id: string) => get(`/tasks/${id}`),
+            create: (body: any) => send('/tasks', 'POST', body),
+            update: (id: string, body: any) => send(`/tasks/${id}`, 'PATCH', body),
+            remove: (id: string) => send(`/tasks/${id}`, 'DELETE'),
+            assign: (id: string, body: any) => send(`/tasks/${id}/assign`, 'POST', body),
+            complete: (id: string, body?: any) => send(`/tasks/${id}/complete`, 'POST', body ?? {}),
+          },
+
+          customers: {
+            list: (q?: string) => get(`/customers${qs(q)}`),
+            get: (id: string) => get(`/customers/${id}`),
+            update: (id: string, body: any) => send(`/customers/${id}`, 'PATCH', body),
+            activities: (id: string) => get(`/customers/${id}/activities`),
+            addActivity: (id: string, body: any) => send(`/customers/${id}/activities`, 'POST', body),
+          },
+        };
+      })(),
       openingStock: {
         getAll: () => apiCall<any[]>('/api/inventory-extended/opening-stock', {}, 'tenant', token),
         create: (body: any) => apiCall<any>('/api/inventory-extended/opening-stock', { method: 'POST', body: JSON.stringify(body) }, 'tenant', token),

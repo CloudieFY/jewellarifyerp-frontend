@@ -8,6 +8,7 @@ import {
   CommandList,
   CommandShortcut,
 } from "@/components/ui/command";
+import { getCustomShortcuts, type Shortcut } from "@/hooks/useGlobalKeyboard";
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -44,12 +45,44 @@ interface Props {
   onOpenHelp?: () => void;
 }
 
+function label(s: Shortcut): string {
+  const parts: string[] = [];
+  if (s.ctrl) parts.push("Ctrl");
+  if (s.alt) parts.push("Alt");
+  if (s.shift) parts.push("Shift");
+  parts.push(s.key);
+  return parts.join(" + ");
+}
+
+/** Build "route -> real shortcut" and "id -> real shortcut" lookups from the live table. */
+function buildKeyLookups() {
+  const byRoute = new Map<string, string>();
+  const byId = new Map<string, string>();
+  for (const s of getCustomShortcuts()) {
+    byId.set(s.id, label(s));
+    if (s.actionType === "route" && s.actionRoute) {
+      const base = s.actionRoute.split("?")[0];
+      if (!byRoute.has(base)) byRoute.set(base, label(s));
+    }
+  }
+  return {
+    route: (r: string) => byRoute.get(r.split("?")[0]) ?? null,
+    id: (i: string) => byId.get(i) ?? null,
+  };
+}
+
 export function CommandPaletteDialog({ open, onOpenChange, onOpenHelp }: Props) {
   const navigate = useNavigate();
+  const keys = buildKeyLookups();
 
   const handleSelect = (path: string) => {
     onOpenChange(false);
     navigate(path);
+  };
+
+  const RK = ({ route }: { route: string }) => {
+    const k = keys.route(route);
+    return k ? <CommandShortcut>{k}</CommandShortcut> : null;
   };
 
   return (
@@ -63,127 +96,127 @@ export function CommandPaletteDialog({ open, onOpenChange, onOpenHelp }: Props) 
           <CommandItem onSelect={() => handleSelect("/dashboard")}>
             <LayoutDashboard className="mr-2 h-4 w-4 text-primary" />
             <span>Dashboard</span>
-            <CommandShortcut>Alt + 1</CommandShortcut>
+            <RK route="/dashboard" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/billing")}>
             <ShoppingCart className="mr-2 h-4 w-4 text-primary" />
             <span>Billing / POS</span>
-            <CommandShortcut>Alt + 2</CommandShortcut>
+            <RK route="/billing" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/sales")}>
             <Receipt className="mr-2 h-4 w-4 text-primary" />
             <span>Sales (Invoices)</span>
-            <CommandShortcut>Alt + 3</CommandShortcut>
+            <RK route="/sales" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/customers")}>
             <Users className="mr-2 h-4 w-4 text-primary" />
             <span>Customers</span>
-            <CommandShortcut>Alt + 4</CommandShortcut>
+            <RK route="/customers" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/inventory")}>
             <Package className="mr-2 h-4 w-4 text-primary" />
             <span>Inventory / Stock</span>
-            <CommandShortcut>Alt + 5</CommandShortcut>
+            <RK route="/inventory" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/expenses")}>
             <Wallet className="mr-2 h-4 w-4 text-primary" />
             <span>Expenses</span>
-            <CommandShortcut>Alt + 6</CommandShortcut>
+            <RK route="/expenses" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/ledger")}>
             <BookOpen className="mr-2 h-4 w-4 text-primary" />
             <span>Daily Ledger</span>
-            <CommandShortcut>Alt + 7</CommandShortcut>
+            <RK route="/ledger" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/reports")}>
             <BarChart3 className="mr-2 h-4 w-4 text-primary" />
             <span>Reports</span>
-            <CommandShortcut>Alt + 8</CommandShortcut>
+            <RK route="/reports" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/repairs")}>
             <Wrench className="mr-2 h-4 w-4 text-primary" />
             <span>Repairs</span>
-            <CommandShortcut>Alt + 9</CommandShortcut>
+            <RK route="/repairs" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/orders")}>
             <ShoppingBag className="mr-2 h-4 w-4 text-primary" />
             <span>Orders</span>
-            <CommandShortcut>Alt + 0</CommandShortcut>
+            <RK route="/orders" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/dues")}>
             <AlertCircle className="mr-2 h-4 w-4 text-primary" />
             <span>Customer Dues</span>
-            <CommandShortcut>Alt + Shift + D</CommandShortcut>
+            <RK route="/dues" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/catalog")}>
             <LayoutGrid className="mr-2 h-4 w-4 text-primary" />
             <span>Catalog</span>
-            <CommandShortcut>Alt + Shift + C</CommandShortcut>
+            <RK route="/catalog" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/suppliers")}>
             <Truck className="mr-2 h-4 w-4 text-primary" />
             <span>Suppliers</span>
-            <CommandShortcut>Alt + Shift + S</CommandShortcut>
+            <RK route="/suppliers" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/employees")}>
             <Briefcase className="mr-2 h-4 w-4 text-primary" />
             <span>Employees</span>
-            <CommandShortcut>Alt + Shift + E</CommandShortcut>
+            <RK route="/employees" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/karigars")}>
             <Hammer className="mr-2 h-4 w-4 text-primary" />
             <span>Karigars</span>
-            <CommandShortcut>Alt + Shift + K</CommandShortcut>
+            <RK route="/karigars" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/karigar-tasks")}>
             <ClipboardList className="mr-2 h-4 w-4 text-primary" />
             <span>Karigar Tasks</span>
-            <CommandShortcut>Alt + Shift + T</CommandShortcut>
+            <RK route="/karigar-tasks" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/girvi")}>
             <Landmark className="mr-2 h-4 w-4 text-primary" />
             <span>Girvi Loans</span>
-            <CommandShortcut>Alt + Shift + G</CommandShortcut>
+            <RK route="/girvi" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/forwarded-shops")}>
             <Store className="mr-2 h-4 w-4 text-primary" />
             <span>Forwarded Shops</span>
-            <CommandShortcut>Alt + Shift + F</CommandShortcut>
+            <RK route="/forwarded-shops" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/purchases")}>
             <ShoppingBag className="mr-2 h-4 w-4 text-primary" />
             <span>Purchases</span>
-            <CommandShortcut>Alt + Shift + P</CommandShortcut>
+            <RK route="/purchases" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/gold-rates")}>
             <TrendingUp className="mr-2 h-4 w-4 text-primary" />
             <span>Gold Rates</span>
-            <CommandShortcut>Alt + Shift + R</CommandShortcut>
+            <RK route="/gold-rates" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/calculator")}>
             <Calculator className="mr-2 h-4 w-4 text-primary" />
             <span>Calculator</span>
-            <CommandShortcut>Alt + Shift + M</CommandShortcut>
+            <RK route="/calculator" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/gst-report")}>
             <FileText className="mr-2 h-4 w-4 text-primary" />
             <span>GST Report</span>
-            <CommandShortcut>Alt + Shift + X</CommandShortcut>
+            <RK route="/gst-report" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/notifications")}>
             <BellRing className="mr-2 h-4 w-4 text-primary" />
             <span>Notifications</span>
-            <CommandShortcut>Alt + Shift + N</CommandShortcut>
+            <RK route="/notifications" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/profile")}>
             <UserCog className="mr-2 h-4 w-4 text-primary" />
-            <span>Shop Profile & Settings</span>
-            <CommandShortcut>Alt + Shift + U</CommandShortcut>
+            <span>Shop Profile &amp; Settings</span>
+            <RK route="/profile" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/balance-sheet")}>
             <Scale className="mr-2 h-4 w-4 text-primary" />
             <span>Balance Sheet</span>
-            <CommandShortcut>Alt + Shift + B</CommandShortcut>
+            <RK route="/balance-sheet" />
           </CommandItem>
         </CommandGroup>
 
@@ -192,37 +225,37 @@ export function CommandPaletteDialog({ open, onOpenChange, onOpenHelp }: Props) 
           <CommandItem onSelect={() => handleSelect("/ledger")}>
             <BookOpen className="mr-2 h-4 w-4 text-emerald-500" />
             <span>Daily Ledger Book</span>
-            <CommandShortcut>Alt + 7</CommandShortcut>
+            <RK route="/ledger" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/dues")}>
             <AlertCircle className="mr-2 h-4 w-4 text-emerald-500" />
             <span>Customer Dues Ledger</span>
-            <CommandShortcut>Alt + Shift + D</CommandShortcut>
+            <RK route="/dues" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/balance-sheet")}>
             <Scale className="mr-2 h-4 w-4 text-emerald-500" />
             <span>Balance Sheet Statement</span>
-            <CommandShortcut>Alt + Shift + B</CommandShortcut>
+            <RK route="/balance-sheet" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/gst-report")}>
             <FileText className="mr-2 h-4 w-4 text-emerald-500" />
-            <span>GST Tax Ledger & Report</span>
-            <CommandShortcut>Alt + Shift + X</CommandShortcut>
+            <span>GST Tax Ledger &amp; Report</span>
+            <RK route="/gst-report" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/sales")}>
             <Receipt className="mr-2 h-4 w-4 text-emerald-500" />
             <span>Sales Invoice Register</span>
-            <CommandShortcut>Alt + 3</CommandShortcut>
+            <RK route="/sales" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/purchases")}>
             <ShoppingBag className="mr-2 h-4 w-4 text-emerald-500" />
             <span>Purchase Register</span>
-            <CommandShortcut>Alt + Shift + P</CommandShortcut>
+            <RK route="/purchases" />
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/girvi")}>
             <Landmark className="mr-2 h-4 w-4 text-emerald-500" />
             <span>Girvi Loan Ledger</span>
-            <CommandShortcut>Alt + Shift + G</CommandShortcut>
+            <RK route="/girvi" />
           </CommandItem>
         </CommandGroup>
 
@@ -231,57 +264,46 @@ export function CommandPaletteDialog({ open, onOpenChange, onOpenHelp }: Props) 
           <CommandItem onSelect={() => handleSelect("/billing?new=true")}>
             <PlusCircle className="mr-2 h-4 w-4 text-blue-500" />
             <span>New Bill / POS Form</span>
-            <CommandShortcut>Ctrl + Alt + B</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/sales?new=true")}>
             <PlusCircle className="mr-2 h-4 w-4 text-blue-500" />
             <span>Create Sale Invoice</span>
-            <CommandShortcut>Ctrl + Alt + S</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/purchases?new=true")}>
             <PlusCircle className="mr-2 h-4 w-4 text-blue-500" />
             <span>Create Purchase Order</span>
-            <CommandShortcut>Ctrl + Alt + P</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/customers?new=true")}>
             <PlusCircle className="mr-2 h-4 w-4 text-blue-500" />
             <span>Add New Customer Form</span>
-            <CommandShortcut>Ctrl + Alt + C</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/suppliers?new=true")}>
             <PlusCircle className="mr-2 h-4 w-4 text-blue-500" />
             <span>Add New Supplier Form</span>
-            <CommandShortcut>Ctrl + Alt + S</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/inventory?new=true")}>
             <PlusCircle className="mr-2 h-4 w-4 text-blue-500" />
             <span>Add Product / Stock Form</span>
-            <CommandShortcut>Ctrl + Alt + I</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/girvi?new=true")}>
             <PlusCircle className="mr-2 h-4 w-4 text-blue-500" />
             <span>New Girvi Loan Form</span>
-            <CommandShortcut>Ctrl + Alt + G</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/repairs?new=true")}>
             <PlusCircle className="mr-2 h-4 w-4 text-blue-500" />
             <span>New Repair Entry Form</span>
-            <CommandShortcut>Ctrl + Alt + R</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/orders?new=true")}>
             <PlusCircle className="mr-2 h-4 w-4 text-blue-500" />
             <span>New Customer Order Form</span>
-            <CommandShortcut>Ctrl + Alt + O</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/expenses?new=true")}>
             <PlusCircle className="mr-2 h-4 w-4 text-blue-500" />
             <span>Add Expense Entry Form</span>
-            <CommandShortcut>Ctrl + Alt + E</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => handleSelect("/ledger?new=true")}>
             <PlusCircle className="mr-2 h-4 w-4 text-blue-500" />
             <span>Add Daily Ledger Entry Form</span>
-            <CommandShortcut>Ctrl + Alt + L</CommandShortcut>
           </CommandItem>
         </CommandGroup>
 
@@ -295,7 +317,7 @@ export function CommandPaletteDialog({ open, onOpenChange, onOpenHelp }: Props) 
           >
             <Keyboard className="mr-2 h-4 w-4 text-amber-500" />
             <span>View All Keyboard Shortcuts</span>
-            <CommandShortcut>?</CommandShortcut>
+            <CommandShortcut>{keys.id("help") ?? "F1"}</CommandShortcut>
           </CommandItem>
           <CommandItem
             onSelect={() => {
@@ -309,7 +331,7 @@ export function CommandPaletteDialog({ open, onOpenChange, onOpenHelp }: Props) 
           >
             <Search className="mr-2 h-4 w-4 text-amber-500" />
             <span>Focus Search Input</span>
-            <CommandShortcut>F</CommandShortcut>
+            <CommandShortcut>{keys.id("focus_search") ?? "Alt + F"}</CommandShortcut>
           </CommandItem>
         </CommandGroup>
       </CommandList>

@@ -30,6 +30,10 @@ import {
   Keyboard,
   ChevronRight,
   Zap,
+  Target,
+  KanbanSquare,
+  ListChecks,
+  Contact,
 } from "lucide-react";
 import { useEffect, useState, useRef, type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -43,6 +47,7 @@ import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useGlobalKeyboard, useActiveShortcuts } from "@/hooks/useGlobalKeyboard";
+import { useHasCrmAccess } from "@/components/crm/Can";
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { CommandPaletteDialog } from "@/components/CommandPaletteDialog";
 import { HeaderGoldRatesDialog } from "@/components/HeaderGoldRatesDialog";
@@ -107,12 +112,27 @@ const adminGroups: { title: string; items: NavItem[] }[] = [
   },
 ];
 
+/** Shown only to users with CRM access (see useHasCrmAccess). Per-item
+ *  permission gating happens server-side + via the in-page CrmNav. */
+const crmGroup: { title: string; items: NavItem[] } = {
+  title: "nav.groupCrm",
+  items: [
+    { to: "/crm/dashboard",     label: "nav.crmDashboard",     icon: LayoutDashboard },
+    { to: "/crm/leads",         label: "nav.crmLeads",         icon: Users },
+    { to: "/crm/pipeline",      label: "nav.crmPipeline",      icon: KanbanSquare },
+    { to: "/crm/opportunities", label: "nav.crmOpportunities", icon: Target },
+    { to: "/crm/tasks",         label: "nav.crmTasks",         icon: ListChecks },
+    { to: "/customers",         label: "nav.crmCustomers",     icon: Contact },
+  ],
+};
+
 /* ─────────────────────────────────────────────────────────────── */
 /*  Sidebar body                                                   */
 /* ─────────────────────────────────────────────────────────────── */
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
   const { tenantSession } = useAuth();
+  const showCrm = useHasCrmAccess();
   const navContainerRef = useRef<HTMLDivElement>(null);
   const isKarigar  = tenantSession?.user?.role === "karigar";
   const isOperator = tenantSession?.user?.role === "operator";
@@ -138,18 +158,21 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
 
   const groups = isKarigar
     ? [{ title: "nav.groupMyWorkspace", items: [{ to: "/karigar-tasks", label: "nav.myTasks", icon: ClipboardList }] }]
-    : adminGroups
-        .map((group) => {
-          let items = group.items;
-          if (group.title === "nav.groupFinance" && !isOperator) {
-            items = [...items, { to: "/gst-report", label: "nav.gstReport", icon: FileText as any }];
-          }
-          const filteredItems = items.filter((item) =>
-            isRouteAllowed(item.to, plan, allowedPages, allowedModules)
-          );
-          return { ...group, items: filteredItems };
-        })
-        .filter((group) => group.items.length > 0);
+    : [
+        ...adminGroups
+          .map((group) => {
+            let items = group.items;
+            if (group.title === "nav.groupFinance" && !isOperator) {
+              items = [...items, { to: "/gst-report", label: "nav.gstReport", icon: FileText as any }];
+            }
+            const filteredItems = items.filter((item) =>
+              isRouteAllowed(item.to, plan, allowedPages, allowedModules)
+            );
+            return { ...group, items: filteredItems };
+          })
+          .filter((group) => group.items.length > 0),
+        ...(showCrm ? [crmGroup] : []),
+      ];
 
   return (
     <>
@@ -402,7 +425,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   // Single-Click Quick Launch Bar definitions — clean standard routes
   const quickBarActions: { id: string; label: string; icon: any; route: string }[] = [
-    { id: "new_bill", label: "New Bill", icon: ShoppingCart, route: "/billing" },
+    { id: "nav_billing", label: "New Bill", icon: ShoppingCart, route: "/billing" },
     { id: "daily_ledger", label: "Daily Ledger", icon: BookOpen, route: "/ledger" },
     { id: "purchases", label: "Purchases", icon: ShoppingBag, route: "/purchases" },
     { id: "sales", label: "Sales", icon: Receipt, route: "/sales" },

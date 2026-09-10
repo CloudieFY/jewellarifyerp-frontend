@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { handleGridArrowNav } from "@/hooks/useGlobalKeyboard";
+import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { Plus, Trash2, Printer, Receipt, Pencil, Search, Calendar, Calculator, Scale, Palette, AlertCircle, NotebookPen, Send, ScanBarcode, Coins, Boxes, UserCheck, UserPlus } from "lucide-react";
 import { WhatsAppIcon } from "@/components/WhatsAppIcon";
 import {
@@ -390,44 +391,9 @@ export default function BillingPage() {
     }
   };
 
-  // Global Hardware USB POS Barcode Scanner Listener
-  const barcodeBuffer = useRef<string>("");
-  const lastKeyTime = useRef<number>(0);
+  // Hardware USB / Bluetooth wedge barcode scanner (single shared buffer).
+  useBarcodeScanner((code) => handleScanBarcode(code));
 
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.altKey || e.ctrlKey || e.metaKey) return;
-
-      const now = Date.now();
-      const timeDiff = now - lastKeyTime.current;
-      lastKeyTime.current = now;
-
-      if (e.key === "Enter") {
-        if (barcodeBuffer.current && barcodeBuffer.current.trim().length >= 2) {
-          const scannedCode = barcodeBuffer.current.trim();
-          barcodeBuffer.current = "";
-          const success = handleScanBarcode(scannedCode);
-          if (success) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-        }
-        return;
-      }
-
-      if (e.key.length === 1) {
-        // High speed keypresses (< 60ms) typical for USB/Bluetooth hardware barcode scanners
-        if (timeDiff > 60) {
-          barcodeBuffer.current = e.key;
-        } else {
-          barcodeBuffer.current += e.key;
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleGlobalKeyDown, true);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
-  }, [products, latestRates]);
   const firstItemInputRef = useRef<HTMLInputElement | null>(null);
   const [discount, setDiscount] = useState<number | "">("");
   const [billMetal, setBillMetal] = useState<"Gold" | "Silver">("Gold");
@@ -1132,26 +1098,33 @@ export default function BillingPage() {
   };
 
   useEffect(() => {
+    // Page-owned shortcuts. Runs capture-phase and stops immediate propagation so
+    // the global navigation table does NOT also fire (no more "save AND go to /profile").
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 1. Shortcut to Save & Post Bill: Ctrl+S, Ctrl+Enter, Alt+S, F12
+      const claim = () => {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      };
+
+      // 1. Save & Post Bill: Ctrl+S, Ctrl+Enter, Alt+S, F12
       if (
         (e.ctrlKey && e.key.toLowerCase() === "s") ||
         (e.ctrlKey && e.key === "Enter") ||
         (e.altKey && e.key.toLowerCase() === "s") ||
         e.key === "F12"
       ) {
-        e.preventDefault();
+        claim();
         save();
         return;
       }
 
-      // 2. Shortcut to Print Bill: Ctrl+P, Alt+P, F8
+      // 2. Print Bill: Ctrl+P, Alt+P, F8
       if (
         (e.ctrlKey && e.key.toLowerCase() === "p") ||
         (e.altKey && e.key.toLowerCase() === "p") ||
         e.key === "F8"
       ) {
-        e.preventDefault();
+        claim();
         if (viewing) {
           triggerPrint();
         } else {
@@ -1160,33 +1133,29 @@ export default function BillingPage() {
         return;
       }
 
-      // 3. Shortcut to add new item row: Insert, F3, Alt+N, Alt+A
+      // 3. Add new item row: Insert, F3, Alt+N, Alt+A
       if (
         e.key === "Insert" ||
         e.key === "F3" ||
         (e.altKey && (e.key.toLowerCase() === "n" || e.key.toLowerCase() === "a"))
       ) {
-        e.preventDefault();
+        claim();
         setItems((prev) => [...prev, createDefaultBlankItem()]);
         toast.info("➕ New item row added (Shortcut)");
         return;
       }
 
-      // 4. Shortcut for Barcode Scanner focus: F2
+      // 4. Focus the POS barcode-scanner input: F2
       if (e.key === "F2") {
-        e.preventDefault();
+        claim();
         posScanRef.current?.focus();
         toast.info("POS Barcode Scanner input focused!");
         return;
       }
 
-      // 5. Shortcut for Alt+I:
-      // - If form is open -> focus form TAG# field
-      // - If form is closed -> open Inventory page
+      // 5. Alt+I: form open -> focus TAG# field; form closed -> open Inventory
       if (e.altKey && e.key.toLowerCase() === "i") {
-        e.preventDefault();
-        e.stopPropagation();
-
+        claim();
         if (open) {
           if (firstItemInputRef.current) {
             firstItemInputRef.current.focus();
@@ -1203,10 +1172,9 @@ export default function BillingPage() {
         return;
       }
 
-      // 6. Shortcut to focus Item Table TAG field: F4
+      // 6. Focus item table TAG field: F4
       if (e.key === "F4") {
-        e.preventDefault();
-        e.stopPropagation();
+        claim();
         if (firstItemInputRef.current) {
           firstItemInputRef.current.focus();
           firstItemInputRef.current.select?.();
@@ -1216,25 +1184,6 @@ export default function BillingPage() {
         }
         toast.info("🎯 Cursor focused directly on Item Table (F4)");
         return;
-      }
-
-      const now = Date.now();
-      const timeDiff = now - lastKeyTime.current;
-      lastKeyTime.current = now;
-
-      if (timeDiff > 100) {
-        barcodeBuffer.current = "";
-      }
-
-      if (e.key === "Enter") {
-        if (barcodeBuffer.current.trim().length >= 3) {
-          e.preventDefault();
-          const scanned = barcodeBuffer.current.trim();
-          barcodeBuffer.current = "";
-          handleScanBarcode(scanned);
-        }
-      } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        barcodeBuffer.current += e.key;
       }
     };
 

@@ -11,8 +11,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useFormKeyboardNav } from "@/lib/useFormKeyboardNav";
+import { CustomerCrmPanel } from "@/components/crm/CustomerCrmPanel";
+import { matchCustomerRow } from "@/lib/crm";
 import {
   Plus,
   Trash2,
@@ -175,6 +178,20 @@ export default function CustomersPage() {
     if (!profileId) return null;
     return customers.find((c: Customer) => c._id === profileId || c.id === profileId) || null;
   }, [profileId, customers]);
+
+  // Deep-link: /customers?customerId=<id> opens that customer's 360 profile
+  // (used by CRM screens linking back to a converted / linked customer).
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const wanted = searchParams.get("customerId");
+    if (!wanted || customers.length === 0) return;
+    const match = matchCustomerRow(customers as Customer[], wanted);
+    if (match) {
+      setProfileId(match._id || match.id || null);
+      searchParams.delete("customerId");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, customers, setSearchParams]);
 
   const custInvoices = useMemo(() => {
     if (!selectedCustomer) return [];
@@ -1116,7 +1133,7 @@ export default function CustomersPage() {
 
                 {/* CRM TABS WORKSPACE */}
                 <Tabs defaultValue="invoices" className="w-full space-y-4">
-                  <TabsList className="bg-muted/80 border border-border/80 p-1 rounded-xl grid grid-cols-4 gap-1">
+                  <TabsList className="bg-muted/80 border border-border/80 p-1 rounded-xl grid grid-cols-3 sm:grid-cols-5 gap-1 h-auto">
                     <TabsTrigger value="invoices" className="text-xs font-semibold rounded-lg data-[state=active]:bg-amber-600 data-[state=active]:text-white transition-all py-2">
                       Billing <span className="ml-1.5 px-2 py-0.5 rounded text-[10px] bg-black/10 dark:bg-white/10 font-mono">{custInvoices.length}</span>
                     </TabsTrigger>
@@ -1128,6 +1145,9 @@ export default function CustomersPage() {
                     </TabsTrigger>
                     <TabsTrigger value="girvi" className="text-xs font-semibold rounded-lg data-[state=active]:bg-amber-600 data-[state=active]:text-white transition-all py-2">
                       Girvi Loans <span className="ml-1.5 px-2 py-0.5 rounded text-[10px] bg-black/10 dark:bg-white/10 font-mono">{custGirvis.length}</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="crm" className="text-xs font-semibold rounded-lg data-[state=active]:bg-amber-600 data-[state=active]:text-white transition-all py-2">
+                      <Sparkles className="w-3.5 h-3.5 mr-1" /> CRM 360
                     </TabsTrigger>
                   </TabsList>
 
@@ -1388,6 +1408,11 @@ export default function CustomersPage() {
                         </tbody>
                       </table>
                     </div>
+                  </TabsContent>
+
+                  {/* Tab 5: CRM 360 (leads / opportunities / tasks / activity) */}
+                  <TabsContent value="crm" className="space-y-3">
+                    <CustomerCrmPanel customerId={selectedCustomer._id || selectedCustomer.id || ""} />
                   </TabsContent>
                 </Tabs>
               </div>

@@ -203,6 +203,64 @@
   }
 }
 
+/* ── Active-focus highlight ──────────────────────────────────────────────
+   Only the element the user is currently working on lights up, so keyboard
+   navigation always answers "where am I / which option is selected". */
+@layer base {
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  button:focus-visible,
+  a:focus-visible,
+  [role="option"]:focus-visible,
+  [role="menuitem"]:focus-visible,
+  [role="menuitemradio"]:focus-visible,
+  [role="menuitemcheckbox"]:focus-visible,
+  [tabindex]:not([tabindex="-1"]):focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 1px;
+    border-radius: var(--radius-sm);
+  }
+
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  tr[tabindex]:focus-visible,
+  [data-nav-item]:focus-visible {
+    background-color: color-mix(in oklab, var(--color-ring) 12%, transparent);
+  }
+  .dark input:focus-visible,
+  .dark select:focus-visible,
+  .dark textarea:focus-visible,
+  .dark tr[tabindex]:focus-visible,
+  .dark [data-nav-item]:focus-visible {
+    background-color: color-mix(in oklab, var(--color-ring) 24%, transparent);
+  }
+
+  /* Keyboard-highlighted row in cmdk / Radix Select / dropdown menus */
+  [data-highlighted],
+  [data-selected="true"],
+  [role="option"][aria-selected="true"] {
+    box-shadow: inset 2px 0 0 0 var(--color-ring);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    input,
+    select,
+    textarea,
+    button,
+    tr[tabindex],
+    [data-nav-item],
+    [role="option"],
+    [role="menuitem"] {
+      transition:
+        outline-color 0.12s ease,
+        background-color 0.12s ease,
+        box-shadow 0.12s ease;
+    }
+  }
+}
+
 /* Google Translate Silent Integration */
 .goog-te-banner-frame.skiptranslate,
 .goog-te-banner-frame,
