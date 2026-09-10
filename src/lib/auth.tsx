@@ -22,6 +22,13 @@ export type TenantUser = {
   role: "owner" | "operator" | "karigar";
   karigarRefId?: string;
   preferredLanguage?: Language;
+  /** CRM persona from users.crm_role (null/absent for plain ERP logins). */
+  crmRole?: string | null;
+  /**
+   * Raw additive CRM permission grants from the login / /api/auth/me response.
+   * UX gating only — see @/lib/permissions and @/components/crm/Can.
+   */
+  permissions?: string[];
 };
 
 export type TenantShopInfo = {
