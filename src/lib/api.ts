@@ -266,6 +266,7 @@ export function useTenantAPI() {
             remove: (id: string) => send(`/leads/${id}`, 'DELETE'),
             assign: (id: string, body: any) => send(`/leads/${id}/assign`, 'POST', body),
             qualify: (id: string, body?: any) => send(`/leads/${id}/qualify`, 'POST', body ?? {}),
+            promote: (id: string, body?: any) => send(`/leads/${id}/promote`, 'POST', body ?? {}),
             convert: (id: string, body?: any) => send(`/leads/${id}/convert`, 'POST', body ?? {}),
             activities: (id: string) => get(`/leads/${id}/activities`),
             addActivity: (id: string, body: any) => send(`/leads/${id}/activities`, 'POST', body),

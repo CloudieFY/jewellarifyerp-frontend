@@ -64,7 +64,8 @@ describe("api.crm client — URL / method / auth wiring", () => {
     await crm().leads.create({ name: "Asha" });
     await crm().leads.update("l1", { status: "contacted" });
     await crm().leads.assign("l1", { assignedTo: "u2" });
-    await crm().leads.qualify("l1", { qualified: true });
+    await crm().leads.qualify("l1", { outcome: "qualified", score: 70 });
+    await crm().leads.promote("l1", { amount: 5000 });
     await crm().leads.convert("l1");
     await crm().leads.remove("l1");
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
@@ -72,11 +73,14 @@ describe("api.crm client — URL / method / auth wiring", () => {
       "PATCH /api/crm/leads/l1",
       "POST /api/crm/leads/l1/assign",
       "POST /api/crm/leads/l1/qualify",
+      "POST /api/crm/leads/l1/promote",
       "POST /api/crm/leads/l1/convert",
       "DELETE /api/crm/leads/l1",
     ]);
     expect(calls[0].body).toEqual({ name: "Asha" });
     expect(calls[2].body).toEqual({ assignedTo: "u2" });
+    expect(calls[3].body).toEqual({ outcome: "qualified", score: 70 });
+    expect(calls[4].body).toEqual({ amount: 5000 });
   });
 
   it("opportunity stage / win / lose / pipeline paths", async () => {

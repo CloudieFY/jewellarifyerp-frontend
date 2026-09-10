@@ -15,6 +15,15 @@ import {
   TASK_STATUS_LABELS,
   TASK_PRIORITIES,
   TASK_PRIORITY_LABELS,
+  QUALIFICATION_STATUSES,
+  QUALIFICATION_STATUS_LABELS,
+  QUALIFICATION_STATUS_BADGE,
+  QUALIFICATION_AUTHORITY,
+  QUALIFICATION_NEED,
+  QUALIFICATION_TIMELINE,
+  QUALIFICATION_AUTHORITY_LABELS,
+  QUALIFICATION_NEED_LABELS,
+  QUALIFICATION_TIMELINE_LABELS,
 } from "@/lib/crm";
 
 describe("toQuery", () => {
@@ -106,5 +115,24 @@ describe("CRM constant tables stay consistent with the backend enums", () => {
     expect([...TASK_PRIORITIES]).toEqual(["low", "medium", "high", "urgent"]);
     for (const s of TASK_STATUSES) expect(TASK_STATUS_LABELS[s]).toBeTruthy();
     for (const p of TASK_PRIORITIES) expect(TASK_PRIORITY_LABELS[p]).toBeTruthy();
+  });
+
+  it("qualification statuses fully labelled + badged (matches backend enum)", () => {
+    expect([...QUALIFICATION_STATUSES]).toEqual(["qualified", "nurture", "disqualified"]);
+    for (const s of QUALIFICATION_STATUSES) {
+      expect(QUALIFICATION_STATUS_LABELS[s]).toBeTruthy();
+      expect(QUALIFICATION_STATUS_BADGE[s]).toBeTruthy();
+    }
+  });
+
+  it("qualification BANT option sets mirror the backend whitelist", () => {
+    expect([...QUALIFICATION_AUTHORITY]).toEqual(["decision_maker", "influencer", "none", "unknown"]);
+    expect([...QUALIFICATION_NEED]).toEqual(["high", "medium", "low", "unknown"]);
+    expect([...QUALIFICATION_TIMELINE]).toEqual([
+      "immediate", "1_3_months", "3_6_months", "6_plus_months", "unknown",
+    ]);
+    for (const v of QUALIFICATION_AUTHORITY) expect(QUALIFICATION_AUTHORITY_LABELS[v]).toBeTruthy();
+    for (const v of QUALIFICATION_NEED) expect(QUALIFICATION_NEED_LABELS[v]).toBeTruthy();
+    for (const v of QUALIFICATION_TIMELINE) expect(QUALIFICATION_TIMELINE_LABELS[v]).toBeTruthy();
   });
 });
