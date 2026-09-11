@@ -425,3 +425,90 @@ export function matchCustomerRow<T extends { _id?: string | null; id?: string | 
   if (!wantedId) return null;
   return rows.find((c) => c._id === wantedId || c.id === wantedId) ?? null;
 }
+
+/* ------------------------------------------------------------------ */
+/* Demo (Slice 4) — Super Admin only                                    */
+/* ------------------------------------------------------------------ */
+export const DEMO_STATUSES = ["scheduled", "completed", "cancelled", "no_show"] as const;
+export type DemoStatus = (typeof DEMO_STATUSES)[number];
+
+export const DEMO_STATUS_LABELS: Record<DemoStatus, string> = {
+  scheduled: "Scheduled",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  no_show: "No Show",
+};
+
+export const DEMO_STATUS_BADGE: Record<DemoStatus, BadgeVariant> = {
+  scheduled: "default",
+  completed: "outline",
+  cancelled: "destructive",
+  no_show: "destructive",
+};
+
+export interface Demo {
+  id: string;
+  _id?: string;
+  shopId?: string;
+  shopName?: string;
+  branchId: string | null;
+  leadId: string | null;
+  opportunityId: string | null;
+  customerId: string | null;
+  assignedTo: string | null;
+  createdBy: string | null;
+  scheduledAt: string;
+  status: DemoStatus;
+  mode: string | null;
+  outcome: string | null;
+  notes: string | null;
+  nextAction: string | null;
+  completedAt: string | null;
+  lastActivityAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* Quotation (Slice 4, foundation scope) — Super Admin only             */
+/* ------------------------------------------------------------------ */
+export const QUOTATION_STATUSES = ["draft", "sent", "accepted", "rejected", "expired"] as const;
+export type QuotationStatus = (typeof QUOTATION_STATUSES)[number];
+export const OPEN_QUOTATION_STATUSES = ["draft", "sent"] as const;
+
+export const QUOTATION_STATUS_LABELS: Record<QuotationStatus, string> = {
+  draft: "Draft",
+  sent: "Sent",
+  accepted: "Accepted",
+  rejected: "Rejected",
+  expired: "Expired",
+};
+
+export const QUOTATION_STATUS_BADGE: Record<QuotationStatus, BadgeVariant> = {
+  draft: "secondary",
+  sent: "default",
+  accepted: "outline",
+  rejected: "destructive",
+  expired: "destructive",
+};
+
+export interface Quotation {
+  id: string;
+  _id?: string;
+  shopId?: string;
+  branchId: string | null;
+  opportunityId: string;
+  customerId: string | null;
+  assignedTo: string | null;
+  createdBy: string | null;
+  title: string;
+  amount: number | null;
+  status: QuotationStatus;
+  validUntil: string | null;
+  notes: string | null;
+  sentAt: string | null;
+  acceptedAt: string | null;
+  rejectedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -12,7 +12,7 @@ import {
   SidebarGroupLabel,
   SidebarGroupContent,
 } from "@/components/ui/sidebar";
-import { LogOut, Store, MessageSquare, LayoutDashboard, Users, KanbanSquare, ListChecks } from "lucide-react";
+import { LogOut, Store, MessageSquare, LayoutDashboard, Users, KanbanSquare, ListChecks, Presentation } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 
@@ -33,6 +33,7 @@ const navGroups: { title: string; items: NavItem[] }[] = [
       { path: "/superadmin/crm/leads", icon: Users, label: "Leads" },
       { path: "/superadmin/crm/pipeline", icon: KanbanSquare, label: "Pipeline" },
       { path: "/superadmin/crm/tasks", icon: ListChecks, label: "Tasks" },
+      { path: "/superadmin/crm/demos", icon: Presentation, label: "Demos" },
     ],
   },
 ];

@@ -80,12 +80,84 @@ describe("superAdminAPI.crm client — URL / method / auth wiring", () => {
     ]);
   });
 
-  it("per-shop task complete/assign embed :shopId", async () => {
+  it("per-shop task complete/assign/update embed :shopId", async () => {
     await superAdminAPI.crm.tasks.complete("shopA", "t1");
     await superAdminAPI.crm.tasks.assign("shopA", "t1", { assignedTo: "u3" });
+    await superAdminAPI.crm.tasks.get("shopA", "t1");
+    await superAdminAPI.crm.tasks.update("shopA", "t1", { title: "New title" });
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
       "POST /api/superadmin/crm/tasks/shopA/t1/complete",
       "POST /api/superadmin/crm/tasks/shopA/t1/assign",
+      "GET /api/superadmin/crm/tasks/shopA/t1",
+      "PATCH /api/superadmin/crm/tasks/shopA/t1",
     ]);
+    expect(calls[3].body).toEqual({ title: "New title" });
+  });
+
+  it("opportunity activities/timeline embed :shopId", async () => {
+    await superAdminAPI.crm.opportunities.activities("shopA", "o1");
+    await superAdminAPI.crm.opportunities.addActivity("shopA", "o1", { body: "sent proposal", type: "email" });
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "GET /api/superadmin/crm/opportunities/shopA/o1/activities",
+      "POST /api/superadmin/crm/opportunities/shopA/o1/activities",
+    ]);
+    expect(calls[1].body).toEqual({ body: "sent proposal", type: "email" });
+  });
+
+  it("users picker is scoped to one shop", async () => {
+    await superAdminAPI.crm.users("shopA");
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(["GET /api/superadmin/crm/users/shopA"]);
+  });
+
+  it("lead activities/timeline embed :shopId", async () => {
+    await superAdminAPI.crm.leads.activities("shopA", "l1");
+    await superAdminAPI.crm.leads.addActivity("shopA", "l1", { body: "called", type: "call" });
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "GET /api/superadmin/crm/leads/shopA/l1/activities",
+      "POST /api/superadmin/crm/leads/shopA/l1/activities",
+    ]);
+    expect(calls[1].body).toEqual({ body: "called", type: "call" });
+  });
+
+  it("demos: cross-shop list has no :shopId, per-shop actions embed :shopId", async () => {
+    await superAdminAPI.crm.demos.list("limit=50");
+    await superAdminAPI.crm.demos.get("shopA", "d1");
+    await superAdminAPI.crm.demos.create("shopA", { leadId: "l1", scheduledAt: "2026-01-01T10:00:00Z" });
+    await superAdminAPI.crm.demos.assign("shopA", "d1", { assignedTo: "u1" });
+    await superAdminAPI.crm.demos.complete("shopA", "d1", { outcome: "interested" });
+    await superAdminAPI.crm.demos.cancel("shopA", "d1", { reason: "rescheduled" });
+    await superAdminAPI.crm.demos.activities("shopA", "d1");
+    await superAdminAPI.crm.demos.addActivity("shopA", "d1", { body: "note" });
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "GET /api/superadmin/crm/demos?limit=50",
+      "GET /api/superadmin/crm/demos/shopA/d1",
+      "POST /api/superadmin/crm/demos/shopA",
+      "POST /api/superadmin/crm/demos/shopA/d1/assign",
+      "POST /api/superadmin/crm/demos/shopA/d1/complete",
+      "POST /api/superadmin/crm/demos/shopA/d1/cancel",
+      "GET /api/superadmin/crm/demos/shopA/d1/activities",
+      "POST /api/superadmin/crm/demos/shopA/d1/activities",
+    ]);
+    expect(calls[4].body).toEqual({ outcome: "interested" });
+  });
+
+  it("quotations: byOpportunity + per-shop CRUD + status transitions", async () => {
+    await superAdminAPI.crm.quotations.byOpportunity("shopA", "o1");
+    await superAdminAPI.crm.quotations.create("shopA", { opportunityId: "o1", title: "Q1" });
+    await superAdminAPI.crm.quotations.get("shopA", "q1");
+    await superAdminAPI.crm.quotations.update("shopA", "q1", { title: "Q1 revised" });
+    await superAdminAPI.crm.quotations.send("shopA", "q1");
+    await superAdminAPI.crm.quotations.accept("shopA", "q1");
+    await superAdminAPI.crm.quotations.reject("shopA", "q1");
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "GET /api/superadmin/crm/quotations/by-opportunity/shopA/o1",
+      "POST /api/superadmin/crm/quotations/shopA",
+      "GET /api/superadmin/crm/quotations/shopA/q1",
+      "PATCH /api/superadmin/crm/quotations/shopA/q1",
+      "POST /api/superadmin/crm/quotations/shopA/q1/send",
+      "POST /api/superadmin/crm/quotations/shopA/q1/accept",
+      "POST /api/superadmin/crm/quotations/shopA/q1/reject",
+    ]);
+    expect(calls[1].body).toEqual({ opportunityId: "o1", title: "Q1" });
   });
 });

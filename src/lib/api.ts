@@ -142,6 +142,7 @@ export const superAdminAPI = {
     return {
       shops: () => get<any[]>('/shops'),
       dashboard: () => get('/dashboard'),
+      users: (shopId: string) => get<any[]>(`/users/${shopId}`),
 
       leads: {
         list: (q?: string) => get(`/leads${qs(q)}`),
@@ -153,6 +154,8 @@ export const superAdminAPI = {
         qualify: (shopId: string, id: string, body?: any) => send(`/leads/${shopId}/${id}/qualify`, 'POST', body ?? {}),
         promote: (shopId: string, id: string, body?: any) => send(`/leads/${shopId}/${id}/promote`, 'POST', body ?? {}),
         convert: (shopId: string, id: string) => send(`/leads/${shopId}/${id}/convert`, 'POST'),
+        activities: (shopId: string, id: string) => get(`/leads/${shopId}/${id}/activities`),
+        addActivity: (shopId: string, id: string, body: any) => send(`/leads/${shopId}/${id}/activities`, 'POST', body),
       },
 
       opportunities: {
@@ -166,6 +169,8 @@ export const superAdminAPI = {
         win: (shopId: string, id: string, body?: any) => send(`/opportunities/${shopId}/${id}/win`, 'POST', body ?? {}),
         lose: (shopId: string, id: string, body?: any) => send(`/opportunities/${shopId}/${id}/lose`, 'POST', body ?? {}),
         remove: (shopId: string, id: string) => send(`/opportunities/${shopId}/${id}`, 'DELETE'),
+        activities: (shopId: string, id: string) => get(`/opportunities/${shopId}/${id}/activities`),
+        addActivity: (shopId: string, id: string, body: any) => send(`/opportunities/${shopId}/${id}/activities`, 'POST', body),
       },
 
       tasks: {
@@ -176,6 +181,31 @@ export const superAdminAPI = {
         remove: (shopId: string, id: string) => send(`/tasks/${shopId}/${id}`, 'DELETE'),
         assign: (shopId: string, id: string, body: any) => send(`/tasks/${shopId}/${id}/assign`, 'POST', body),
         complete: (shopId: string, id: string, body?: any) => send(`/tasks/${shopId}/${id}/complete`, 'POST', body ?? {}),
+      },
+
+      demos: {
+        list: (q?: string) => get(`/demos${qs(q)}`),
+        get: (shopId: string, id: string) => get(`/demos/${shopId}/${id}`),
+        create: (shopId: string, body: any) => send(`/demos/${shopId}`, 'POST', body),
+        update: (shopId: string, id: string, body: any) => send(`/demos/${shopId}/${id}`, 'PATCH', body),
+        assign: (shopId: string, id: string, body: any) => send(`/demos/${shopId}/${id}/assign`, 'POST', body),
+        complete: (shopId: string, id: string, body: any) => send(`/demos/${shopId}/${id}/complete`, 'POST', body),
+        cancel: (shopId: string, id: string, body?: any) => send(`/demos/${shopId}/${id}/cancel`, 'POST', body ?? {}),
+        activities: (shopId: string, id: string) => get(`/demos/${shopId}/${id}/activities`),
+        addActivity: (shopId: string, id: string, body: any) => send(`/demos/${shopId}/${id}/activities`, 'POST', body),
+      },
+
+      quotations: {
+        list: (q?: string) => get(`/quotations${qs(q)}`),
+        byOpportunity: (shopId: string, opportunityId: string) => get(`/quotations/by-opportunity/${shopId}/${opportunityId}`),
+        get: (shopId: string, id: string) => get(`/quotations/${shopId}/${id}`),
+        create: (shopId: string, body: any) => send(`/quotations/${shopId}`, 'POST', body),
+        update: (shopId: string, id: string, body: any) => send(`/quotations/${shopId}/${id}`, 'PATCH', body),
+        send: (shopId: string, id: string) => send(`/quotations/${shopId}/${id}/send`, 'POST'),
+        accept: (shopId: string, id: string) => send(`/quotations/${shopId}/${id}/accept`, 'POST'),
+        reject: (shopId: string, id: string) => send(`/quotations/${shopId}/${id}/reject`, 'POST'),
+        activities: (shopId: string, id: string) => get(`/quotations/${shopId}/${id}/activities`),
+        addActivity: (shopId: string, id: string, body: any) => send(`/quotations/${shopId}/${id}/activities`, 'POST', body),
       },
     };
   })(),

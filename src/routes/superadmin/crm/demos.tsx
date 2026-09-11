@@ -7,26 +7,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { superAdminAPI } from "@/lib/api";
-import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_BADGE, sourceLabel, toQuery, type Lead, type Paginated } from "@/lib/crm";
+import { DEMO_STATUSES, DEMO_STATUS_LABELS, DEMO_STATUS_BADGE, toQuery, type Demo, type Paginated } from "@/lib/crm";
 import { toast } from "sonner";
 
-interface AdminLead extends Lead {
-  shopId: string;
-  shopName: string;
-}
+interface AdminDemo extends Demo { shopId: string; shopName: string }
 
-export default function SuperAdminCrmLeadsPage() {
+export default function SuperAdminCrmDemosPage() {
   const navigate = useNavigate();
-  const [page, setPage] = useState<Paginated<AdminLead> | null>(null);
+  const [page, setPage] = useState<Paginated<AdminDemo> | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string>("");
 
   const load = () => {
     setLoading(true);
-    superAdminAPI.crm.leads
-      .list(toQuery({ status: status || undefined, limit: 50 }))
+    superAdminAPI.crm.demos
+      .list(toQuery({ status: status || undefined, limit: 50, sort: "scheduled_at", dir: "DESC" }))
       .then((d: any) => setPage(d))
-      .catch((err: any) => toast.error(err?.message || "Failed to load leads"))
+      .catch((err: any) => toast.error(err?.message || "Failed to load demos"))
       .finally(() => setLoading(false));
   };
 
@@ -35,12 +32,12 @@ export default function SuperAdminCrmLeadsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-xl font-semibold">Leads — All Shops</h1>
+        <h1 className="text-xl font-semibold">Demos — All Shops</h1>
         <Select value={status || "all"} onValueChange={(v) => setStatus(v === "all" ? "" : v)}>
           <SelectTrigger className="w-48"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
-            {LEAD_STATUSES.map((s) => <SelectItem key={s} value={s}>{LEAD_STATUS_LABELS[s]}</SelectItem>)}
+            {DEMO_STATUSES.map((s) => <SelectItem key={s} value={s}>{DEMO_STATUS_LABELS[s]}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -55,30 +52,28 @@ export default function SuperAdminCrmLeadsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Shop</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Source</TableHead>
+                    <TableHead>Scheduled</TableHead>
+                    <TableHead>Mode</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Created</TableHead>
+                    <TableHead>Outcome</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(page?.data ?? []).map((l) => (
+                  {(page?.data ?? []).map((d) => (
                     <TableRow
-                      key={l.id}
+                      key={d.id}
                       className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/superadmin/crm/leads/${l.shopId}/${l.id}`)}
+                      onClick={() => navigate(`/superadmin/crm/demos/${d.shopId}/${d.id}`)}
                     >
-                      <TableCell className="font-medium">{l.shopName}</TableCell>
-                      <TableCell>{l.name}</TableCell>
-                      <TableCell>{l.phone || "—"}</TableCell>
-                      <TableCell>{sourceLabel(l.source)}</TableCell>
-                      <TableCell><Badge variant={LEAD_STATUS_BADGE[l.status]}>{LEAD_STATUS_LABELS[l.status]}</Badge></TableCell>
-                      <TableCell>{l.createdAt ? new Date(l.createdAt).toLocaleDateString() : "—"}</TableCell>
+                      <TableCell className="font-medium">{d.shopName}</TableCell>
+                      <TableCell>{new Date(d.scheduledAt).toLocaleString()}</TableCell>
+                      <TableCell>{d.mode || "—"}</TableCell>
+                      <TableCell><Badge variant={DEMO_STATUS_BADGE[d.status]}>{DEMO_STATUS_LABELS[d.status]}</Badge></TableCell>
+                      <TableCell>{d.outcome || "—"}</TableCell>
                     </TableRow>
                   ))}
                   {(page?.data ?? []).length === 0 && (
-                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No leads found.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No demos found.</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>

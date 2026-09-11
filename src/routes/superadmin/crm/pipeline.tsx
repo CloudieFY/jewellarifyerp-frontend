@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -7,9 +8,10 @@ import { superAdminAPI } from "@/lib/api";
 import { OPPORTUNITY_STAGE_LABELS, OPPORTUNITY_STAGE_BADGE, crmMoney, toQuery, type Opportunity, type PipelineSummary, type Paginated } from "@/lib/crm";
 import { toast } from "sonner";
 
-interface AdminOpportunity extends Opportunity { shopName: string }
+interface AdminOpportunity extends Opportunity { shopId: string; shopName: string }
 
 export default function SuperAdminCrmPipelinePage() {
+  const navigate = useNavigate();
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [open, setOpen] = useState<Paginated<AdminOpportunity> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +63,11 @@ export default function SuperAdminCrmPipelinePage() {
               </TableHeader>
               <TableBody>
                 {(open?.data ?? []).map((o) => (
-                  <TableRow key={o.id}>
+                  <TableRow
+                    key={o.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => navigate(`/superadmin/crm/opportunities/${o.shopId}/${o.id}`)}
+                  >
                     <TableCell className="font-medium">{o.shopName}</TableCell>
                     <TableCell>{o.title}</TableCell>
                     <TableCell><Badge variant={OPPORTUNITY_STAGE_BADGE[o.stage]}>{OPPORTUNITY_STAGE_LABELS[o.stage]}</Badge></TableCell>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +12,7 @@ import { toast } from "sonner";
 interface AdminTask extends Task { shopName: string; shopId: string }
 
 export default function SuperAdminCrmTasksPage() {
+  const navigate = useNavigate();
   const [page, setPage] = useState<Paginated<AdminTask> | null>(null);
   const [loading, setLoading] = useState(true);
   const [completingId, setCompletingId] = useState<string | null>(null);
@@ -62,7 +64,11 @@ export default function SuperAdminCrmTasksPage() {
                 </TableHeader>
                 <TableBody>
                   {(page?.data ?? []).map((t) => (
-                    <TableRow key={t.id}>
+                    <TableRow
+                      key={t.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(`/superadmin/crm/tasks/${t.shopId}/${t.id}`)}
+                    >
                       <TableCell className="font-medium">{t.shopName}</TableCell>
                       <TableCell>{t.title}</TableCell>
                       <TableCell><Badge variant={TASK_PRIORITY_BADGE[t.priority]}>{TASK_PRIORITY_LABELS[t.priority]}</Badge></TableCell>
@@ -70,7 +76,12 @@ export default function SuperAdminCrmTasksPage() {
                       <TableCell>{t.dueAt ? new Date(t.dueAt).toLocaleDateString() : "—"}</TableCell>
                       <TableCell className="text-right">
                         {t.status !== "completed" && (
-                          <Button size="sm" variant="outline" disabled={completingId === t.id} onClick={() => complete(t)}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={completingId === t.id}
+                            onClick={(e) => { e.stopPropagation(); complete(t); }}
+                          >
                             {completingId === t.id ? "…" : "Complete"}
                           </Button>
                         )}

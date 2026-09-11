@@ -38,8 +38,13 @@ import SuperAdminDashboardPage from "./routes/superadmin-dashboard";
 import SuperAdminDemoRequestsPage from "./routes/superadmin-demo-requests";
 import SuperAdminCrmDashboardPage from "./routes/superadmin/crm/dashboard";
 import SuperAdminCrmLeadsPage from "./routes/superadmin/crm/leads";
+import SuperAdminCrmLeadDetailsPage from "./routes/superadmin/crm/lead-details";
 import SuperAdminCrmPipelinePage from "./routes/superadmin/crm/pipeline";
+import SuperAdminCrmOpportunityDetailsPage from "./routes/superadmin/crm/opportunity-details";
 import SuperAdminCrmTasksPage from "./routes/superadmin/crm/tasks";
+import SuperAdminCrmTaskDetailsPage from "./routes/superadmin/crm/task-details";
+import SuperAdminCrmDemosPage from "./routes/superadmin/crm/demos";
+import SuperAdminCrmDemoDetailsPage from "./routes/superadmin/crm/demo-details";
 import AboutPage from "./routes/AboutPage";
 import GirviFeaturePage from "./routes/GirviFeaturePage";
 import ContactPage from "./routes/ContactPage";
@@ -118,8 +123,13 @@ function App() {
                     <Route path="/crm" element={<Navigate to="/superadmin/crm/dashboard" replace />} />
                     <Route path="/crm/dashboard" element={<SuperAdminCrmDashboardPage />} />
                     <Route path="/crm/leads" element={<SuperAdminCrmLeadsPage />} />
+                    <Route path="/crm/leads/:shopId/:id" element={<SuperAdminCrmLeadDetailsPage />} />
                     <Route path="/crm/pipeline" element={<SuperAdminCrmPipelinePage />} />
+                    <Route path="/crm/opportunities/:shopId/:id" element={<SuperAdminCrmOpportunityDetailsPage />} />
                     <Route path="/crm/tasks" element={<SuperAdminCrmTasksPage />} />
+                    <Route path="/crm/tasks/:shopId/:id" element={<SuperAdminCrmTaskDetailsPage />} />
+                    <Route path="/crm/demos" element={<SuperAdminCrmDemosPage />} />
+                    <Route path="/crm/demos/:shopId/:id" element={<SuperAdminCrmDemoDetailsPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>
                 </Routes>
