@@ -114,6 +114,68 @@ export function sourceLabel(s: string | null | undefined): string {
 }
 
 /* ------------------------------------------------------------------ */
+/* Lead qualification (Phase 3)                                        */
+/*                                                                    */
+/* A SEPARATE axis from `status` above. NULL == not yet assessed.      */
+/* `nurture` has no matching `status` value on purpose — a nurtured    */
+/* lead keeps whatever open status it already had.                     */
+/* ------------------------------------------------------------------ */
+export const QUALIFICATION_STATUSES = ["qualified", "nurture", "disqualified"] as const;
+export type QualificationStatus = (typeof QUALIFICATION_STATUSES)[number];
+
+export const QUALIFICATION_STATUS_LABELS: Record<QualificationStatus, string> = {
+  qualified: "Qualified",
+  nurture: "Nurture",
+  disqualified: "Disqualified",
+};
+
+export const QUALIFICATION_STATUS_BADGE: Record<QualificationStatus, BadgeVariant> = {
+  qualified: "default",
+  nurture: "secondary",
+  disqualified: "destructive",
+};
+
+/** Structured (BANT-style) qualification fields — mirror the backend whitelist. */
+export const QUALIFICATION_AUTHORITY = ["decision_maker", "influencer", "none", "unknown"] as const;
+export const QUALIFICATION_NEED = ["high", "medium", "low", "unknown"] as const;
+export const QUALIFICATION_TIMELINE = [
+  "immediate",
+  "1_3_months",
+  "3_6_months",
+  "6_plus_months",
+  "unknown",
+] as const;
+
+export const QUALIFICATION_AUTHORITY_LABELS: Record<string, string> = {
+  decision_maker: "Decision maker",
+  influencer: "Influencer",
+  none: "No authority",
+  unknown: "Unknown",
+};
+export const QUALIFICATION_NEED_LABELS: Record<string, string> = {
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  unknown: "Unknown",
+};
+export const QUALIFICATION_TIMELINE_LABELS: Record<string, string> = {
+  immediate: "Immediate",
+  "1_3_months": "1–3 months",
+  "3_6_months": "3–6 months",
+  "6_plus_months": "6+ months",
+  unknown: "Unknown",
+};
+
+export interface QualificationData {
+  budget?: string;
+  authority?: string;
+  need?: string;
+  timeline?: string;
+  interest?: string;
+  objections?: string;
+}
+
+/* ------------------------------------------------------------------ */
 /* Tasks                                                               */
 /* ------------------------------------------------------------------ */
 export const TASK_STATUSES = ["open", "in_progress", "completed", "cancelled"] as const;
@@ -259,6 +321,15 @@ export interface Lead {
   lastActivityAt: string | null;
   createdAt: string;
   updatedAt: string;
+  // Phase 3 — structured qualification
+  qualificationStatus: QualificationStatus | null;
+  qualificationScore: number | null;
+  qualificationNotes: string | null;
+  qualificationData: QualificationData | null;
+  qualifiedBy: string | null;
+  disqualifiedAt: string | null;
+  disqualifiedReason: string | null;
+  nurtureUntil: string | null;
 }
 
 export type CrmActivityType =

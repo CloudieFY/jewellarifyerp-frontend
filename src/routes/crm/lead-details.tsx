@@ -12,6 +12,9 @@ import {
   BadgeCheck,
   BadgeX,
   UserRoundCheck,
+  Target,
+  Sprout,
+  TrendingUp,
 } from "lucide-react";
 
 import { Layout } from "@/components/Layout";
@@ -52,8 +55,18 @@ import {
   LEAD_SOURCES,
   LEAD_SOURCE_LABELS,
   sourceLabel,
+  QUALIFICATION_STATUS_LABELS,
+  QUALIFICATION_STATUS_BADGE,
+  QUALIFICATION_AUTHORITY,
+  QUALIFICATION_NEED,
+  QUALIFICATION_TIMELINE,
+  QUALIFICATION_AUTHORITY_LABELS,
+  QUALIFICATION_NEED_LABELS,
+  QUALIFICATION_TIMELINE_LABELS,
   type Lead,
   type CrmActivity,
+  type QualificationStatus,
+  type QualificationData,
 } from "@/lib/crm";
 
 export default function CrmLeadDetailsPage() {
@@ -130,8 +143,12 @@ export default function CrmLeadDetailsPage() {
             <AssignAction lead={lead} users={users} branches={branches} onDone={invalidate} />
           )}
           {can("lead", "qualify") && !isConverted && (
-            <QualifyAction leadId={id} status={lead.status} onDone={invalidate} />
+            <QualifyAction lead={lead} onDone={invalidate} />
           )}
+          {can("opportunity", "create") &&
+            (lead.qualificationStatus === "qualified" || lead.status === "qualified") && (
+              <PromoteAction leadId={id} onDone={invalidate} />
+            )}
           {can("lead", "convert") && (
             <ConvertAction
               leadId={id}
@@ -213,6 +230,8 @@ export default function CrmLeadDetailsPage() {
             </CardContent>
           </Card>
         </div>
+
+        {lead.qualificationStatus && <QualificationCard lead={lead} userName={userName} />}
 
         <ActivityCard
           leadId={id}
@@ -434,79 +453,335 @@ function AssignAction({
   );
 }
 
-function QualifyAction({
-  leadId,
-  status,
-  onDone,
-}: {
-  leadId: string;
-  status: Lead["status"];
-  onDone: () => void;
-}) {
+const OUTCOME_META: Record<
+  QualificationStatus,
+  { label: string; icon: typeof BadgeCheck }
+> = {
+  qualified: { label: "Qualified", icon: BadgeCheck },
+  nurture: { label: "Nurture", icon: Sprout },
+  disqualified: { label: "Disqualified", icon: BadgeX },
+};
+
+function QualifyAction({ lead, onDone }: { lead: Lead; onDone: () => void }) {
   const api = useTenantAPI();
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"qualified" | "unqualified">(
-    status === "unqualified" ? "unqualified" : "qualified",
+  const d = lead.qualificationData ?? {};
+  const [outcome, setOutcome] = useState<QualificationStatus>(
+    lead.qualificationStatus ?? "qualified",
   );
-  const [reason, setReason] = useState("");
+  const [score, setScore] = useState(
+    lead.qualificationScore == null ? "" : String(lead.qualificationScore),
+  );
+  const [notes, setNotes] = useState(lead.qualificationNotes ?? "");
+  const [reason, setReason] = useState(lead.disqualifiedReason ?? "");
+  const [nurtureUntil, setNurtureUntil] = useState(lead.nurtureUntil ?? "");
+  const [budget, setBudget] = useState(d.budget ?? "");
+  const [authority, setAuthority] = useState(d.authority ?? "");
+  const [need, setNeed] = useState(d.need ?? "");
+  const [timeline, setTimeline] = useState(d.timeline ?? "");
+  const [interest, setInterest] = useState(d.interest ?? "");
+  const [objections, setObjections] = useState(d.objections ?? "");
+
+  const scoreNum = score.trim() === "" ? null : Number(score);
+  const scoreValid =
+    scoreNum == null || (Number.isInteger(scoreNum) && scoreNum >= 0 && scoreNum <= 100);
+  const reasonMissing = outcome === "disqualified" && !reason.trim();
+
   const mut = useMutation({
-    mutationFn: () =>
-      api.crm.leads.qualify(leadId, {
-        qualified: mode === "qualified",
-        ...(mode === "unqualified" ? { status: "unqualified" } : {}),
-        ...(reason.trim() ? { reason: reason.trim() } : {}),
-      }),
+    mutationFn: () => {
+      const data: QualificationData = {};
+      if (budget.trim()) data.budget = budget.trim();
+      if (authority) data.authority = authority;
+      if (need) data.need = need;
+      if (timeline) data.timeline = timeline;
+      if (interest.trim()) data.interest = interest.trim();
+      if (objections.trim()) data.objections = objections.trim();
+      return api.crm.leads.qualify(lead.id, {
+        outcome,
+        ...(scoreNum != null ? { score: scoreNum } : {}),
+        ...(notes.trim() ? { notes: notes.trim() } : {}),
+        ...(outcome === "disqualified" && reason.trim() ? { reason: reason.trim() } : {}),
+        ...(outcome === "nurture" && nurtureUntil ? { nurtureUntil } : {}),
+        ...(Object.keys(data).length ? { data } : {}),
+      });
+    },
     onSuccess: () => {
-      toast.success(mode === "qualified" ? "Lead qualified" : "Lead marked unqualified");
+      toast.success(`Lead marked ${OUTCOME_META[outcome].label.toLowerCase()}`);
       setOpen(false);
       onDone();
     },
-    onError: (e: any) => toast.error(e?.message ?? "Failed"),
+    onError: (e: any) => toast.error(e?.message ?? "Failed to qualify lead"),
   });
+
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogTrigger asChild>
         <Button variant="outline" size="sm">
-          <BadgeCheck className="h-4 w-4 mr-1" /> Qualify
+          <Target className="h-4 w-4 mr-1" /> Qualify
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Qualify lead</AlertDialogTitle>
+          <AlertDialogDescription>
+            Record a qualification outcome. Structured fields are optional.
+          </AlertDialogDescription>
         </AlertDialogHeader>
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant={mode === "qualified" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setMode("qualified")}
-            >
-              <BadgeCheck className="h-4 w-4 mr-1" /> Qualified
-            </Button>
-            <Button
-              type="button"
-              variant={mode === "unqualified" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setMode("unqualified")}
-            >
-              <BadgeX className="h-4 w-4 mr-1" /> Unqualified
-            </Button>
+
+        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(OUTCOME_META) as QualificationStatus[]).map((o) => {
+              const Icon = OUTCOME_META[o].icon;
+              return (
+                <Button
+                  key={o}
+                  type="button"
+                  variant={outcome === o ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setOutcome(o)}
+                >
+                  <Icon className="h-4 w-4 mr-1" /> {OUTCOME_META[o].label}
+                </Button>
+              );
+            })}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Score (0–100)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={score}
+                onChange={(e) => setScore(e.target.value)}
+                aria-invalid={!scoreValid}
+              />
+            </div>
+            {outcome === "nurture" && (
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Follow up on</Label>
+                <Input
+                  type="date"
+                  value={nurtureUntil}
+                  onChange={(e) => setNurtureUntil(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Budget</Label>
+              <Input value={budget} onChange={(e) => setBudget(e.target.value)} maxLength={120} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Authority</Label>
+              <Select value={authority} onValueChange={setAuthority}>
+                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  {QUALIFICATION_AUTHORITY.map((v) => (
+                    <SelectItem key={v} value={v}>{QUALIFICATION_AUTHORITY_LABELS[v]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Need</Label>
+              <Select value={need} onValueChange={setNeed}>
+                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  {QUALIFICATION_NEED.map((v) => (
+                    <SelectItem key={v} value={v}>{QUALIFICATION_NEED_LABELS[v]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Timeline</Label>
+              <Select value={timeline} onValueChange={setTimeline}>
+                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  {QUALIFICATION_TIMELINE.map((v) => (
+                    <SelectItem key={v} value={v}>{QUALIFICATION_TIMELINE_LABELS[v]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Interest</Label>
+            <Input value={interest} onChange={(e) => setInterest(e.target.value)} maxLength={200} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Reason (optional)</Label>
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+            <Label className="text-xs text-muted-foreground">Objections</Label>
+            <Textarea
+              value={objections}
+              onChange={(e) => setObjections(e.target.value)}
+              maxLength={500}
+              rows={2}
+            />
+          </div>
+
+          {outcome === "disqualified" && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Reason (required)</Label>
+              <Input
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                aria-invalid={reasonMissing}
+              />
+            </div>
+          )}
+
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Notes</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
           </div>
         </div>
+
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <Button disabled={mut.isPending} onClick={() => mut.mutate()}>
+          <Button
+            disabled={mut.isPending || !scoreValid || reasonMissing}
+            onClick={() => mut.mutate()}
+          >
             {mut.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
             Save
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+function PromoteAction({ leadId, onDone }: { leadId: string; onDone: () => void }) {
+  const api = useTenantAPI();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [amount, setAmount] = useState("");
+
+  const mut = useMutation({
+    mutationFn: () =>
+      api.crm.leads.promote(leadId, {
+        ...(title.trim() ? { title: title.trim() } : {}),
+        ...(amount.trim() ? { amount: Number(amount) } : {}),
+      }) as Promise<{ opportunity: { id: string }; alreadyPromoted: boolean }>,
+    onSuccess: (res) => {
+      setOpen(false);
+      onDone();
+      toast.success(
+        res?.alreadyPromoted
+          ? "Lead already has an opportunity — opening it"
+          : "Opportunity created from lead",
+      );
+      if (res?.opportunity?.id) navigate(`/crm/opportunities/${res.opportunity.id}`);
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Failed to promote lead"),
+  });
+
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger asChild>
+        <Button size="sm">
+          <TrendingUp className="h-4 w-4 mr-1" /> Promote to opportunity
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Promote this lead to an opportunity?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Creates a pipeline opportunity linked to this lead. Branch, assignee, source and
+            customer are carried over. If an opportunity already exists for this lead, it is
+            opened instead.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Opportunity title (optional)</Label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Defaults to the lead name"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Estimated amount (optional)</Label>
+            <Input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} />
+          </div>
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <Button disabled={mut.isPending} onClick={() => mut.mutate()}>
+            {mut.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            Promote
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function QualificationCard({
+  lead,
+  userName,
+}: {
+  lead: Lead;
+  userName: (id: string | null) => string;
+}) {
+  const qs = lead.qualificationStatus as QualificationStatus;
+  const d = lead.qualificationData ?? {};
+  const bant: Array<[string, string | undefined]> = [
+    ["Budget", d.budget],
+    ["Authority", d.authority ? QUALIFICATION_AUTHORITY_LABELS[d.authority] ?? d.authority : undefined],
+    ["Need", d.need ? QUALIFICATION_NEED_LABELS[d.need] ?? d.need : undefined],
+    ["Timeline", d.timeline ? QUALIFICATION_TIMELINE_LABELS[d.timeline] ?? d.timeline : undefined],
+    ["Interest", d.interest],
+    ["Objections", d.objections],
+  ];
+  const shown = bant.filter(([, v]) => v);
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Target className="h-4 w-4" /> Qualification
+          <Badge variant={QUALIFICATION_STATUS_BADGE[qs] ?? "secondary"}>
+            {QUALIFICATION_STATUS_LABELS[qs] ?? qs}
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="text-sm space-y-1.5">
+        {lead.qualificationScore != null && (
+          <Row k="Score" v={`${lead.qualificationScore} / 100`} />
+        )}
+        {qs === "qualified" && (
+          <Row k="Qualified" v={lead.qualifiedAt ? formatDate(lead.qualifiedAt) : "—"} />
+        )}
+        {qs === "qualified" && lead.qualifiedBy && (
+          <Row k="Qualified by" v={userName(lead.qualifiedBy)} />
+        )}
+        {qs === "nurture" && lead.nurtureUntil && (
+          <Row k="Follow up on" v={formatDate(lead.nurtureUntil)} />
+        )}
+        {qs === "disqualified" && (
+          <Row k="Disqualified" v={lead.disqualifiedAt ? formatDate(lead.disqualifiedAt) : "—"} />
+        )}
+        {qs === "disqualified" && lead.disqualifiedReason && (
+          <Row k="Reason" v={lead.disqualifiedReason} />
+        )}
+        {shown.map(([k, v]) => (
+          <Row key={k} k={k} v={v as string} />
+        ))}
+        {lead.qualificationNotes && (
+          <div className="pt-1 text-muted-foreground whitespace-pre-wrap">
+            {lead.qualificationNotes}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
