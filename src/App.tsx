@@ -32,18 +32,14 @@ import ProfilePage from "./routes/profile";
 import InvoiceDesignerPage from "./routes/invoice-designer";
 import LedgerPage from "./routes/ledger";
 import BalanceSheetPage from "./routes/balance-sheet";
-import CrmDashboardPage from "./routes/crm/dashboard";
-import CrmLeadsPage from "./routes/crm/leads";
-import CrmLeadDetailsPage from "./routes/crm/lead-details";
-import CrmPipelinePage from "./routes/crm/pipeline";
-import CrmOpportunitiesPage from "./routes/crm/opportunities";
-import CrmOpportunityDetailsPage from "./routes/crm/opportunity-details";
-import CrmTasksPage from "./routes/crm/tasks";
-import { CrmGuard } from "@/components/crm/CrmGuard";
 
 import SuperAdminLoginPage from "./routes/superadmin-login";
 import SuperAdminDashboardPage from "./routes/superadmin-dashboard";
 import SuperAdminDemoRequestsPage from "./routes/superadmin-demo-requests";
+import SuperAdminCrmDashboardPage from "./routes/superadmin/crm/dashboard";
+import SuperAdminCrmLeadsPage from "./routes/superadmin/crm/leads";
+import SuperAdminCrmPipelinePage from "./routes/superadmin/crm/pipeline";
+import SuperAdminCrmTasksPage from "./routes/superadmin/crm/tasks";
 import AboutPage from "./routes/AboutPage";
 import GirviFeaturePage from "./routes/GirviFeaturePage";
 import ContactPage from "./routes/ContactPage";
@@ -119,6 +115,11 @@ function App() {
                   <Route element={<SuperAdminLayout />}>
                     <Route path="/" element={<SuperAdminDashboardPage />} />
                     <Route path="/demo-requests" element={<SuperAdminDemoRequestsPage />} />
+                    <Route path="/crm" element={<Navigate to="/superadmin/crm/dashboard" replace />} />
+                    <Route path="/crm/dashboard" element={<SuperAdminCrmDashboardPage />} />
+                    <Route path="/crm/leads" element={<SuperAdminCrmLeadsPage />} />
+                    <Route path="/crm/pipeline" element={<SuperAdminCrmPipelinePage />} />
+                    <Route path="/crm/tasks" element={<SuperAdminCrmTasksPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>
                 </Routes>
@@ -159,18 +160,6 @@ function App() {
                   <Route path="/invoice-designer" element={<SubscriptionRouteGuard route="/invoice-designer" pageName="Invoice Designer" element={<InvoiceDesignerPage />} />} />
                   <Route path="/ledger" element={<SubscriptionRouteGuard route="/ledger" pageName="Daily Cash Ledger" element={<LedgerPage />} />} />
                   <Route path="/balance-sheet" element={<SubscriptionRouteGuard route="/balance-sheet" pageName="Balance Sheet" element={<BalanceSheetPage />} />} />
-
-                  {/* CRM module — the whole area needs some CRM access; each
-                      screen/action is then gated by @/components/crm/Can and the
-                      backend re-enforces every request (see src/crm/middleware). */}
-                  <Route path="/crm" element={<CrmGuard><Navigate to="/crm/dashboard" replace /></CrmGuard>} />
-                  <Route path="/crm/dashboard" element={<CrmGuard><CrmDashboardPage /></CrmGuard>} />
-                  <Route path="/crm/leads" element={<CrmGuard><CrmLeadsPage /></CrmGuard>} />
-                  <Route path="/crm/leads/:id" element={<CrmGuard><CrmLeadDetailsPage /></CrmGuard>} />
-                  <Route path="/crm/pipeline" element={<CrmGuard><CrmPipelinePage /></CrmGuard>} />
-                  <Route path="/crm/opportunities" element={<CrmGuard><CrmOpportunitiesPage /></CrmGuard>} />
-                  <Route path="/crm/opportunities/:id" element={<CrmGuard><CrmOpportunityDetailsPage /></CrmGuard>} />
-                  <Route path="/crm/tasks" element={<CrmGuard><CrmTasksPage /></CrmGuard>} />
 
                   <Route path="*" element={<NotFoundPage insideTenant={true} />} />
                 </Routes>

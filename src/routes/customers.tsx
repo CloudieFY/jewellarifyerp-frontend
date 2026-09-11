@@ -14,7 +14,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useFormKeyboardNav } from "@/lib/useFormKeyboardNav";
-import { CustomerCrmPanel } from "@/components/crm/CustomerCrmPanel";
 import { matchCustomerRow } from "@/lib/crm";
 import {
   Plus,
@@ -1133,7 +1132,7 @@ export default function CustomersPage() {
 
                 {/* CRM TABS WORKSPACE */}
                 <Tabs defaultValue="invoices" className="w-full space-y-4">
-                  <TabsList className="bg-muted/80 border border-border/80 p-1 rounded-xl grid grid-cols-3 sm:grid-cols-5 gap-1 h-auto">
+                  <TabsList className="bg-muted/80 border border-border/80 p-1 rounded-xl grid grid-cols-3 sm:grid-cols-4 gap-1 h-auto">
                     <TabsTrigger value="invoices" className="text-xs font-semibold rounded-lg data-[state=active]:bg-amber-600 data-[state=active]:text-white transition-all py-2">
                       Billing <span className="ml-1.5 px-2 py-0.5 rounded text-[10px] bg-black/10 dark:bg-white/10 font-mono">{custInvoices.length}</span>
                     </TabsTrigger>
@@ -1145,9 +1144,6 @@ export default function CustomersPage() {
                     </TabsTrigger>
                     <TabsTrigger value="girvi" className="text-xs font-semibold rounded-lg data-[state=active]:bg-amber-600 data-[state=active]:text-white transition-all py-2">
                       Girvi Loans <span className="ml-1.5 px-2 py-0.5 rounded text-[10px] bg-black/10 dark:bg-white/10 font-mono">{custGirvis.length}</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="crm" className="text-xs font-semibold rounded-lg data-[state=active]:bg-amber-600 data-[state=active]:text-white transition-all py-2">
-                      <Sparkles className="w-3.5 h-3.5 mr-1" /> CRM 360
                     </TabsTrigger>
                   </TabsList>
 
@@ -1408,11 +1404,6 @@ export default function CustomersPage() {
                         </tbody>
                       </table>
                     </div>
-                  </TabsContent>
-
-                  {/* Tab 5: CRM 360 (leads / opportunities / tasks / activity) */}
-                  <TabsContent value="crm" className="space-y-3">
-                    <CustomerCrmPanel customerId={selectedCustomer._id || selectedCustomer.id || ""} />
                   </TabsContent>
                 </Tabs>
               </div>

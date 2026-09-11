@@ -38,21 +38,14 @@ export type CanFn = (entity: string, action: string) => boolean;
  * resolves or the session changes.
  */
 export function useCan(): CanFn {
-  const { tenantSession } = useAuth();
   const meQ = useCrmMe();
 
   return (entity: string, action: string): boolean => {
-    const role = tenantSession?.user?.role;
-    const perms =
-      meQ.data?.permissions ?? tenantSession?.user?.permissions ?? [];
+    const perms = meQ.data?.permissions ?? [];
 
     if (perms.includes("*")) return true;
     if (perms.includes(`${entity}.*`)) return true;
     if (perms.includes(`${entity}.${action}`)) return true;
-
-    // Owner fallback while /api/crm/me is loading, or for legacy sessions that
-    // never carried `permissions`. The backend still enforces the real check.
-    if (role === "owner" && (meQ.isLoading || perms.length === 0)) return true;
 
     return false;
   };
@@ -60,15 +53,11 @@ export function useCan(): CanFn {
 
 /** True if the CRM area should be visible to this user at all. */
 export function useHasCrmAccess(): boolean {
-  const { tenantSession } = useAuth();
   const meQ = useCrmMe();
 
   if (meQ.data) return meQ.data.hasCrmAccess;
 
-  const user = tenantSession?.user;
-  if (!user) return false;
-  if ((user.permissions?.length ?? 0) > 0) return true;
-  return user.role === "owner";
+  return false;
 }
 
 export function Can({

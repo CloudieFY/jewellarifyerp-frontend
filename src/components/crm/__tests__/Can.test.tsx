@@ -83,11 +83,12 @@ describe("useCan — driven by /api/crm/me permissions", () => {
     await waitFor(() => expect(screen.getByTestId("out").textContent).toBe("true"));
   });
 
-  it("owner is optimistically allowed while /api/crm/me is still loading", async () => {
+  it("owner has no implicit CRM access — denied while /api/crm/me is still loading", async () => {
     mockSession = { token: "t", user: { id: "u1", role: "owner" } };
     meFn.mockImplementation(() => new Promise(() => {})); // never resolves
     render(<CanProbe entity="lead" action="delete" />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId("out").textContent).toBe("true"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByTestId("out").textContent).toBe("false");
   });
 
   it("non-owner with no session permissions is denied while loading (fails closed)", async () => {

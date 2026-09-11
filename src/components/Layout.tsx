@@ -30,10 +30,6 @@ import {
   Keyboard,
   ChevronRight,
   Zap,
-  Target,
-  KanbanSquare,
-  ListChecks,
-  Contact,
 } from "lucide-react";
 import { useEffect, useState, useRef, type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -47,7 +43,6 @@ import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useGlobalKeyboard, useActiveShortcuts } from "@/hooks/useGlobalKeyboard";
-import { useHasCrmAccess } from "@/components/crm/Can";
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { CommandPaletteDialog } from "@/components/CommandPaletteDialog";
 import { HeaderGoldRatesDialog } from "@/components/HeaderGoldRatesDialog";
@@ -112,27 +107,12 @@ const adminGroups: { title: string; items: NavItem[] }[] = [
   },
 ];
 
-/** Shown only to users with CRM access (see useHasCrmAccess). Per-item
- *  permission gating happens server-side + via the in-page CrmNav. */
-const crmGroup: { title: string; items: NavItem[] } = {
-  title: "nav.groupCrm",
-  items: [
-    { to: "/crm/dashboard",     label: "nav.crmDashboard",     icon: LayoutDashboard },
-    { to: "/crm/leads",         label: "nav.crmLeads",         icon: Users },
-    { to: "/crm/pipeline",      label: "nav.crmPipeline",      icon: KanbanSquare },
-    { to: "/crm/opportunities", label: "nav.crmOpportunities", icon: Target },
-    { to: "/crm/tasks",         label: "nav.crmTasks",         icon: ListChecks },
-    { to: "/customers",         label: "nav.crmCustomers",     icon: Contact },
-  ],
-};
-
 /* ─────────────────────────────────────────────────────────────── */
 /*  Sidebar body                                                   */
 /* ─────────────────────────────────────────────────────────────── */
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
   const { tenantSession } = useAuth();
-  const showCrm = useHasCrmAccess();
   const navContainerRef = useRef<HTMLDivElement>(null);
   const isKarigar  = tenantSession?.user?.role === "karigar";
   const isOperator = tenantSession?.user?.role === "operator";
@@ -171,7 +151,6 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             return { ...group, items: filteredItems };
           })
           .filter((group) => group.items.length > 0),
-        ...(showCrm ? [crmGroup] : []),
       ];
 
   return (

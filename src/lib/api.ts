@@ -125,7 +125,60 @@ export const superAdminAPI = {
     getAll: () => apiCall<any[]>('/api/superadmin/demo-requests', {}, 'superadmin'),
     update: (id: string, body: any) => apiCall<any>(`/api/superadmin/demo-requests/${id}`, { method: 'PUT', body: JSON.stringify(body) }, 'superadmin'),
     remove: (id: string) => apiCall<any>(`/api/superadmin/demo-requests/${id}`, { method: 'DELETE' }, 'superadmin'),
-  }
+  },
+
+  /* ------------------------------------------------------------------ */
+  /*  Super Admin CRM (mounted at /api/superadmin/crm — cross-shop reads, */
+  /*  per-shop :shopId writes; mirrors the shape of the tenant `crm`      */
+  /*  resource above but every path is fixed to the superadmin auth type) */
+  /* ------------------------------------------------------------------ */
+  crm: (() => {
+    const base = '/api/superadmin/crm';
+    const get = <T = any>(path: string) => apiCall<T>(`${base}${path}`, {}, 'superadmin');
+    const send = <T = any>(path: string, method: string, body?: any) =>
+      apiCall<T>(`${base}${path}`, { method, body: body !== undefined ? JSON.stringify(body) : undefined }, 'superadmin');
+    const qs = (q?: string) => (q ? `?${q}` : '');
+
+    return {
+      shops: () => get<any[]>('/shops'),
+      dashboard: () => get('/dashboard'),
+
+      leads: {
+        list: (q?: string) => get(`/leads${qs(q)}`),
+        get: (shopId: string, id: string) => get(`/leads/${shopId}/${id}`),
+        create: (shopId: string, body: any) => send(`/leads/${shopId}`, 'POST', body),
+        update: (shopId: string, id: string, body: any) => send(`/leads/${shopId}/${id}`, 'PATCH', body),
+        remove: (shopId: string, id: string) => send(`/leads/${shopId}/${id}`, 'DELETE'),
+        assign: (shopId: string, id: string, body: any) => send(`/leads/${shopId}/${id}/assign`, 'POST', body),
+        qualify: (shopId: string, id: string, body?: any) => send(`/leads/${shopId}/${id}/qualify`, 'POST', body ?? {}),
+        promote: (shopId: string, id: string, body?: any) => send(`/leads/${shopId}/${id}/promote`, 'POST', body ?? {}),
+        convert: (shopId: string, id: string) => send(`/leads/${shopId}/${id}/convert`, 'POST'),
+      },
+
+      opportunities: {
+        list: (q?: string) => get(`/opportunities${qs(q)}`),
+        pipeline: () => get('/opportunities/pipeline'),
+        get: (shopId: string, id: string) => get(`/opportunities/${shopId}/${id}`),
+        create: (shopId: string, body: any) => send(`/opportunities/${shopId}`, 'POST', body),
+        update: (shopId: string, id: string, body: any) => send(`/opportunities/${shopId}/${id}`, 'PATCH', body),
+        stage: (shopId: string, id: string, body: any) => send(`/opportunities/${shopId}/${id}/stage`, 'POST', body),
+        assign: (shopId: string, id: string, body: any) => send(`/opportunities/${shopId}/${id}/assign`, 'POST', body),
+        win: (shopId: string, id: string, body?: any) => send(`/opportunities/${shopId}/${id}/win`, 'POST', body ?? {}),
+        lose: (shopId: string, id: string, body?: any) => send(`/opportunities/${shopId}/${id}/lose`, 'POST', body ?? {}),
+        remove: (shopId: string, id: string) => send(`/opportunities/${shopId}/${id}`, 'DELETE'),
+      },
+
+      tasks: {
+        list: (q?: string) => get(`/tasks${qs(q)}`),
+        get: (shopId: string, id: string) => get(`/tasks/${shopId}/${id}`),
+        create: (shopId: string, body: any) => send(`/tasks/${shopId}`, 'POST', body),
+        update: (shopId: string, id: string, body: any) => send(`/tasks/${shopId}/${id}`, 'PATCH', body),
+        remove: (shopId: string, id: string) => send(`/tasks/${shopId}/${id}`, 'DELETE'),
+        assign: (shopId: string, id: string, body: any) => send(`/tasks/${shopId}/${id}/assign`, 'POST', body),
+        complete: (shopId: string, id: string, body?: any) => send(`/tasks/${shopId}/${id}/complete`, 'POST', body ?? {}),
+      },
+    };
+  })(),
 };
 
 /* -------------------------------------------------------------------------- */

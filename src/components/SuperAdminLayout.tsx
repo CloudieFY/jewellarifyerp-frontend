@@ -8,14 +8,33 @@ import {
   SidebarHeader,
   SidebarFooter,
   SidebarInset,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupContent,
 } from "@/components/ui/sidebar";
-import { LogOut, Store, MessageSquare } from "lucide-react";
+import { LogOut, Store, MessageSquare, LayoutDashboard, Users, KanbanSquare, ListChecks } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 
-const navItems = [
-  { path: "/superadmin", icon: Store, label: "Shops" },
-  { path: "/superadmin/demo-requests", icon: MessageSquare, label: "Demo Requests" },
+type NavItem = { path: string; icon: typeof Store; label: string };
+
+const navGroups: { title: string; items: NavItem[] }[] = [
+  {
+    title: "Platform",
+    items: [
+      { path: "/superadmin", icon: Store, label: "Shops" },
+      { path: "/superadmin/demo-requests", icon: MessageSquare, label: "Demo Requests" },
+    ],
+  },
+  {
+    title: "CRM",
+    items: [
+      { path: "/superadmin/crm/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+      { path: "/superadmin/crm/leads", icon: Users, label: "Leads" },
+      { path: "/superadmin/crm/pipeline", icon: KanbanSquare, label: "Pipeline" },
+      { path: "/superadmin/crm/tasks", icon: ListChecks, label: "Tasks" },
+    ],
+  },
 ];
 
 export function SuperAdminLayout() {
@@ -35,20 +54,27 @@ export function SuperAdminLayout() {
             </div>
           </div>
         </SidebarHeader>
-        <SidebarMenu>
-          {navItems.map((item) => (
-            <SidebarMenuItem key={item.path}>
-              <SidebarMenuButton
-                onClick={() => navigate(item.path)}
-                isActive={location.pathname === item.path}
-                tooltip={item.label}
-              >
-                <item.icon />
-                <span>{item.label}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
-        </SidebarMenu>
+        {navGroups.map((group) => (
+          <SidebarGroup key={group.title}>
+            <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => (
+                  <SidebarMenuItem key={item.path}>
+                    <SidebarMenuButton
+                      onClick={() => navigate(item.path)}
+                      isActive={location.pathname === item.path}
+                      tooltip={item.label}
+                    >
+                      <item.icon />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
         <SidebarFooter>
           <Button variant="ghost" className="w-full justify-start text-sidebar-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" onClick={() => { logoutSuperAdmin(); navigate("/superadmin/login"); }}>
             <LogOut className="w-4 h-4 mr-2" /> Logout
